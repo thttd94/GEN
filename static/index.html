@@ -21,6 +21,7 @@
     .btn.tab.active { background:#2563eb; color:#fff; border-color:#2563eb; }
     .btn.apply { background:#16a34a; color:#fff; border-color:#16a34a; }
     .btn.warn { background:#f59e0b; color:#fff; border-color:#f59e0b; }
+    .btn.save-strong { background:#7c3aed; color:#fff; border-color:#7c3aed; padding:11px 18px; font-size:14px; box-shadow:0 10px 22px rgba(124,58,237,.28); }
     .btn.small { padding:6px 10px; font-size:12px; }
     .status { display:inline-flex; align-items:center; min-height:20px; padding:10px 14px; border-radius:999px; background:linear-gradient(135deg,#dbeafe 0%,#eff6ff 100%); border:1px solid #93c5fd; color:#1d4ed8; font-size:14px; font-weight:900; margin-left:6px; box-shadow:0 6px 18px rgba(37,99,235,.16), inset 0 1px 0 rgba(255,255,255,.85); }
     .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
@@ -126,7 +127,7 @@
           <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
           <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
         </div>
-        <button class="btn" onclick="saveCurrent()">Save</button>
+        <button class="btn save-strong" onclick="saveCurrent()">SAVE</button>
       </div>
 
       <div class="grid">
@@ -260,6 +261,35 @@
     }
 
     function sessionNameOf(session) { return sessionNames[String(session)] || `Session ${session}`; }
+    function draftKey(session) { return `pm_draft_${session}`; }
+    function exportDraftRows(rows) {
+      return (rows || []).filter(r => r && r.tag).map(r => ({
+        tag: String(r.tag || ''),
+        proxy: String(r.proxy || ''),
+        note: String(r.note || ''),
+        mac: String(r.mac || ''),
+      }));
+    }
+    function persistDraft(session) {
+      sessionStorage.setItem(draftKey(session), JSON.stringify(exportDraftRows(currentRows)));
+    }
+    function loadDraft(session) {
+      try {
+        return JSON.parse(sessionStorage.getItem(draftKey(session)) || '[]');
+      } catch {
+        return [];
+      }
+    }
+    function applyDraftToRows(rows, session) {
+      const draft = loadDraft(session);
+      if (!Array.isArray(draft) || !draft.length) return rows;
+      const byTag = new Map(draft.map(x => [String(x.tag || ''), x]));
+      return (rows || []).map(row => {
+        const saved = byTag.get(String(row.tag || ''));
+        if (!saved) return row;
+        return { ...row, proxy: saved.proxy || '', note: saved.note || '', mac: saved.mac || row.mac || '' };
+      });
+    }
 
     async function editAppTitlePrefix() {
       const current = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
@@ -315,6 +345,7 @@
     function updateField(el) {
       const row = currentRows.find(r => r.tag === el.dataset.tag);
       if (row) row[el.dataset.field] = el.value;
+      persistDraft(currentSession);
       if (el.dataset.field === 'note') renderNotesSummary();
     }
 
@@ -336,18 +367,21 @@
     function assignAllProxy() {
       const value = document.getElementById('bulkProxy').value.trim();
       getVisibleRows().forEach(r => r.proxy = value);
+      persistDraft(currentSession);
       render();
       setStatus('Đã gán 1 proxy cho toàn bộ ' + sessionNameOf(currentSession));
     }
 
     function clearAllProxy() {
       getVisibleRows().forEach(r => r.proxy = '');
+      persistDraft(currentSession);
       render();
       setStatus('Đã xóa toàn bộ proxy của ' + sessionNameOf(currentSession));
     }
 
     function clearAllNotes() {
       getVisibleRows().forEach(r => r.note = '');
+      persistDraft(currentSession);
       render();
       setStatus('Đã xóa toàn bộ note của ' + sessionNameOf(currentSession));
     }
@@ -374,6 +408,7 @@
         row.proxy = item.proxy.trim();
         changed++;
       }
+      persistDraft(currentSession);
       render();
       setStatus(`Đã gán hàng loạt ${changed} dòng cho ` + sessionNameOf(currentSession));
     }
@@ -493,7 +528,7 @@
       setStatus('Bạn đang ở ' + sessionNameOf(session));
       const data = await fetchJSON(`/api/pm/sessions/${session}`);
       currentSession = session;
-      currentRows = data.rows || [];
+      currentRows = applyDraftToRows(data.rows || [], session);
       if (data.name) sessionNames[String(session)] = data.name;
       render();
       setStatus('Bạn đang ở ' + sessionNameOf(currentSession));
@@ -513,7 +548,8 @@
 
     async function saveCurrent() {
       try {
-        await saveSession(currentSession);
+        persistDraft(currentSession);
+        setStatus('Đã lưu tạm ' + sessionNameOf(currentSession) + ' (chưa apply)');
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
@@ -526,7 +562,8 @@
     async function applySession(session) {
       try {
         if (currentSession !== session) await loadSession(session);
-        await saveCurrent();
+        persistDraft(session);
+        await saveSession(session);
         setStatus('Applying session ' + session + '...');
         const data = await fetchJSON(`/api/pm/apply/${session}`, { method:'POST', body: JSON.stringify({ rows: currentRows }) });
         const bad = Array.isArray(data.results) ? data.results.find(x => x && (x.error || x.ok === false || (typeof x.code === 'number' && x.code !== 0))) : null;
