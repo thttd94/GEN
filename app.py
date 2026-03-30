@@ -1,0 +1,250 @@
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse
+import json
+import shutil
+import subprocess
+import time
+import urllib.request
+import urllib.error
+
+BASE_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/proxy-manager-v1')
+STATIC_DIR = BASE_DIR / 'static'
+CONFIG_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/config')
+RUNTIME_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter')
+GENRUNNER = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/core/genrunner')
+STATIC_HOSTS_FILE = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json')
+LEASES_FILE = Path('/tmp/dhcp.leases')
+OLD_GUI_BASE = 'http://127.0.0.1'
+
+SESSION_FILES = {
+    '1': CONFIG_DIR / 'gencore.json',
+    '2': CONFIG_DIR / 'gencore2.json',
+}
+RUNTIME_FILE = RUNTIME_DIR / 'gencore.json'
+
+
+def ensure_session2_exists():
+    s2 = SESSION_FILES['2']
+    if s2.exists():
+        return
+    data = load_json(SESSION_FILES['1'])
+    clear_session_proxies(data)
+    save_json(s2, data)
+
+
+def load_json(path: Path):
+    return json.loads(path.read_text(encoding='utf-8'))
+
+
+def save_json(path: Path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def load_device_map():
+    device_map = {}
+    if STATIC_HOSTS_FILE.exists():
+        try:
+            data = json.loads(STATIC_HOSTS_FILE.read_text(encoding='utf-8'))
+            for sec in data.values():
+                ip = sec.get('ip')
+                if not ip:
+                    continue
+                device_map[ip] = {'hostname': sec.get('name', ''), 'mac': sec.get('mac', ''), 'status': 'offline'}
+        except Exception:
+            pass
+    if LEASES_FILE.exists():
+        try:
+            now = int(time.time())
+            for line in LEASES_FILE.read_text(encoding='utf-8', errors='ignore').splitlines():
+                parts = line.split()
+                if len(parts) < 4:
+                    continue
+                expiry, mac, ip, hostname = parts[:4]
+                try:
+                    online = int(expiry) > now
+                except Exception:
+                    online = True
+                row = device_map.setdefault(ip, {})
+                row['mac'] = mac
+                if hostname and hostname != '*':
+                    row['hostname'] = hostname
+                row['status'] = 'online' if online else 'offline'
+        except Exception:
+            pass
+    return device_map
+
+
+def extract_rows(data):
+    outbounds = {item.get('tag'): item for item in data.get('outbounds', []) if item.get('tag', '').startswith('proxy_')}
+    devices = load_device_map()
+    rows = []
+    for rule in data.get('route', {}).get('rules', []):
+        ip = rule.get('source_ip_cidr')
+        tag = rule.get('outbound')
+        if not ip or not tag or not str(tag).startswith('proxy_'):
+            continue
+        outbound = outbounds.get(tag, {})
+        dev = devices.get(ip, {})
+        rows.append({'ip': ip, 'tag': tag, 'proxy': format_proxy(outbound), 'hostname': dev.get('hostname', ''), 'mac': dev.get('mac', ''), 'status': dev.get('status', 'offline')})
+    rows.sort(key=lambda x: tuple(int(p) for p in x['ip'].split('.')))
+    return rows
+
+
+def format_proxy(outbound):
+    server = outbound.get('server')
+    port = outbound.get('server_port')
+    user = outbound.get('username', '')
+    password = outbound.get('password', '')
+    if not server or not port:
+        return ''
+    return f"{server}:{port}:{user}:{password}"
+
+
+def apply_rows_to_data(data, rows_by_ip):
+    route_rules = data.setdefault('route', {}).setdefault('rules', [])
+    outbounds = data.setdefault('outbounds', [])
+    outbound_idx = {item.get('tag'): i for i, item in enumerate(outbounds) if item.get('tag')}
+    for rule in route_rules:
+        ip = rule.get('source_ip_cidr')
+        tag = rule.get('outbound')
+        if ip in rows_by_ip and tag and str(tag).startswith('proxy_'):
+            proxy = rows_by_ip[ip].strip()
+            set_outbound_proxy(outbounds, outbound_idx, tag, proxy)
+    return data
+
+
+def set_outbound_proxy(outbounds, outbound_idx, tag, proxy):
+    idx = outbound_idx.get(tag)
+    if idx is None:
+        return
+    if not proxy:
+        outbounds[idx] = {'tag': tag, 'type': 'direct'}
+        return
+    server, port, user, password = parse_proxy(proxy)
+    outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': server, 'server_port': port, 'username': user, 'password': password, 'version': '5'}
+
+
+def parse_proxy(proxy):
+    parts = proxy.split(':')
+    if len(parts) < 4:
+        raise ValueError(f'Proxy không hợp lệ: {proxy}')
+    server = parts[0].strip()
+    port = int(parts[1].strip())
+    user = parts[2].strip()
+    password = ':'.join(parts[3:]).strip()
+    return server, port, user, password
+
+
+def clear_session_proxies(data):
+    for item in data.get('outbounds', []):
+        tag = item.get('tag', '')
+        if str(tag).startswith('proxy_'):
+            item.clear()
+            item.update({'tag': tag, 'type': 'direct'})
+
+
+def run_apply(session: str):
+    source = SESSION_FILES[session]
+    shutil.copy2(source, RUNTIME_FILE)
+    if GENRUNNER.exists():
+        subprocess.run([str(GENRUNNER), '-c'], check=False)
+
+
+def check_proxy(proxy: str):
+    if not proxy.strip():
+        return {'ok': False, 'status': 'empty', 'message': 'Proxy trống'}
+    server, port, user, password = parse_proxy(proxy)
+    proxy_url = f"socks5h://{user}:{password}@{server}:{port}"
+    result = subprocess.run(['curl', '-sS', '--max-time', '12', '--proxy', proxy_url, 'https://api.ipify.org?format=json'], capture_output=True, text=True)
+    if result.returncode != 0:
+        return {'ok': False, 'status': 'dead', 'message': 'Fail'}
+    try:
+        json.loads(result.stdout.strip())
+        return {'ok': True, 'status': 'live', 'message': 'Live'}
+    except Exception:
+        return {'ok': True, 'status': 'live', 'message': 'Live'}
+
+
+def call_old_gui(path, method='GET', data=None):
+    url = OLD_GUI_BASE + path
+    body = None
+    headers = {}
+    if data is not None:
+        body = json.dumps(data).encode('utf-8')
+        headers['Content-Type'] = 'application/json'
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        raw = resp.read().decode('utf-8', errors='ignore')
+        try:
+            return {'ok': True, 'data': json.loads(raw) if raw else {}}
+        except Exception:
+            return {'ok': True, 'data': raw}
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _send_json(self, obj, code=200):
+        data = json.dumps(obj, ensure_ascii=False).encode('utf-8')
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_file(self, path, content_type='text/html; charset=utf-8'):
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        ensure_session2_exists()
+        path = urlparse(self.path).path
+        if path == '/':
+            return self._send_file(STATIC_DIR / 'index.html')
+        if path == '/api/pm/sessions/1':
+            return self._send_json({'session': '1', 'rows': extract_rows(load_json(SESSION_FILES['1']))})
+        if path == '/api/pm/sessions/2':
+            return self._send_json({'session': '2', 'rows': extract_rows(load_json(SESSION_FILES['2']))})
+        self._send_json({'error': 'Not found'}, 404)
+
+    def do_POST(self):
+        ensure_session2_exists()
+        path = urlparse(self.path).path
+        length = int(self.headers.get('Content-Length', '0') or '0')
+        body = self.rfile.read(length) if length else b'{}'
+        payload = json.loads(body.decode('utf-8') or '{}')
+        try:
+            if path in ('/api/pm/sessions/1', '/api/pm/sessions/2'):
+                session_id = path.rsplit('/', 1)[-1]
+                rows = payload.get('rows', [])
+                rows_by_ip = {str(row['ip']): str(row.get('proxy', '')) for row in rows if row.get('ip')}
+                data = load_json(SESSION_FILES[session_id])
+                save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_ip))
+                return self._send_json({'ok': True, 'session': session_id})
+            if path in ('/api/pm/apply/1', '/api/pm/apply/2'):
+                session_id = path.rsplit('/', 1)[-1]
+                run_apply(session_id)
+                return self._send_json({'ok': True, 'applied': session_id})
+            if path == '/api/pm/clone/1-to-2':
+                save_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
+                return self._send_json({'ok': True})
+            if path == '/api/pm/check-proxy':
+                return self._send_json(check_proxy(str(payload.get('proxy', ''))))
+            if path == '/api/pm/reboot-router':
+                return self._send_json(call_old_gui('/api/system/reboot'))
+            if path == '/api/pm/setup-router':
+                return self._send_json(call_old_gui('/api/system/network'))
+            return self._send_json({'error': 'Not found'}, 404)
+        except urllib.error.HTTPError as e:
+            return self._send_json({'ok': False, 'error': f'HTTP {e.code}'}, 400)
+        except Exception as e:
+            return self._send_json({'error': str(e)}, 400)
+
+
+if __name__ == '__main__':
+    ensure_session2_exists()
+    ThreadingHTTPServer(('0.0.0.0', 18123), Handler).serve_forever()

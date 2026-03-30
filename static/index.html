@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Genrouter Proxy Manager</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f3f4f6; color:#111827; margin:0; }
+    .wrap { max-width: 1680px; margin: 0 auto; padding: 18px; }
+    .toolbar { display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+    .toolbar-left,.toolbar-right { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .btn { border:1px solid #d1d5db; background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:700; }
+    .btn.tab.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+    .btn.apply { background:#16a34a; color:#fff; border-color:#16a34a; }
+    .btn.warn { background:#f59e0b; color:#fff; border-color:#f59e0b; }
+    .btn.ghost { background:#fff; }
+    .btn.small { padding:7px 10px; font-size:12px; }
+    .title { font-size:24px; font-weight:800; margin-bottom:12px; }
+    .panel { background:#fff; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden; }
+    .meta { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid #e5e7eb; }
+    .sub { color:#6b7280; font-size:13px; }
+    .grid { max-height:76vh; overflow:auto; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:12px 10px; border-bottom:1px solid #f1f5f9; font-size:14px; vertical-align:middle; }
+    th { text-align:left; background:#f9fafb; position:sticky; top:0; z-index:1; }
+    input, textarea { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:9px 10px; font-size:14px; }
+    textarea { min-height:90px; resize:vertical; }
+    .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; }
+    .online { background:#dcfce7; color:#166534; }
+    .offline { background:#fee2e2; color:#991b1b; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .status { font-size:13px; color:#2563eb; font-weight:600; }
+    .name-cell { min-width:180px; }
+    .proxy-cell { min-width:420px; }
+    .bulkbar { display:grid; grid-template-columns: 420px auto; gap:12px; padding:14px 16px; border-bottom:1px solid #e5e7eb; background:#fcfcfd; }
+    .bulk-actions { display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; }
+    .check-ok { color:#15803d; font-weight:800; }
+    .check-bad { color:#b91c1c; font-weight:800; }
+    .check-wait { color:#2563eb; font-weight:700; }
+    .th-check { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">Genrouter Proxy Manager</div>
+
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <button class="btn tab active" id="tab1" onclick="switchSession('1')">Session 1</button>
+        <button class="btn tab" id="tab2" onclick="switchSession('2')">Session 2</button>
+        <button class="btn ghost" onclick="saveCurrent()">Save</button>
+        <button class="btn apply" onclick="applySession('1')">Apply SS1</button>
+        <button class="btn apply" onclick="applySession('2')">Apply SS2</button>
+        <button class="btn ghost" onclick="clone1to2()">Clone SS1 → SS2</button>
+        <div class="status" id="status">Ready</div>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn warn" onclick="rebootRouter()">Reboot Router</button>
+        <button class="btn warn" onclick="setupRouter()">Set up Router</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="meta">
+        <div>
+          <div><b id="sessionLabel">Session 1</b></div>
+          <div class="sub">SS1 = gencore.json · SS2 = gencore2.json</div>
+        </div>
+        <div class="sub" id="countLabel">0 rows</div>
+      </div>
+
+      <div class="bulkbar">
+        <div>
+          <input id="bulkProxy" placeholder="1 proxy cho tất cả: server:port:user:pass">
+          <div class="sub" style="margin-top:6px;">Gán toàn bộ thiết bị của session đang mở</div>
+        </div>
+        <div>
+          <textarea id="bulkMap" placeholder="Gán hàng loạt, chấp nhận các dạng:
+225|1.2.3.4:1080:user:pass
+225;1.2.3.4:1080:user:pass
+225 1.2.3.4:1080:user:pass"></textarea>
+          <div class="sub" style="margin-top:6px;">x = số tag. Ví dụ 225 = gán cho proxy_225. Chỉ đổi các dòng có trong danh sách nhập.</div>
+        </div>
+        <div class="bulk-actions">
+          <button class="btn ghost" onclick="assignAllProxy()">Gán tất cả</button>
+          <button class="btn ghost" onclick="clearAllProxy()">Xóa tất cả proxy</button>
+          <button class="btn ghost" onclick="applyBulkMap()">Gán hàng loạt</button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:64px;">#</th>
+              <th class="name-cell">Device Name</th>
+              <th style="width:170px;">MAC</th>
+              <th style="width:130px;">IP</th>
+              <th style="width:100px;">Status</th>
+              <th style="width:120px;">Proxy Tag</th>
+              <th class="proxy-cell">Proxy</th>
+              <th style="width:190px;">
+                <div class="th-check">
+                  <span>Check Proxy</span>
+                  <button class="btn small warn" onclick="checkAllProxy()">Check All</button>
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentSession = '1';
+    let currentRows = [];
+    function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    async function fetchJSON(url, options={}) {
+      const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...options });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+    function esc(v) { return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
+    function render() {
+      document.getElementById('tab1').classList.toggle('active', currentSession === '1');
+      document.getElementById('tab2').classList.toggle('active', currentSession === '2');
+      document.getElementById('sessionLabel').textContent = currentSession === '1' ? 'Session 1' : 'Session 2';
+      document.getElementById('countLabel').textContent = `${currentRows.length} rows`;
+      document.getElementById('rows').innerHTML = currentRows.map((row, idx) => `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${esc(row.hostname || '')}</td>
+          <td class="mono">${esc(row.mac || '')}</td>
+          <td class="mono">${esc(row.ip)}</td>
+          <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
+          <td class="mono">${esc(row.tag)}</td>
+          <td><input value="${esc(row.proxy || '')}" data-ip="${esc(row.ip)}" oninput="updateProxy(this)" placeholder="server:port:user:pass"></td>
+          <td><button class="btn small ghost" onclick="checkProxy('${esc(row.ip)}')">Check</button><div id="check-${esc(row.ip)}" class="sub"></div></td>
+        </tr>`).join('');
+    }
+    function updateProxy(el) {
+      const row = currentRows.find(r => r.ip === el.dataset.ip);
+      if (row) row.proxy = el.value;
+    }
+    function assignAllProxy() {
+      const value = document.getElementById('bulkProxy').value.trim();
+      currentRows.forEach(r => r.proxy = value);
+      render();
+      setStatus('Đã gán 1 proxy cho toàn bộ session ' + currentSession);
+    }
+    function clearAllProxy() {
+      currentRows.forEach(r => r.proxy = '');
+      render();
+      setStatus('Đã xóa toàn bộ proxy của session ' + currentSession);
+    }
+    function parseBulkLine(line) {
+      let m = line.match(/^\s*(\d+)\s*[|;]\s*(.+)\s*$/);
+      if (m) return { x: m[1], proxy: m[2] };
+      m = line.match(/^\s*(\d+)\s+(.+)\s*$/);
+      if (m) return { x: m[1], proxy: m[2] };
+      return null;
+    }
+    function applyBulkMap() {
+      const text = document.getElementById('bulkMap').value.trim();
+      if (!text) return setStatus('Chưa nhập danh sách gán hàng loạt');
+      const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      let changed = 0;
+      for (const line of lines) {
+        const item = parseBulkLine(line);
+        if (!item) continue;
+        const tag = `proxy_${item.x}`;
+        const row = currentRows.find(r => r.tag === tag);
+        if (!row) continue;
+        row.proxy = item.proxy.trim();
+        changed++;
+      }
+      render();
+      setStatus(`Đã gán hàng loạt ${changed} dòng theo danh sách nhập`);
+    }
+    async function checkProxy(ip) {
+      const row = currentRows.find(r => r.ip === ip);
+      const box = document.getElementById(`check-${ip}`);
+      if (!row || !box) return;
+      box.className = 'check-wait';
+      box.textContent = 'CHECK...';
+      try {
+        const data = await fetchJSON('/api/pm/check-proxy', { method: 'POST', body: JSON.stringify({ proxy: row.proxy || '' }) });
+        box.className = data.ok ? 'check-ok' : 'check-bad';
+        box.textContent = data.ok ? 'LIVE' : 'DEAD';
+      } catch {
+        box.className = 'check-bad';
+        box.textContent = 'DEAD';
+      }
+    }
+    async function checkAllProxy() {
+      setStatus('Đang check toàn bộ proxy...');
+      await Promise.all(currentRows.map(row => checkProxy(row.ip)));
+      setStatus('Đã check xong session ' + currentSession);
+    }
+    async function rebootRouter() { try { setStatus('Đang reboot router...'); await fetchJSON('/api/pm/reboot-router', { method:'POST', body:'{}' }); setStatus('Đã gửi lệnh reboot router'); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    async function setupRouter() { try { setStatus('Đang gọi Set up Router...'); await fetchJSON('/api/pm/setup-router', { method:'POST', body:'{}' }); setStatus('Đã gọi Set up Router'); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    async function loadSession(session) { setStatus('Loading session ' + session + '...'); const data = await fetchJSON(`/api/pm/sessions/${session}`); currentSession = session; currentRows = data.rows || []; render(); setStatus('Loaded session ' + session); }
+    async function switchSession(session) { try { await loadSession(session); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    async function saveCurrent() { try { setStatus('Saving session ' + currentSession + '...'); await fetchJSON(`/api/pm/sessions/${currentSession}`, { method:'POST', body: JSON.stringify({ rows: currentRows }) }); setStatus('Saved session ' + currentSession); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    async function applySession(session) { try { if (currentSession === session) await saveCurrent(); setStatus('Applying session ' + session + '...'); await fetchJSON(`/api/pm/apply/${session}`, { method:'POST' }); setStatus('Đã apply session ' + session); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    async function clone1to2() { try { setStatus('Cloning SS1 -> SS2...'); await fetchJSON('/api/pm/clone/1-to-2', { method:'POST' }); if (currentSession === '2') await loadSession('2'); setStatus('Đã clone SS1 -> SS2'); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    loadSession('1');
+  </script>
+</body>
+</html>
