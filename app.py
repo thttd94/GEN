@@ -25,6 +25,7 @@ DEV_GENRUNNER = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/core/genr
 STATIC_HOSTS_FILE = Path('/etc/shm/list_ip_static.json') if Path('/etc/shm/list_ip_static.json').exists() else Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json')
 LEASES_FILE = Path('/tmp/dhcp.leases')
 OLD_GUI_BASE = 'http://127.0.0.1:9000'
+STATIC_API_BASE = 'http://192.15.0.1:8000'
 
 if ROUTER_CONFIG_DIR.exists():
     CONFIG_DIR = ROUTER_CONFIG_DIR
@@ -521,9 +522,28 @@ def call_old_gui(path, method='GET', data=None):
             return {'ok': True, 'data': raw}
 
 
+def call_static_api(path, method='GET', data=None):
+    body = None
+    headers = {}
+    if data is not None and method != 'GET':
+        body = json.dumps(data).encode('utf-8')
+        headers['Content-Type'] = 'application/json'
+    if data is not None and method == 'GET':
+        qs = urlencode(data)
+        path = path + ('&' if '?' in path else '?') + qs
+    url = STATIC_API_BASE + path
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        raw = resp.read().decode('utf-8', errors='ignore')
+        try:
+            return {'ok': True, 'data': json.loads(raw) if raw else {}}
+        except Exception:
+            return {'ok': True, 'data': raw}
+
+
 def sync_static_to_router(rows):
     for row in rows:
-        call_old_gui('/add_static', method='GET', data={
+        call_static_api('/add_static', method='GET', data={
             'ip': str(row.get('ip', '')).strip(),
             'mac': normalize_mac(row.get('mac', '')),
         })
