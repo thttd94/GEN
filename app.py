@@ -422,9 +422,6 @@ def parse_ip_identity_text(text):
             raise ValueError(f'Tag không hợp lệ: {tag}')
         if not ip:
             raise ValueError(f'IP trống ở dòng: {line}')
-        expected_ip = tag_to_ip(tag)
-        if ip != expected_ip:
-            raise ValueError(f'Sai định danh IP: {tag} phải là {expected_ip}, đang là {ip}')
         if tag in seen_tags:
             dup_tags.add(tag)
         else:
