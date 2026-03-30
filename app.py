@@ -359,12 +359,7 @@ def extract_rows(data, session='1'):
     devices = load_device_map()
     session_meta = get_session_meta(session)
     saved_text = get_saved_ip_identity_text(session)
-    if saved_text:
-        configured_rows = parse_ip_identity_text(saved_text)
-    else:
-        configured_rows = build_ip_identity_rows_from_data(data)
-        if len(configured_rows) >= MAX_PROXY_TAG:
-            configured_rows = []
+    configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     configured_ips = set()
     rows = []
 
