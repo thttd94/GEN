@@ -311,19 +311,19 @@
       const value = document.getElementById('bulkProxy').value.trim();
       currentRows.forEach(r => r.proxy = value);
       render();
-      setStatus('Đã gán 1 proxy cho toàn bộ session ' + currentSession);
+      setStatus('Đã gán 1 proxy cho toàn bộ ' + sessionNameOf(currentSession));
     }
 
     function clearAllProxy() {
       currentRows.forEach(r => r.proxy = '');
       render();
-      setStatus('Đã xóa toàn bộ proxy của session ' + currentSession);
+      setStatus('Đã xóa toàn bộ proxy của ' + sessionNameOf(currentSession));
     }
 
     function clearAllNotes() {
       currentRows.forEach(r => r.note = '');
       render();
-      setStatus('Đã xóa toàn bộ note của session ' + currentSession);
+      setStatus('Đã xóa toàn bộ note của ' + sessionNameOf(currentSession));
     }
 
     function parseBulkLine(line) {
