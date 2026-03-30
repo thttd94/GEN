@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Genrouter Proxy Manager _ By Hồng Thái</title>
+  <title>Genrouter</title>
   <style>
     body { font-family: Arial, sans-serif; background:#eef2f7; color:#111827; margin:0; }
     .wrap { max-width: 1780px; margin: 0 auto; padding: 14px; }
     .titlebar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .titlebar-left { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .title { font-size:26px; font-weight:800; }
     .brand { font-size:14px; font-weight:700; color:#2563eb; }
     .titlebar-right { display:flex; align-items:center; gap:8px; }
@@ -63,7 +64,10 @@
 <body>
   <div class="wrap">
     <div class="titlebar">
-      <div class="title">Genrouter Proxy Manager _ By Hồng Thái</div>
+      <div class="titlebar-left">
+        <div class="title" id="appTitle">Genrouter Proxy Manager _ By Hồng Thái</div>
+        <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
+      </div>
       <div class="titlebar-right">
         <div class="conn-badge disconnected" id="connBadge">Disconnected</div>
       </div>
@@ -186,8 +190,16 @@
     let currentRows = [];
     let sessionNames = { '1': 'Session 1', '2': 'Session 2' };
     let networkPollTimer = null;
+    let appTitlePrefix = 'Genrouter';
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    function renderAppTitle() {
+      const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
+      const full = `${prefix} Proxy Manager _ By Hồng Thái`;
+      const titleEl = document.getElementById('appTitle');
+      if (titleEl) titleEl.textContent = full;
+      document.title = prefix;
+    }
     function setConnectionBadge(isConnected) {
       const el = document.getElementById('connBadge');
       if (!el) return;
@@ -237,11 +249,27 @@
 
     function sessionNameOf(session) { return sessionNames[String(session)] || `Session ${session}`; }
 
+    async function editAppTitlePrefix() {
+      const current = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
+      const name = prompt('Sửa phần tên đầu tiêu đề', current);
+      if (name === null) return;
+      const clean = String(name || '').trim() || 'Genrouter';
+      try {
+        const data = await fetchJSON('/api/pm/meta', { method:'POST', body: JSON.stringify({ app_title_prefix: clean }) });
+        appTitlePrefix = data.app_title_prefix || clean;
+        renderAppTitle();
+        setStatus('Đã đổi tên tiêu đề');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
     function render() {
       document.getElementById('tab1').classList.toggle('active', currentSession === '1');
       document.getElementById('tab2').classList.toggle('active', currentSession === '2');
       document.getElementById('tab1').textContent = sessionNameOf('1');
       document.getElementById('tab2').textContent = sessionNameOf('2');
+      renderAppTitle();
       document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
       document.querySelector('.btn.apply').textContent = 'Apply ' + sessionNameOf(currentSession);
       document.getElementById('countLabel').textContent = `${currentRows.length} rows`;
@@ -498,11 +526,20 @@
       }
     }
 
-    setConnectionBadge(false);
-    refreshConnectionStatus(true);
-    if (networkPollTimer) clearInterval(networkPollTimer);
-    networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
-    loadSession('1');
+    async function bootstrap() {
+      try {
+        const meta = await fetchJSON('/api/pm/meta');
+        appTitlePrefix = meta.app_title_prefix || 'Genrouter';
+      } catch {}
+      renderAppTitle();
+      setConnectionBadge(false);
+      refreshConnectionStatus(true);
+      if (networkPollTimer) clearInterval(networkPollTimer);
+      networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
+      loadSession('1');
+    }
+
+    bootstrap();
   </script>
 </body>
 </html>

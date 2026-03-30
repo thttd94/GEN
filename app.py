@@ -117,22 +117,44 @@ def get_session_meta(session_id, tag=None):
     return item if isinstance(item, dict) else {}
 
 
+def get_meta_section(state=None):
+    state = state if isinstance(state, dict) else load_session_state()
+    meta = state.get('__meta__', {}) if isinstance(state, dict) else {}
+    if not isinstance(meta, dict):
+        meta = {}
+        state['__meta__'] = meta
+    return state, meta
+
+
 def get_session_display_name(session_id):
     state = load_session_state()
-    meta = state.get('__meta__', {}) if isinstance(state, dict) else {}
+    _state, meta = get_meta_section(state)
     names = meta.get('session_names', {}) if isinstance(meta, dict) else {}
     name = str(names.get(str(session_id), '')).strip()
     return name or f'Session {session_id}'
+
+
+def get_app_title_prefix():
+    state = load_session_state()
+    _state, meta = get_meta_section(state)
+    value = str(meta.get('app_title_prefix', '')).strip()
+    return value or 'Genrouter'
+
+
+def set_app_title_prefix(value):
+    state = load_session_state()
+    state, meta = get_meta_section(state)
+    value = str(value or '').strip() or 'Genrouter'
+    meta['app_title_prefix'] = value
+    save_session_state(state)
+    return value
 
 
 def set_session_display_name(session_id, name):
     session_id = str(session_id)
     name = str(name or '').strip() or f'Session {session_id}'
     state = load_session_state()
-    meta = state.setdefault('__meta__', {}) if isinstance(state, dict) else {}
-    if not isinstance(meta, dict):
-        state['__meta__'] = {}
-        meta = state['__meta__']
+    state, meta = get_meta_section(state)
     names = meta.setdefault('session_names', {})
     if not isinstance(names, dict):
         meta['session_names'] = {}
@@ -748,6 +770,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(call_old_gui('/api/system/network'))
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
+        if path == '/api/pm/meta':
+            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix()})
         if path in ('/api/pm/ip-mac-config/1', '/api/pm/ip-mac-config/2'):
             session_id = path.rsplit('/', 1)[-1]
             data = load_json(SESSION_FILES[session_id])
@@ -780,7 +804,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({'ok': True, 'applied': session_id, 'results': results})
             if path == '/api/pm/clone/1-to-2':
                 save_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
+                state = load_session_state()
+                if isinstance(state, dict) and isinstance(state.get('1'), dict):
+                    state['2'] = json.loads(json.dumps(state.get('1', {})))
+                    _state, meta = get_meta_section(state)
+                    names = meta.setdefault('session_names', {}) if isinstance(meta, dict) else {}
+                    if isinstance(names, dict) and '1' in names:
+                        names['2'] = names['1']
+                    save_session_state(state)
                 return self._send_json({'ok': True})
+            if path == '/api/pm/meta':
+                prefix = set_app_title_prefix(payload.get('app_title_prefix', 'Genrouter'))
+                return self._send_json({'ok': True, 'app_title_prefix': prefix})
             if path in ('/api/pm/map-ip/1', '/api/pm/map-ip/2'):
                 session_id = path.rsplit('/', 1)[-1]
                 data = load_json(SESSION_FILES[session_id])
