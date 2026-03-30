@@ -7,11 +7,11 @@ PORT="18123"
 # Đổi pass này trước khi đưa lên GitHub
 INSTALL_PASSWORD="123123@qq"
 
-printf 'Enter install password: '
-stty -echo
-read -r INPUT_PASS
-stty echo
-printf '\n'
+INPUT_PASS="$(python3 - <<'PY'
+import getpass
+print(getpass.getpass('Enter install password: '), end='')
+PY
+)"
 
 if [ "$INPUT_PASS" != "$INSTALL_PASSWORD" ]; then
   echo "[ERR] Wrong password"
