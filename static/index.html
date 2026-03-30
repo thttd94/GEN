@@ -528,6 +528,7 @@
     }
 
     async function loadSession(session) {
+      viewMode = 'configured';
       setStatus('Bạn đang ở ' + sessionNameOf(session));
       const data = await fetchJSON(`/api/pm/sessions/${session}`);
       currentSession = session;
