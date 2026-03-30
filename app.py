@@ -462,12 +462,16 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
 
 
 def build_ip_identity_text(data, session='1'):
+    mapping = build_tag_to_ip(data)
     items = []
-    for i in range(1, MAX_PROXY_TAG + 1):
-        tag = f'proxy_{i}'
-        ip = tag_to_ip(tag)
-        items.append((i, f"{tag}|{ip}"))
-    return '\n'.join(line for _num, line in items)
+    for tag, ip in mapping.items():
+        tag = str(tag).strip()
+        ip = str(ip).strip()
+        if not tag.startswith('proxy_') or not ip:
+            continue
+        items.append((proxy_tag_num(tag), f"{tag}|{ip}"))
+    items.sort(key=lambda x: x[0])
+__SENTINEL__
 
 
 def normalize_ip_identity_text(text):

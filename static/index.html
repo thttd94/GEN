@@ -283,7 +283,7 @@
     function switchViewMode(mode) {
       viewMode = mode === 'unconfigured' ? 'unconfigured' : 'configured';
       render();
-      setStatus(viewMode === 'configured' ? ('Đang xem đã cấu hình của ' + sessionNameOf(currentSession)) : 'Đang xem IP/MAC chưa được định danh');
+      setStatus(viewMode === 'configured' ? ('Đang xem đã cấu hình của ' + sessionNameOf(currentSession)) : ('Đang xem chưa cấu hình của ' + sessionNameOf(currentSession)));
     }
 
     function render() {
@@ -335,19 +335,19 @@
 
     function assignAllProxy() {
       const value = document.getElementById('bulkProxy').value.trim();
-      currentRows.forEach(r => r.proxy = value);
+      getVisibleRows().forEach(r => r.proxy = value);
       render();
       setStatus('Đã gán 1 proxy cho toàn bộ ' + sessionNameOf(currentSession));
     }
 
     function clearAllProxy() {
-      currentRows.forEach(r => r.proxy = '');
+      getVisibleRows().forEach(r => r.proxy = '');
       render();
       setStatus('Đã xóa toàn bộ proxy của ' + sessionNameOf(currentSession));
     }
 
     function clearAllNotes() {
-      currentRows.forEach(r => r.note = '');
+      getVisibleRows().forEach(r => r.note = '');
       render();
       setStatus('Đã xóa toàn bộ note của ' + sessionNameOf(currentSession));
     }
@@ -369,7 +369,7 @@
         const item = parseBulkLine(line);
         if (!item) continue;
         const tag = `proxy_${item.x}`;
-        const row = currentRows.find(r => r.tag === tag);
+        const row = getVisibleRows().find(r => r.tag === tag);
         if (!row) continue;
         row.proxy = item.proxy.trim();
         changed++;
