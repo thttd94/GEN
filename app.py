@@ -8,12 +8,31 @@ import time
 import urllib.request
 import urllib.error
 
-BASE_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/proxy-manager-v1')
+BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
-CONFIG_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/config')
-RUNTIME_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter')
-GENRUNNER = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/core/genrunner')
-STATIC_HOSTS_FILE = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json')
+
+def pick_first_existing(paths):
+    for p in paths:
+        if p.exists():
+            return p
+    return paths[0]
+
+CONFIG_DIR = pick_first_existing([
+    Path('/etc/genrouter/config'),
+    Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/config'),
+])
+RUNTIME_DIR = pick_first_existing([
+    Path('/etc/genrouter'),
+    Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter'),
+])
+GENRUNNER = pick_first_existing([
+    Path('/etc/genrouter/core/genrunner'),
+    Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/core/genrunner'),
+])
+STATIC_HOSTS_FILE = pick_first_existing([
+    Path('/etc/shm/list_ip_static.json'),
+    Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json'),
+])
 LEASES_FILE = Path('/tmp/dhcp.leases')
 OLD_GUI_BASE = 'http://127.0.0.1'
 
