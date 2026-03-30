@@ -91,13 +91,31 @@ def load_device_map():
     if STATIC_HOSTS_FILE.exists():
         try:
             data = json.loads(STATIC_HOSTS_FILE.read_text(encoding='utf-8'))
-            for sec in data.values():
-                ip = str(sec.get('ip', '')).strip()
-                if not ip:
-                    continue
-                device_map[ip] = {'mac': str(sec.get('mac', '')).strip(), 'status': 'offline'}
+            if isinstance(data, dict):
+                for sec in data.values():
+                    if not isinstance(sec, dict):
+                        continue
+                    ip = str(sec.get('ip', '')).strip()
+                    if not ip:
+                        continue
+                    device_map[ip] = {
+                        'mac': str(sec.get('mac', '')).strip(),
+                        'status': 'offline'
+                    }
+            elif isinstance(data, list):
+                for sec in data:
+                    if not isinstance(sec, dict):
+                        continue
+                    ip = str(sec.get('ip', '')).strip()
+                    if not ip:
+                        continue
+                    device_map[ip] = {
+                        'mac': str(sec.get('mac', '')).strip(),
+                        'status': 'offline'
+                    }
         except Exception:
             pass
+
     if LEASES_FILE.exists():
         try:
             now = int(time.time())
@@ -118,17 +136,8 @@ def load_device_map():
     return device_map
 
 
-def extract_rows(data):
-    outbounds = {
-        str(item.get('tag')): item
-        for item in data.get('outbounds', [])
-        if str(item.get('tag', '')).startswith('proxy_')
-    }
-    devices = load_device_map()
-    notes = load_notes()
-    rows = []
-    seen_tags = set()
-
+def build_route_ip_to_tag(data):
+    route_by_ip = {}
     for rule in data.get('route', {}).get('rules', []):
         if str(rule.get('action', '')).strip() != 'route':
             continue
@@ -136,22 +145,8 @@ def extract_rows(data):
         ip = str(rule.get('source_ip_cidr', '')).strip()
         if not tag.startswith('proxy_') or not ip:
             continue
-        if tag in seen_tags:
-            continue
-        seen_tags.add(tag)
-        outbound = outbounds.get(tag, {})
-        dev = devices.get(ip, {})
-        rows.append({
-            'ip': ip,
-            'tag': tag,
-            'proxy': format_proxy(outbound),
-            'mac': str(dev.get('mac', '')).strip(),
-            'status': str(dev.get('status', 'offline')).strip() or 'offline',
-            'note': str(notes.get(ip, '')).strip(),
-        })
-
-    rows.sort(key=lambda x: proxy_tag_num(x['tag']))
-    return rows
+        route_by_ip[ip] = tag
+    return route_by_ip
 
 
 def format_proxy(outbound):
@@ -162,6 +157,36 @@ def format_proxy(outbound):
     if not server or not port:
         return ''
     return f"{server}:{port}:{user}:{password}"
+
+
+def extract_rows(data):
+    outbounds = {
+        str(item.get('tag')): item
+        for item in data.get('outbounds', [])
+        if str(item.get('tag', '')).startswith('proxy_')
+    }
+    devices = load_device_map()
+    notes = load_notes()
+    route_by_ip = build_route_ip_to_tag(data)
+    rows = []
+
+    for ip, dev in devices.items():
+        ip = str(ip).strip()
+        tag = route_by_ip.get(ip, '')
+        if not tag:
+            continue
+        outbound = outbounds.get(tag, {})
+        rows.append({
+            'ip': ip,
+            'tag': tag,
+            'proxy': format_proxy(outbound),
+            'mac': str(dev.get('mac', '')).strip(),
+            'status': str(dev.get('status', 'offline')).strip() or 'offline',
+            'note': str(notes.get(ip, '')).strip(),
+        })
+
+    rows.sort(key=lambda x: (proxy_tag_num(x['tag']), x['ip']))
+    return rows
 
 
 def apply_rows_to_data(data, rows_by_tag):
