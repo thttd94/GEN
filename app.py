@@ -331,10 +331,7 @@ def extract_rows(data, session='1'):
     devices = load_device_map()
     session_meta = get_session_meta(session)
     saved_text = get_saved_ip_identity_text(session)
-    if saved_text:
-        configured_rows = parse_ip_identity_text(saved_text)
-    else:
-        configured_rows = [{'tag': tag, 'ip': ip} for tag, ip in sorted(build_tag_to_ip(data).items(), key=lambda kv: proxy_tag_num(kv[0])) if str(tag).startswith('proxy_') and str(ip).strip()]
+    configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     configured_ips = set()
     rows = []
 
