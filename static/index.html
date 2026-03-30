@@ -263,8 +263,10 @@
     function sessionNameOf(session) { return sessionNames[String(session)] || `Session ${session}`; }
     function draftKey(session) { return `pm_draft_${session}`; }
     function exportDraftRows(rows) {
-      return (rows || []).filter(r => r && r.tag).map(r => ({
+      return (rows || []).filter(r => r && (r.tag || r.ip)).map(r => ({
+        key: String(r.tag || r.ip || ''),
         tag: String(r.tag || ''),
+        ip: String(r.ip || ''),
         proxy: String(r.proxy || ''),
         note: String(r.note || ''),
         mac: String(r.mac || ''),
@@ -283,9 +285,10 @@
     function applyDraftToRows(rows, session) {
       const draft = loadDraft(session);
       if (!Array.isArray(draft) || !draft.length) return rows;
-      const byTag = new Map(draft.map(x => [String(x.tag || ''), x]));
+      const byKey = new Map(draft.map(x => [String(x.key || x.tag || x.ip || ''), x]));
       return (rows || []).map(row => {
-        const saved = byTag.get(String(row.tag || ''));
+        const key = String(row.tag || row.ip || '');
+        const saved = byKey.get(key);
         if (!saved) return row;
         return { ...row, proxy: saved.proxy || '', note: saved.note || '', mac: saved.mac || row.mac || '' };
       });
