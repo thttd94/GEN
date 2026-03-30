@@ -72,7 +72,8 @@
         <textarea id="macRawText" spellcheck="false" style="min-height:180px;"></textarea>
       </div>
       <div class="modal-foot">
-        <button class="btn" onclick="copyMacList()">Copy</button>
+        <button class="btn" onclick="copyMacList()">COPPY FULL</button>
+        <button class="btn" onclick="copyMacOnly()">COPPY MAC</button>
         <button class="btn apply" onclick="useMacList()">Dùng danh sách này</button>
       </div>
     </div>
@@ -126,6 +127,25 @@
         setStatus('Copy thất bại, anh copy tay giúp em');
       }
     }
+    async function copyMacOnly() {
+      const text = (document.getElementById('macRawText').value || '')
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(line => {
+          const parts = line.split(/\s*[|;]\s*|\s+/).filter(Boolean);
+          return parts.length >= 2 ? parts[1] : '';
+        })
+        .filter(Boolean)
+        .join('\n');
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus('Đã copy danh sách MAC');
+      } catch {
+        setStatus('Copy thất bại, anh copy tay giúp em');
+      }
+    }
+
     function useMacList() {
       document.getElementById('mappingText').value = document.getElementById('macRawText').value || '';
       updateCount();
