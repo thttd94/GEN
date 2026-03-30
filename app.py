@@ -14,32 +14,26 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
 NOTES_FILE = BASE_DIR / 'notes.json'
 
+ROUTER_CONFIG_DIR = Path('/etc/genrouter/config')
+ROUTER_RUNTIME_DIR = Path('/etc/genrouter')
+ROUTER_GENRUNNER = Path('/etc/genrouter/core/genrunner')
 
-def pick_first_existing(paths):
-    for p in paths:
-        if p.exists():
-            return p
-    return paths[0]
+DEV_CONFIG_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/config')
+DEV_RUNTIME_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter')
+DEV_GENRUNNER = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/core/genrunner')
 
-
-CONFIG_DIR = pick_first_existing([
-    Path('/etc/genrouter/config'),
-    Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/config'),
-])
-RUNTIME_DIR = pick_first_existing([
-    Path('/etc/genrouter'),
-    Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter'),
-])
-GENRUNNER = pick_first_existing([
-    Path('/etc/genrouter/core/genrunner'),
-    Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/core/genrunner'),
-])
-STATIC_HOSTS_FILE = pick_first_existing([
-    Path('/etc/shm/list_ip_static.json'),
-    Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json'),
-])
+STATIC_HOSTS_FILE = Path('/etc/shm/list_ip_static.json') if Path('/etc/shm/list_ip_static.json').exists() else Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json')
 LEASES_FILE = Path('/tmp/dhcp.leases')
 OLD_GUI_BASE = 'http://127.0.0.1:9000'
+
+if ROUTER_CONFIG_DIR.exists():
+    CONFIG_DIR = ROUTER_CONFIG_DIR
+    RUNTIME_DIR = ROUTER_RUNTIME_DIR
+    GENRUNNER = ROUTER_GENRUNNER
+else:
+    CONFIG_DIR = DEV_CONFIG_DIR
+    RUNTIME_DIR = DEV_RUNTIME_DIR
+    GENRUNNER = DEV_GENRUNNER
 
 SESSION_FILES = {
     '1': CONFIG_DIR / 'gencore.json',
@@ -141,9 +135,9 @@ def build_route_ip_to_tag(data):
     for rule in data.get('route', {}).get('rules', []):
         if str(rule.get('action', '')).strip() != 'route':
             continue
-        tag = str(rule.get('outbound', '')).strip()
         ip = str(rule.get('source_ip_cidr', '')).strip()
-        if not tag.startswith('proxy_') or not ip:
+        tag = str(rule.get('outbound', '')).strip()
+        if not ip or not tag.startswith('proxy_'):
             continue
         route_by_ip[ip] = tag
     return route_by_ip
@@ -360,9 +354,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/api/pm/sessions/1':
-            return self._send_json({'session': '1', 'rows': extract_rows(load_json(SESSION_FILES['1']))})
+            return self._send_json({'session': '1', 'source': str(SESSION_FILES['1']), 'rows': extract_rows(load_json(SESSION_FILES['1']))})
         if path == '/api/pm/sessions/2':
-            return self._send_json({'session': '2', 'rows': extract_rows(load_json(SESSION_FILES['2']))})
+            return self._send_json({'session': '2', 'source': str(SESSION_FILES['2']), 'rows': extract_rows(load_json(SESSION_FILES['2']))})
         if path == '/api/pm/router-network':
             return self._send_json(call_old_gui('/api/system/network'))
         if path == '/api/pm/router-info':
