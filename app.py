@@ -359,6 +359,50 @@ def extract_rows(data, session='1'):
     devices = load_device_map()
     route_by_ip = build_route_ip_to_tag(data)
     session_meta = get_session_meta(session)
+
+    # Freeze SS1 behavior; only special-case SS2.
+    if str(session) == '2':
+        configured_ips = set()
+        rows = []
+        static_rows = sorted(load_static_hosts_raw(), key=lambda x: str(x.get('ip', '')).strip())
+
+        for item in static_rows:
+            ip = str(item.get('ip', '')).strip()
+            if not ip:
+                continue
+            configured_ips.add(ip)
+            tag = normalize_tag(route_by_ip.get(ip, ''))
+            dev = devices.get(ip, {})
+            meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
+            outbound = outbounds.get(tag, {}) if tag else {}
+            rows.append({
+                'ip': ip,
+                'tag': tag,
+                'proxy': format_proxy(outbound),
+                'mac': normalize_mac(item.get('mac', '') or meta.get('mac', '') or dev.get('mac', '')),
+                'status': str(dev.get('status', 'offline')).strip() or 'offline',
+                'note': str(meta.get('note', '')).strip(),
+                'configured': True,
+            })
+
+        for ip, dev in sorted(devices.items(), key=lambda kv: kv[0]):
+            ip = str(ip).strip()
+            if not ip or ip in configured_ips:
+                continue
+            tag = normalize_tag(route_by_ip.get(ip, ''))
+            meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
+            outbound = outbounds.get(tag, {}) if tag else {}
+            rows.append({
+                'ip': ip,
+                'tag': tag,
+                'proxy': format_proxy(outbound),
+                'mac': normalize_mac(dev.get('mac', '')),
+                'status': str(dev.get('status', 'offline')).strip() or 'offline',
+                'note': str(meta.get('note', '')).strip(),
+                'configured': False,
+            })
+        return rows
+
     saved_text = get_saved_ip_identity_text(session)
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     configured_ips = set()
