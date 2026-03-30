@@ -1,9 +1,10 @@
 #!/bin/sh
 set -eu
 
-APP_DIR="/opt/static-ip-mac-tool"
-SERVICE_NAME="static-ip-mac-tool"
-PORT="19123"
+APP_DIR="/opt/proxy-manager-v1"
+SERVICE_NAME="proxy-manager-v1"
+PORT="18123"
+# Đổi pass này trước khi đưa lên GitHub
 INSTALL_PASSWORD="123123@qq"
 
 INPUT_PASS="$(python3 - <<'PY'
@@ -17,9 +18,10 @@ if [ "$INPUT_PASS" != "$INSTALL_PASSWORD" ]; then
   exit 1
 fi
 
-mkdir -p "$APP_DIR/static"
+mkdir -p "$APP_DIR"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cp "$SCRIPT_DIR/app.py" "$APP_DIR/app.py"
+mkdir -p "$APP_DIR/static"
 cp "$SCRIPT_DIR/static/index.html" "$APP_DIR/static/index.html"
 chmod 755 "$APP_DIR/app.py"
 
