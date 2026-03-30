@@ -471,7 +471,7 @@ def build_ip_identity_text(data, session='1'):
             continue
         items.append((proxy_tag_num(tag), f"{tag}|{ip}"))
     items.sort(key=lambda x: x[0])
-__SENTINEL__
+    return '\n'.join(line for _num, line in items)
 
 
 def normalize_ip_identity_text(text):
