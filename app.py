@@ -84,6 +84,7 @@ def ensure_session2_exists():
         rows = build_ip_identity_rows_from_data(data2)
         if rows and len(rows) < MAX_PROXY_TAG:
             set_saved_ip_identity_text('2', '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
+    heal_session2_if_needed()
 
 
 def load_json(path: Path):
@@ -338,6 +339,46 @@ def build_ip_identity_rows_from_data(data):
         if str(tag).strip().startswith('proxy_') and str(ip).strip()
     ]
     return rows
+
+
+def looks_like_default_full_mapping(data):
+    rows = build_ip_identity_rows_from_data(data)
+    if len(rows) < MAX_PROXY_TAG:
+        return False
+    first = rows[:3]
+    if not first:
+        return False
+    expected = [
+        ('proxy_1', '192.15.4.1'),
+        ('proxy_2', '192.15.4.2'),
+        ('proxy_3', '192.15.4.3'),
+    ]
+    return [(r.get('tag'), r.get('ip')) for r in first] == expected
+
+
+def heal_session2_if_needed():
+    try:
+        s1 = load_json(SESSION_FILES['1'])
+        s2 = load_json(SESSION_FILES['2']) if SESSION_FILES['2'].exists() else None
+    except Exception:
+        return
+
+    s1_rows = build_ip_identity_rows_from_data(s1)
+    s2_rows = build_ip_identity_rows_from_data(s2 or {}) if s2 else []
+    s2_saved = get_saved_ip_identity_text('2')
+
+    should_copy = False
+    if not s2 or not SESSION_FILES['2'].exists():
+        should_copy = True
+    elif not s2_saved and looks_like_default_full_mapping(s2) and len(s1_rows) < MAX_PROXY_TAG:
+        should_copy = True
+
+    if not should_copy:
+        return
+
+    save_json(SESSION_FILES['2'], s1)
+    if s1_rows:
+        set_saved_ip_identity_text('2', '\n'.join(f"{row['tag']}|{row['ip']}" for row in s1_rows))
 
 
 def format_proxy(outbound):
