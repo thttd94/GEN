@@ -33,10 +33,10 @@
     .bulkbar { display:grid; grid-template-columns: 370px 1fr auto; gap:10px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
     .bulk-actions { display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
     .view-tabs { display:flex; gap:0; align-items:center; margin-top:10px; }
-    .view-tab { border:1px solid #a16207; background:#92400e; color:#fff; padding:10px 16px; cursor:pointer; font-weight:800; }
+    .view-tab { border:1px solid #7c2d12; background:#7c2d12; color:#fde68a; padding:10px 16px; cursor:pointer; font-weight:900; opacity:.55; transition:.18s ease; }
     .view-tab:first-child { border-radius:10px 0 0 10px; }
     .view-tab:last-child { border-radius:0 10px 10px 0; }
-    .view-tab.active { background:#06b6d4; border-color:#0891b2; }
+    .view-tab.active { background:#06b6d4; border-color:#0891b2; color:#fff; opacity:1; box-shadow:0 8px 20px rgba(8,145,178,.28); }
     .sub { color:#6b7280; font-size:12px; margin-top:5px; }
     .grid { max-height:76vh; overflow:auto; }
     table { width:100%; border-collapse:collapse; }
@@ -82,7 +82,6 @@
       <div class="toolbar-left">
         <button class="btn tab active" id="tab1" onclick="switchSession('1')">Session 1</button>
         <button class="btn tab" id="tab2" onclick="switchSession('2')">Session 2</button>
-        <button class="btn" onclick="saveCurrent()">Save</button>
         <button class="btn apply" onclick="applyCurrentSession()">Apply Session đang mở</button>
         <span class="status" id="status">Ready</span>
       </div>
@@ -122,11 +121,12 @@
         </div>
       </div>
 
-      <div class="notes-wrap" style="padding-top:10px;padding-bottom:10px;">
+      <div class="notes-wrap" style="padding-top:10px;padding-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
         <div class="view-tabs">
           <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
           <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
         </div>
+        <button class="btn" onclick="saveCurrent()">Save</button>
       </div>
 
       <div class="grid">
@@ -505,10 +505,10 @@
 
     async function saveSession(session, rowsOverride=null) {
       const rows = Array.isArray(rowsOverride) ? rowsOverride : currentRows;
-      setStatus('Saving session ' + session + '...');
+      setStatus('Đang lưu ' + sessionNameOf(session) + '...');
       const resp = await fetchJSON(`/api/pm/sessions/${session}`, { method:'POST', body: JSON.stringify({ rows, name: sessionNameOf(session) }) });
       if (resp.name) sessionNames[String(session)] = resp.name;
-      setStatus('Saved session ' + session);
+      setStatus('Đã lưu ' + sessionNameOf(session));
     }
 
     async function saveCurrent() {
