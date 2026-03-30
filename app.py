@@ -312,6 +312,16 @@ def build_tag_to_ip(data):
     return mapping
 
 
+def build_ip_identity_rows_from_data(data):
+    mapping = build_tag_to_ip(data)
+    rows = [
+        {'tag': str(tag).strip(), 'ip': str(ip).strip()}
+        for tag, ip in sorted(mapping.items(), key=lambda kv: proxy_tag_num(kv[0]))
+        if str(tag).strip().startswith('proxy_') and str(ip).strip()
+    ]
+    return rows
+
+
 def format_proxy(outbound):
     server = str(outbound.get('server', '')).strip()
     port = outbound.get('server_port')
@@ -331,7 +341,12 @@ def extract_rows(data, session='1'):
     devices = load_device_map()
     session_meta = get_session_meta(session)
     saved_text = get_saved_ip_identity_text(session)
-    configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
+    if saved_text:
+        configured_rows = parse_ip_identity_text(saved_text)
+    else:
+        configured_rows = build_ip_identity_rows_from_data(data)
+        if len(configured_rows) >= MAX_PROXY_TAG:
+            configured_rows = []
     configured_ips = set()
     rows = []
 
@@ -852,6 +867,10 @@ class Handler(BaseHTTPRequestHandler):
             session_id = path.rsplit('/', 1)[-1]
             data = load_json(SESSION_FILES[session_id])
             saved_text = get_saved_ip_identity_text(session_id)
+            if not saved_text:
+                rows = build_ip_identity_rows_from_data(data)
+                if rows and len(rows) < MAX_PROXY_TAG:
+                    saved_text = set_saved_ip_identity_text(session_id, '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
             return self._send_json({'ok': True, 'session': session_id, 'text': saved_text or build_ip_identity_text(data, session=session_id)})
         self._send_json({'error': 'Not found'}, 404)
 
