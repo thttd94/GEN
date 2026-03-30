@@ -150,6 +150,27 @@ def set_app_title_prefix(value):
     return value
 
 
+def get_saved_ip_identity_text(session_id):
+    state = load_session_state()
+    _state, meta = get_meta_section(state)
+    values = meta.get('ip_identity_text', {}) if isinstance(meta, dict) else {}
+    if not isinstance(values, dict):
+        return ''
+    return str(values.get(str(session_id), '')).strip()
+
+
+def set_saved_ip_identity_text(session_id, text):
+    state = load_session_state()
+    state, meta = get_meta_section(state)
+    values = meta.setdefault('ip_identity_text', {}) if isinstance(meta, dict) else {}
+    if not isinstance(values, dict):
+        values = {}
+        meta['ip_identity_text'] = values
+    values[str(session_id)] = normalize_ip_identity_text(text)
+    save_session_state(state)
+    return values[str(session_id)]
+
+
 def set_session_display_name(session_id, name):
     session_id = str(session_id)
     name = str(name or '').strip() or f'Session {session_id}'
@@ -825,7 +846,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ('/api/pm/ip-mac-config/1', '/api/pm/ip-mac-config/2'):
             session_id = path.rsplit('/', 1)[-1]
             data = load_json(SESSION_FILES[session_id])
-            return self._send_json({'ok': True, 'session': session_id, 'text': build_ip_identity_text(data, session=session_id)})
+            saved_text = get_saved_ip_identity_text(session_id)
+            return self._send_json({'ok': True, 'session': session_id, 'text': saved_text or build_ip_identity_text(data, session=session_id)})
         self._send_json({'error': 'Not found'}, 404)
 
     def do_POST(self):
@@ -877,7 +899,8 @@ class Handler(BaseHTTPRequestHandler):
                 sync_router = bool(payload.get('sync_router', True))
                 data = load_json(SESSION_FILES[session_id])
                 rows = parse_ip_identity_text(text)
-                data = apply_ip_identity_config(data, text, session=session_id)
+                normalized_text = set_saved_ip_identity_text(session_id, text)
+                data = apply_ip_identity_config(data, normalized_text, session=session_id)
                 save_json(SESSION_FILES[session_id], data)
                 if sync_router:
                     sync_static_to_router(rows, clear_first=True)
@@ -885,7 +908,7 @@ class Handler(BaseHTTPRequestHandler):
                     apply_results = run_apply(session_id)
                 if payload.get('reboot_router'):
                     call_old_gui('/api/system/reboot', method='GET')
-                return self._send_json({'ok': True, 'session': session_id, 'count': len(rows), 'apply_results': locals().get('apply_results', [])})
+                return self._send_json({'ok': True, 'session': session_id, 'count': len(rows), 'text': normalized_text, 'apply_results': locals().get('apply_results', [])})
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', '')), session=str(payload.get('session', '1'))))
             if path == '/api/pm/reboot-router':
