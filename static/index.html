@@ -567,15 +567,17 @@
       try {
         if (currentSession !== session) await loadSession(session);
         persistDraft(session);
-        await saveSession(session);
-        setStatus('Applying session ' + session + '...');
-        const data = await fetchJSON(`/api/pm/apply/${session}`, { method:'POST', body: JSON.stringify({ rows: currentRows }) });
+        const mergedRows = applyDraftToRows(currentRows, session);
+        currentRows = mergedRows;
+        await saveSession(session, mergedRows);
+        setStatus('Applying ' + sessionNameOf(session) + '...');
+        const data = await fetchJSON(`/api/pm/apply/${session}`, { method:'POST', body: JSON.stringify({ rows: mergedRows }) });
         const bad = Array.isArray(data.results) ? data.results.find(x => x && (x.error || x.ok === false || (typeof x.code === 'number' && x.code !== 0))) : null;
         if (bad) {
-          setStatus('Apply SS' + session + ' lỗi: ' + (bad.cmd || '') + ' ' + (bad.stderr || bad.error || ('code ' + bad.code)));
+          setStatus('Apply ' + sessionNameOf(session) + ' lỗi: ' + (bad.cmd || '') + ' ' + (bad.stderr || bad.error || ('code ' + bad.code)));
           return;
         }
-        setStatus('Đã apply session ' + session);
+        setStatus('Đã apply ' + sessionNameOf(session));
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
