@@ -440,13 +440,64 @@ def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.
             pass
 
 
-def check_proxy(proxy: str):
+def get_proxy_public_ip(proxy_host, proxy_port, username, password, timeout=15):
+    proxy_url = f'socks5://{username}:{password}@{proxy_host}:{proxy_port}'
+    handlers = [
+        urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url}),
+        urllib.request.HTTPSHandler(context=None),
+    ]
+    opener = urllib.request.build_opener(*handlers)
+    urls = [
+        'https://api.ipify.org',
+        'https://ifconfig.me/ip',
+        'https://icanhazip.com',
+    ]
+    last_error = None
+    for url in urls:
+        try:
+            with opener.open(url, timeout=timeout) as resp:
+                ip = resp.read().decode('utf-8', errors='ignore').strip()
+                if ip:
+                    return ip
+        except Exception as e:
+            last_error = e
+    if last_error:
+        raise last_error
+    raise OSError('Không lấy được public IP')
+
+
+def find_duplicate_proxy_tags(public_ip, session='1'):
+    duplicates = []
+    try:
+        data = load_json(SESSION_FILES.get(str(session), SESSION_FILES['1']))
+        for item in data.get('outbounds', []):
+            tag = str(item.get('tag', '')).strip()
+            if not tag.startswith('proxy_'):
+                continue
+            server = str(item.get('server', '')).strip()
+            if server == public_ip:
+                duplicates.append(tag)
+    except Exception:
+        pass
+    duplicates.sort(key=proxy_tag_num)
+    return duplicates
+
+
+def check_proxy(proxy: str, session='1'):
     if not proxy.strip():
         return {'ok': False, 'status': 'empty', 'message': 'Proxy trống'}
     try:
         server, port, user, password = parse_proxy(proxy)
         ok = socks5_probe(server, port, user, password)
-        return {'ok': bool(ok), 'status': 'live' if ok else 'dead', 'message': 'Live' if ok else 'Fail'}
+        if not ok:
+            return {'ok': False, 'status': 'dead', 'message': 'Fail'}
+        public_ip = get_proxy_public_ip(server, port, user, password)
+        duplicates = find_duplicate_proxy_tags(public_ip, session=session)
+        if len(duplicates) > 1:
+            msg = f"LIVE|{public_ip}|Trùng|{','.join(duplicates)}"
+            return {'ok': True, 'status': 'live', 'message': msg, 'ip': public_ip, 'duplicates': duplicates, 'duplicate': True}
+        msg = f'LIVE|{public_ip}'
+        return {'ok': True, 'status': 'live', 'message': msg, 'ip': public_ip, 'duplicates': duplicates, 'duplicate': False}
     except Exception as e:
         return {'ok': False, 'status': 'dead', 'message': str(e)}
 
@@ -556,7 +607,7 @@ class Handler(BaseHTTPRequestHandler):
                     call_old_gui('/api/system/reboot', method='POST', data={})
                 return self._send_json({'ok': True, 'session': session_id, 'count': len(rows)})
             if path == '/api/pm/check-proxy':
-                return self._send_json(check_proxy(str(payload.get('proxy', ''))))
+                return self._send_json(check_proxy(str(payload.get('proxy', '')), session=str(payload.get('session', '1'))))
             if path == '/api/pm/reboot-router':
                 return self._send_json(call_old_gui('/api/system/reboot', method='POST', data={}))
             if path == '/api/pm/router-change-lan':

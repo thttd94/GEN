@@ -322,9 +322,9 @@
       box.className = 'check-wait';
       box.textContent = 'CHECK...';
       try {
-        const data = await fetchJSON('/api/pm/check-proxy', { method:'POST', body: JSON.stringify({ proxy: row.proxy || '' }) });
+        const data = await fetchJSON('/api/pm/check-proxy', { method:'POST', body: JSON.stringify({ proxy: row.proxy || '', session: currentSession }) });
         box.className = data.ok ? 'check-ok' : 'check-bad';
-        box.textContent = data.ok ? 'LIVE' : 'DEAD';
+        box.textContent = data.ok ? (data.message || 'LIVE') : 'DEAD';
       } catch {
         box.className = 'check-bad';
         box.textContent = 'DEAD';
