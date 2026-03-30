@@ -357,27 +357,26 @@ def extract_rows(data, session='1'):
         if str(item.get('tag', '')).startswith('proxy_')
     }
     devices = load_device_map()
-    static_rows = load_static_hosts_raw()
-    route_by_ip = build_route_ip_to_tag(data)
     session_meta = get_session_meta(session)
+    saved_text = get_saved_ip_identity_text(session)
+    configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     configured_ips = set()
     rows = []
 
-    for item in sorted(static_rows, key=lambda x: str(x.get('ip', '')).strip()):
+    for item in configured_rows:
+        tag = str(item.get('tag', '')).strip()
         ip = str(item.get('ip', '')).strip()
-        mac = normalize_mac(item.get('mac', ''))
-        if not ip:
+        if not tag or not ip:
             continue
         configured_ips.add(ip)
-        tag = normalize_tag(route_by_ip.get(ip, ''))
         dev = devices.get(ip, {})
-        meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
-        outbound = outbounds.get(tag, {}) if tag else {}
+        meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) else {}
+        outbound = outbounds.get(tag, {})
         rows.append({
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
-            'mac': mac or normalize_mac(dev.get('mac', '')),
+            'mac': normalize_mac(meta.get('mac', '') or dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
             'note': str(meta.get('note', '')).strip(),
             'configured': True,
@@ -387,16 +386,13 @@ def extract_rows(data, session='1'):
         ip = str(ip).strip()
         if not ip or ip in configured_ips:
             continue
-        tag = normalize_tag(route_by_ip.get(ip, ''))
-        meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
-        outbound = outbounds.get(tag, {}) if tag else {}
         rows.append({
             'ip': ip,
-            'tag': tag,
-            'proxy': format_proxy(outbound),
+            'tag': '',
+            'proxy': '',
             'mac': normalize_mac(dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
-            'note': str(meta.get('note', '')).strip(),
+            'note': '',
             'configured': False,
         })
 
