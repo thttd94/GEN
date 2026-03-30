@@ -624,12 +624,12 @@ class Handler(BaseHTTPRequestHandler):
                 if payload.get('apply_runtime'):
                     run_apply(session_id)
                 if payload.get('reboot_router'):
-                    call_old_gui('/api/system/reboot', method='POST', data={})
+                    call_old_gui('/api/system/reboot', method='GET')
                 return self._send_json({'ok': True, 'session': session_id, 'count': len(rows)})
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', '')), session=str(payload.get('session', '1'))))
             if path == '/api/pm/reboot-router':
-                return self._send_json(call_old_gui('/api/system/reboot', method='POST', data={}))
+                return self._send_json(call_old_gui('/api/system/reboot', method='GET'))
             if path == '/api/pm/router-change-lan':
                 ip_lan = str(payload.get('ip_lan', '')).strip()
                 return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data={'ip_lan': ip_lan}))
