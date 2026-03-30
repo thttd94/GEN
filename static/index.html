@@ -175,11 +175,10 @@
     async function applyAll() {
       try {
         const text = document.getElementById('mappingText').value;
-        if (!text.trim()) return setStatus('Chưa có dữ liệu để apply');
-        setStatus('Đang apply danh sách IP/MAC...');
+        setStatus(!text.trim() ? 'Đang xóa trắng toàn bộ danh sách IP/MAC...' : 'Đang apply danh sách IP/MAC...');
         const data = await fetchJSON('/api/apply', { method:'POST', body: JSON.stringify({ text }) });
         updateCount();
-        setStatus(`Đã apply ${data.count || 0} dòng`);
+        setStatus((data.count || 0) === 0 ? 'Đã xóa trắng toàn bộ danh sách' : `Đã apply ${data.count || 0} dòng`);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
