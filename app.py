@@ -392,22 +392,51 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     dns = data.setdefault('dns', {})
     route = data.setdefault('route', {})
 
-    dns_rules = [
-        {'outbound': 'any', 'server': 'google'}
-    ]
-    route_rules = [
-        {'action': 'sniff'},
-        {'action': 'reject', 'method': 'drop', 'protocol': 'stun'},
-        {'action': 'hijack-dns', 'protocol': 'dns'},
-    ]
+    input_map = {
+        str(tag).strip(): str(ip).strip()
+        for tag, ip in (tag_to_ip_map or {}).items()
+        if str(tag).strip().startswith('proxy_') and str(ip).strip()
+    }
+    ordered_items = sorted(input_map.items(), key=lambda kv: proxy_tag_num(kv[0]))
 
-    for i in range(1, MAX_PROXY_TAG + 1):
-        tag = f'proxy_{i}'
-        ip = str(tag_to_ip_map.get(tag, '')).strip() or tag_to_ip(tag)
+    old_dns_rules = list(dns.get('rules', []) or [])
+    old_route_rules = list(route.get('rules', []) or [])
+
+    dns_rules = [
+        rule for rule in old_dns_rules
+        if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('server', '')).strip().startswith('proxy_'))
+    ]
+    if not dns_rules:
+        dns_rules = [{'outbound': 'any', 'server': 'google'}]
+
+    route_rules = [
+        rule for rule in old_route_rules
+        if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip().startswith('proxy_'))
+    ]
+    if not route_rules:
+        route_rules = [
+            {'action': 'sniff'},
+            {'action': 'reject', 'method': 'drop', 'protocol': 'stun'},
+            {'action': 'hijack-dns', 'protocol': 'dns'},
+            {'action': 'route', 'outbound': 'direct'},
+        ]
+
+    for tag, ip in ordered_items:
         dns_rules.append({'action': 'route', 'server': tag, 'source_ip_cidr': ip})
+
+    direct_rule = None
+    kept_route_rules = []
+    for rule in route_rules:
+        if str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip() == 'direct':
+            direct_rule = rule
+            continue
+        kept_route_rules.append(rule)
+    route_rules = kept_route_rules
+
+    for tag, ip in ordered_items:
         route_rules.append({'action': 'route', 'outbound': tag, 'source_ip_cidr': ip})
 
-    route_rules.append({'action': 'route', 'outbound': 'direct'})
+    route_rules.append(direct_rule or {'action': 'route', 'outbound': 'direct'})
     dns['rules'] = dns_rules
     route['rules'] = route_rules
     return data
@@ -464,10 +493,8 @@ def parse_ip_identity_text(text):
     if dup_ips:
         errs.append('IP bị trùng: ' + ', '.join(sorted(dup_ips)))
 
-    expected_tags = {f'proxy_{i}' for i in range(1, MAX_PROXY_TAG + 1)}
     got_tags = {row['tag'] for row in rows}
-    missing_tags = sorted(expected_tags - got_tags, key=proxy_tag_num)
-    extra_tags = sorted(got_tags - expected_tags, key=proxy_tag_num)
+    extra_tags = sorted([tag for tag in got_tags if proxy_tag_num(tag) > MAX_PROXY_TAG or proxy_tag_num(tag) < 1], key=proxy_tag_num)
     if len(rows) > MAX_PROXY_TAG:
         errs.append(f'Tối đa {MAX_PROXY_TAG} dòng, hiện có {len(rows)} dòng')
     if extra_tags:
