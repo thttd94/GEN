@@ -44,11 +44,14 @@
     .th-check { display:flex; align-items:center; justify-content:space-between; gap:8px; }
     .modal { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:9999; }
     .modal.show { display:flex; }
-    .modal-card { width:min(520px, 92vw); background:#fff; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+    .modal-card { width:min(920px, 95vw); background:#fff; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 20px 60px rgba(0,0,0,.2); }
     .modal-head { display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-bottom:1px solid #e5e7eb; }
     .modal-body { padding:16px 18px; display:grid; gap:12px; }
-    .modal-foot { padding:16px 18px; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:10px; }
+    .modal-foot { padding:16px 18px; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
     .field label { display:block; font-size:13px; font-weight:700; margin-bottom:6px; }
+    .cfg-text { min-height:360px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .checkline { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+    .checkline label { display:flex; gap:8px; align-items:center; font-size:14px; }
   </style>
 </head>
 <body>
@@ -63,13 +66,13 @@
         <button class="btn tab active" id="tab1" onclick="switchSession('1')">Session 1</button>
         <button class="btn tab" id="tab2" onclick="switchSession('2')">Session 2</button>
         <button class="btn" onclick="saveCurrent()">Save</button>
-        <button class="btn" onclick="mapIpCurrent()">Map IP</button>
         <button class="btn apply" onclick="applySession('1')">Apply SS1</button>
         <button class="btn apply" onclick="applySession('2')">Apply SS2</button>
         <button class="btn" onclick="clone1to2()">Clone SS1 → SS2</button>
         <span class="status" id="status">Ready</span>
       </div>
       <div class="toolbar-right">
+        <button class="btn warn" onclick="openIpMacConfig()">CẤU HÌNH IP/MAC</button>
         <button class="btn warn" onclick="rebootRouter()">Reboot Router</button>
         <button class="btn warn" onclick="openSetupRouter()">Set up Router</button>
       </div>
@@ -130,7 +133,7 @@
   </div>
 
   <div class="modal" id="routerModal">
-    <div class="modal-card">
+    <div class="modal-card" style="width:min(520px, 92vw)">
       <div class="modal-head">
         <b>Set up Router</b>
         <button class="btn small" onclick="closeRouterModal()">Đóng</button>
@@ -145,6 +148,28 @@
       <div class="modal-foot">
         <button class="btn" onclick="closeRouterModal()">Hủy</button>
         <button class="btn apply" onclick="submitRouterSetup()">Lưu LAN IP</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="ipMacModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <b>CẤU HÌNH IP/MAC</b>
+        <button class="btn small" onclick="closeIpMacModal()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub">Mỗi dòng: <b>proxy_x|ip|mac</b> — ví dụ: <span class="mono">proxy_1|192.15.4.1|22:BE:61:3E:26:CF</span></div>
+        <textarea id="ipMacText" class="cfg-text" spellcheck="false"></textarea>
+        <div class="checkline">
+          <label><input type="checkbox" id="cfgApplyRuntime" checked> Apply runtime ngay</label>
+          <label><input type="checkbox" id="cfgRebootRouter" checked> Reboot router sau khi lưu</label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="loadDefaultIpMacMap()">Nạp mặc định theo proxy</button>
+        <button class="btn" onclick="closeIpMacModal()">Hủy</button>
+        <button class="btn apply" onclick="submitIpMacConfig()">Apply</button>
       </div>
     </div>
   </div>
@@ -212,7 +237,6 @@
 
     function clearAllNotes() {
       currentRows.forEach(r => r.note = '');
-      renderNotesSummary();
       render();
       setStatus('Đã xóa toàn bộ note của session ' + currentSession);
     }
@@ -243,12 +267,49 @@
       setStatus(`Đã gán hàng loạt ${changed} dòng theo danh sách nhập`);
     }
 
-    async function mapIpCurrent() {
+    function closeIpMacModal() {
+      document.getElementById('ipMacModal').classList.remove('show');
+    }
+
+    async function openIpMacConfig() {
       try {
-        setStatus('Đang map lại IP theo proxy tag...');
-        await fetchJSON(`/api/pm/map-ip/${currentSession}`, { method:'POST', body:'{}' });
+        setStatus('Đang nạp cấu hình IP/MAC...');
+        const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`);
+        document.getElementById('ipMacText').value = data.text || '';
+        document.getElementById('ipMacModal').classList.add('show');
+        setStatus('Đã nạp cấu hình IP/MAC');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+    function loadDefaultIpMacMap() {
+      const lines = [];
+      for (let i = 1; i <= 312; i++) {
+        let ip = '';
+        if (i <= 250) ip = `192.15.4.${i}`;
+        else ip = `192.15.5.${i - 250}`;
+        lines.push(`proxy_${i}|${ip}|`);
+      }
+      document.getElementById('ipMacText').value = lines.join('\n');
+      setStatus('Đã nạp mẫu mặc định proxy|ip|mac');
+    }
+
+    async function submitIpMacConfig() {
+      try {
+        const text = document.getElementById('ipMacText').value;
+        if (!text.trim()) return setStatus('Chưa có dữ liệu IP/MAC');
+        setStatus('Đang apply cấu hình IP/MAC...');
+        const payload = {
+          text,
+          sync_router: true,
+          apply_runtime: document.getElementById('cfgApplyRuntime').checked,
+          reboot_router: document.getElementById('cfgRebootRouter').checked,
+        };
+        const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`, { method:'POST', body: JSON.stringify(payload) });
+        closeIpMacModal();
         await loadSession(currentSession);
-        setStatus('Đã map lại IP theo proxy tag cho session ' + currentSession);
+        setStatus(`Đã apply cấu hình IP/MAC (${data.count || 0} dòng)`);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }

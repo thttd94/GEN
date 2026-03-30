@@ -1,6 +1,6 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 import json
 import shutil
 import subprocess
@@ -89,35 +89,61 @@ def save_notes(notes):
     save_json(NOTES_FILE, notes)
 
 
+def normalize_mac(mac):
+    mac = str(mac or '').strip().upper().replace('-', ':')
+    return mac
+
+
+def load_static_hosts_raw():
+    if not STATIC_HOSTS_FILE.exists():
+        return []
+    try:
+        data = json.loads(STATIC_HOSTS_FILE.read_text(encoding='utf-8'))
+    except Exception:
+        return []
+    rows = []
+    if isinstance(data, dict):
+        for key, val in data.items():
+            if not isinstance(val, dict):
+                continue
+            rows.append({
+                'key': str(key),
+                'ip': str(val.get('ip', '')).strip(),
+                'mac': normalize_mac(val.get('mac', '')),
+            })
+    elif isinstance(data, list):
+        for i, val in enumerate(data, 1):
+            if not isinstance(val, dict):
+                continue
+            rows.append({
+                'key': str(val.get('key') or i),
+                'ip': str(val.get('ip', '')).strip(),
+                'mac': normalize_mac(val.get('mac', '')),
+            })
+    return rows
+
+
+def save_static_hosts_rows(rows):
+    data = {}
+    for i, row in enumerate(rows, 1):
+        ip = str(row.get('ip', '')).strip()
+        mac = normalize_mac(row.get('mac', ''))
+        if not ip or not mac:
+            continue
+        data[str(i)] = {'ip': ip, 'mac': mac}
+    save_json(STATIC_HOSTS_FILE, data)
+
+
 def load_device_map():
     device_map = {}
-    if STATIC_HOSTS_FILE.exists():
-        try:
-            data = json.loads(STATIC_HOSTS_FILE.read_text(encoding='utf-8'))
-            if isinstance(data, dict):
-                for sec in data.values():
-                    if not isinstance(sec, dict):
-                        continue
-                    ip = str(sec.get('ip', '')).strip()
-                    if not ip:
-                        continue
-                    device_map[ip] = {
-                        'mac': str(sec.get('mac', '')).strip(),
-                        'status': 'offline'
-                    }
-            elif isinstance(data, list):
-                for sec in data:
-                    if not isinstance(sec, dict):
-                        continue
-                    ip = str(sec.get('ip', '')).strip()
-                    if not ip:
-                        continue
-                    device_map[ip] = {
-                        'mac': str(sec.get('mac', '')).strip(),
-                        'status': 'offline'
-                    }
-        except Exception:
-            pass
+    for row in load_static_hosts_raw():
+        ip = str(row.get('ip', '')).strip()
+        if not ip:
+            continue
+        device_map[ip] = {
+            'mac': normalize_mac(row.get('mac', '')),
+            'status': 'offline'
+        }
 
     if LEASES_FILE.exists():
         try:
@@ -132,7 +158,7 @@ def load_device_map():
                 except Exception:
                     online = True
                 row = device_map.setdefault(ip, {})
-                row['mac'] = str(mac).strip()
+                row['mac'] = normalize_mac(mac)
                 row['status'] = 'online' if online else 'offline'
         except Exception:
             pass
@@ -150,6 +176,25 @@ def build_route_ip_to_tag(data):
             continue
         route_by_ip[ip] = tag
     return route_by_ip
+
+
+def build_tag_to_ip(data):
+    mapping = {}
+    for rule in data.get('route', {}).get('rules', []):
+        if str(rule.get('action', '')).strip() != 'route':
+            continue
+        tag = str(rule.get('outbound', '')).strip()
+        ip = str(rule.get('source_ip_cidr', '')).strip()
+        if tag.startswith('proxy_') and ip and tag not in mapping:
+            mapping[tag] = ip
+    for rule in data.get('dns', {}).get('rules', []):
+        if str(rule.get('action', '')).strip() != 'route':
+            continue
+        tag = str(rule.get('server', '')).strip()
+        ip = str(rule.get('source_ip_cidr', '')).strip()
+        if tag.startswith('proxy_') and ip and tag not in mapping:
+            mapping[tag] = ip
+    return mapping
 
 
 def format_proxy(outbound):
@@ -183,7 +228,7 @@ def extract_rows(data):
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
-            'mac': str(dev.get('mac', '')).strip(),
+            'mac': normalize_mac(dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
             'note': str(notes.get(ip, '')).strip(),
         })
@@ -247,29 +292,84 @@ def clear_session_proxies(data):
 
 
 def remap_ip_by_tag(data):
-    dns_rules = (data.get('dns') or {}).get('rules', [])
-    route_rules = (data.get('route') or {}).get('rules', [])
+    mapping = {}
+    for i in range(1, 313):
+        mapping[f'proxy_{i}'] = tag_to_ip(f'proxy_{i}')
+    rebuild_gencore_rules(data, mapping)
+    return data
 
-    for rule in dns_rules:
-        if str(rule.get('action', '')).strip() != 'route':
+
+def rebuild_gencore_rules(data, tag_to_ip_map):
+    dns = data.setdefault('dns', {})
+    route = data.setdefault('route', {})
+
+    dns_rules = [
+        {'outbound': 'any', 'server': 'google'}
+    ]
+    route_rules = [
+        {'action': 'sniff'},
+        {'action': 'reject', 'method': 'drop', 'protocol': 'stun'},
+        {'action': 'hijack-dns', 'protocol': 'dns'},
+    ]
+
+    for i in range(1, 313):
+        tag = f'proxy_{i}'
+        ip = str(tag_to_ip_map.get(tag, '')).strip() or tag_to_ip(tag)
+        dns_rules.append({'action': 'route', 'server': tag, 'source_ip_cidr': ip})
+        route_rules.append({'action': 'route', 'outbound': tag, 'source_ip_cidr': ip})
+
+    route_rules.append({'action': 'route', 'outbound': 'direct'})
+    dns['rules'] = dns_rules
+    route['rules'] = route_rules
+    return data
+
+
+def build_ip_mac_config_text(data):
+    tag_to_ip = build_tag_to_ip(data)
+    static_rows = load_static_hosts_raw()
+    mac_by_ip = {str(row.get('ip', '')).strip(): normalize_mac(row.get('mac', '')) for row in static_rows}
+    items = []
+    for tag, ip in tag_to_ip.items():
+        items.append((proxy_tag_num(tag), f'{tag}|{ip}|{mac_by_ip.get(ip, "")}'))
+    items.sort(key=lambda x: (x[0], x[1]))
+    return '\n'.join(line for _num, line in items)
+
+
+def parse_ip_mac_config_text(text):
+    rows = []
+    seen_tags = set()
+    seen_ips = set()
+    for raw in str(text or '').splitlines():
+        line = raw.strip()
+        if not line:
             continue
-        tag = str(rule.get('server', '')).strip()
+        parts = [p.strip() for p in line.split('|')]
+        if len(parts) != 3:
+            raise ValueError(f'Dòng không hợp lệ: {line}')
+        tag, ip, mac = parts
         if not tag.startswith('proxy_'):
-            continue
-        ip = tag_to_ip(tag)
-        if ip:
-            rule['source_ip_cidr'] = ip
+            raise ValueError(f'Tag không hợp lệ: {tag}')
+        if not ip:
+            raise ValueError(f'IP trống ở dòng: {line}')
+        mac = normalize_mac(mac)
+        if not mac:
+            raise ValueError(f'MAC trống ở dòng: {line}')
+        if tag in seen_tags:
+            raise ValueError(f'Tag bị trùng: {tag}')
+        if ip in seen_ips:
+            raise ValueError(f'IP bị trùng: {ip}')
+        seen_tags.add(tag)
+        seen_ips.add(ip)
+        rows.append({'tag': tag, 'ip': ip, 'mac': mac})
+    rows.sort(key=lambda x: (proxy_tag_num(x['tag']), x['ip']))
+    return rows
 
-    for rule in route_rules:
-        if str(rule.get('action', '')).strip() != 'route':
-            continue
-        tag = str(rule.get('outbound', '')).strip()
-        if not tag.startswith('proxy_'):
-            continue
-        ip = tag_to_ip(tag)
-        if ip:
-            rule['source_ip_cidr'] = ip
 
+def apply_ip_mac_config(data, text):
+    rows = parse_ip_mac_config_text(text)
+    tag_to_ip = {row['tag']: row['ip'] for row in rows}
+    rebuild_gencore_rules(data, tag_to_ip)
+    save_static_hosts_rows([{'ip': row['ip'], 'mac': row['mac']} for row in rows])
     return data
 
 
@@ -354,9 +454,12 @@ def check_proxy(proxy: str):
 def call_old_gui(path, method='GET', data=None):
     body = None
     headers = {}
-    if data is not None:
+    if data is not None and method != 'GET':
         body = json.dumps(data).encode('utf-8')
         headers['Content-Type'] = 'application/json'
+    if data is not None and method == 'GET':
+        qs = urlencode(data)
+        path = path + ('&' if '?' in path else '?') + qs
     url = OLD_GUI_BASE + path
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=20) as resp:
@@ -365,6 +468,14 @@ def call_old_gui(path, method='GET', data=None):
             return {'ok': True, 'data': json.loads(raw) if raw else {}}
         except Exception:
             return {'ok': True, 'data': raw}
+
+
+def sync_static_to_router(rows):
+    for row in rows:
+        call_old_gui('/add_static', method='GET', data={
+            'ip': str(row.get('ip', '')).strip(),
+            'mac': normalize_mac(row.get('mac', '')),
+        })
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -397,6 +508,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(call_old_gui('/api/system/network'))
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
+        if path in ('/api/pm/ip-mac-config/1', '/api/pm/ip-mac-config/2'):
+            session_id = path.rsplit('/', 1)[-1]
+            data = load_json(SESSION_FILES[session_id])
+            return self._send_json({'ok': True, 'session': session_id, 'text': build_ip_mac_config_text(data)})
         self._send_json({'error': 'Not found'}, 404)
 
     def do_POST(self):
@@ -425,10 +540,25 @@ class Handler(BaseHTTPRequestHandler):
                 data = load_json(SESSION_FILES[session_id])
                 save_json(SESSION_FILES[session_id], remap_ip_by_tag(data))
                 return self._send_json({'ok': True, 'session': session_id})
+            if path in ('/api/pm/ip-mac-config/1', '/api/pm/ip-mac-config/2'):
+                session_id = path.rsplit('/', 1)[-1]
+                text = str(payload.get('text', ''))
+                sync_router = bool(payload.get('sync_router', True))
+                data = load_json(SESSION_FILES[session_id])
+                rows = parse_ip_mac_config_text(text)
+                data = apply_ip_mac_config(data, text)
+                save_json(SESSION_FILES[session_id], data)
+                if sync_router:
+                    sync_static_to_router(rows)
+                if payload.get('apply_runtime'):
+                    run_apply(session_id)
+                if payload.get('reboot_router'):
+                    call_old_gui('/api/system/reboot', method='POST', data={})
+                return self._send_json({'ok': True, 'session': session_id, 'count': len(rows)})
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', ''))))
             if path == '/api/pm/reboot-router':
-                return self._send_json(call_old_gui('/api/system/reboot'))
+                return self._send_json(call_old_gui('/api/system/reboot', method='POST', data={}))
             if path == '/api/pm/router-change-lan':
                 ip_lan = str(payload.get('ip_lan', '')).strip()
                 return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data={'ip_lan': ip_lan}))
