@@ -11,11 +11,13 @@ import urllib.error
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
 
+
 def pick_first_existing(paths):
     for p in paths:
         if p.exists():
             return p
     return paths[0]
+
 
 CONFIG_DIR = pick_first_existing([
     Path('/etc/genrouter/config'),
@@ -34,13 +36,30 @@ STATIC_HOSTS_FILE = pick_first_existing([
     Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json'),
 ])
 LEASES_FILE = Path('/tmp/dhcp.leases')
-OLD_GUI_BASE = 'http://127.0.0.1'
+OLD_GUI_BASES = [
+    'http://127.0.0.1:9000',
+    'http://127.0.0.1:80',
+    'http://127.0.0.1',
+]
 
 SESSION_FILES = {
     '1': CONFIG_DIR / 'gencore.json',
     '2': CONFIG_DIR / 'gencore2.json',
 }
 RUNTIME_FILE = RUNTIME_DIR / 'gencore.json'
+
+
+def proxy_tag_num(tag):
+    try:
+        return int(str(tag).split('_', 1)[1])
+    except Exception:
+        return 10**9
+
+
+def load_session_data(session_id: str):
+    if session_id == '1' and RUNTIME_FILE.exists():
+        return load_json(RUNTIME_FILE)
+    return load_json(SESSION_FILES[session_id])
 
 
 def ensure_session2_exists():
@@ -99,15 +118,31 @@ def extract_rows(data):
     outbounds = {item.get('tag'): item for item in data.get('outbounds', []) if item.get('tag', '').startswith('proxy_')}
     devices = load_device_map()
     rows = []
+
+    dns_server_map = {}
+    for rule in data.get('dns', {}).get('rules', []):
+        tag = rule.get('server')
+        ip = rule.get('source_ip_cidr')
+        if ip and str(tag).startswith('proxy_'):
+            dns_server_map.setdefault(tag, ip)
+
     for rule in data.get('route', {}).get('rules', []):
         ip = rule.get('source_ip_cidr')
         tag = rule.get('outbound')
-        if not ip or not tag or not str(tag).startswith('proxy_'):
+        if not tag or not str(tag).startswith('proxy_'):
+            continue
+        ip = ip or dns_server_map.get(tag)
+        if not ip:
             continue
         outbound = outbounds.get(tag, {})
         dev = devices.get(ip, {})
         rows.append({'ip': ip, 'tag': tag, 'proxy': format_proxy(outbound), 'hostname': dev.get('hostname', ''), 'mac': dev.get('mac', ''), 'status': dev.get('status', 'offline')})
-    rows.sort(key=lambda x: tuple(int(p) for p in x['ip'].split('.')))
+
+    dedup = {}
+    for row in rows:
+        dedup[row['tag']] = row
+    rows = list(dedup.values())
+    rows.sort(key=lambda x: proxy_tag_num(x['tag']))
     return rows
 
 
@@ -171,35 +206,50 @@ def run_apply(session: str):
         subprocess.run([str(GENRUNNER), '-c'], check=False)
 
 
+def try_curl(cmd):
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return False
+    text = (result.stdout or '').strip()
+    return bool(text)
+
+
 def check_proxy(proxy: str):
     if not proxy.strip():
         return {'ok': False, 'status': 'empty', 'message': 'Proxy trống'}
     server, port, user, password = parse_proxy(proxy)
-    proxy_url = f"socks5h://{user}:{password}@{server}:{port}"
-    result = subprocess.run(['curl', '-sS', '--max-time', '12', '--proxy', proxy_url, 'https://api.ipify.org?format=json'], capture_output=True, text=True)
-    if result.returncode != 0:
-        return {'ok': False, 'status': 'dead', 'message': 'Fail'}
-    try:
-        json.loads(result.stdout.strip())
-        return {'ok': True, 'status': 'live', 'message': 'Live'}
-    except Exception:
-        return {'ok': True, 'status': 'live', 'message': 'Live'}
+    tests = [
+        ['curl', '-sS', '--max-time', '12', '--proxy', f'socks5h://{user}:{password}@{server}:{port}', 'http://api.ipify.org'],
+        ['curl', '-sS', '--max-time', '12', '--proxy', f'socks5://{user}:{password}@{server}:{port}', 'http://api.ipify.org'],
+        ['curl', '-k', '-sS', '--max-time', '12', '--proxy', f'socks5h://{user}:{password}@{server}:{port}', 'https://api.ipify.org'],
+        ['curl', '-k', '-sS', '--max-time', '12', '--proxy', f'socks5://{user}:{password}@{server}:{port}', 'https://api.ipify.org'],
+    ]
+    for cmd in tests:
+        if try_curl(cmd):
+            return {'ok': True, 'status': 'live', 'message': 'Live'}
+    return {'ok': False, 'status': 'dead', 'message': 'Fail'}
 
 
 def call_old_gui(path, method='GET', data=None):
-    url = OLD_GUI_BASE + path
     body = None
     headers = {}
     if data is not None:
         body = json.dumps(data).encode('utf-8')
         headers['Content-Type'] = 'application/json'
-    req = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        raw = resp.read().decode('utf-8', errors='ignore')
+    last_error = None
+    for base in OLD_GUI_BASES:
+        url = base + path
+        req = urllib.request.Request(url, data=body, method=method, headers=headers)
         try:
-            return {'ok': True, 'data': json.loads(raw) if raw else {}}
-        except Exception:
-            return {'ok': True, 'data': raw}
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                raw = resp.read().decode('utf-8', errors='ignore')
+                try:
+                    return {'ok': True, 'data': json.loads(raw) if raw else {}, 'base': base}
+                except Exception:
+                    return {'ok': True, 'data': raw, 'base': base}
+        except Exception as e:
+            last_error = e
+    raise last_error if last_error else RuntimeError('Cannot reach old GUI API')
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -225,9 +275,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/api/pm/sessions/1':
-            return self._send_json({'session': '1', 'rows': extract_rows(load_json(SESSION_FILES['1']))})
+            return self._send_json({'session': '1', 'rows': extract_rows(load_session_data('1'))})
         if path == '/api/pm/sessions/2':
-            return self._send_json({'session': '2', 'rows': extract_rows(load_json(SESSION_FILES['2']))})
+            return self._send_json({'session': '2', 'rows': extract_rows(load_session_data('2'))})
         self._send_json({'error': 'Not found'}, 404)
 
     def do_POST(self):
