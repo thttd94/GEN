@@ -54,6 +54,15 @@ def proxy_tag_num(tag):
         return 10**9
 
 
+def normalize_tag(tag):
+    tag = str(tag or '').strip()
+    if not tag:
+        return ''
+    if tag.lower().startswith('proxy_'):
+        return 'proxy_' + tag.split('_', 1)[1]
+    return tag
+
+
 def tag_to_ip(tag):
     num = proxy_tag_num(tag)
     if num < 1 or num > MAX_PROXY_TAG:
@@ -66,14 +75,15 @@ def tag_to_ip(tag):
 
 def ensure_session2_exists():
     s2 = SESSION_FILES['2']
-    if s2.exists():
-        return
-    data = load_json(SESSION_FILES['1'])
-    clear_session_proxies(data)
-    save_json(s2, data)
-    s1_text = get_saved_ip_identity_text('1')
-    if s1_text and not get_saved_ip_identity_text('2'):
-        set_saved_ip_identity_text('2', s1_text)
+    if not s2.exists():
+        data = load_json(SESSION_FILES['1'])
+        clear_session_proxies(data)
+        save_json(s2, data)
+    if not get_saved_ip_identity_text('2') and s2.exists():
+        data2 = load_json(s2)
+        rows = build_ip_identity_rows_from_data(data2)
+        if rows and len(rows) < MAX_PROXY_TAG:
+            set_saved_ip_identity_text('2', '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
 
 
 def load_json(path: Path):
@@ -114,9 +124,17 @@ def save_session_state(state):
 def get_session_meta(session_id, tag=None):
     state = load_session_state()
     sess = state.get(str(session_id), {})
+    if not isinstance(sess, dict):
+        return {} if tag is None else {}
     if tag is None:
-        return sess if isinstance(sess, dict) else {}
-    item = sess.get(str(tag), {})
+        normalized = {}
+        for k, v in sess.items():
+            nk = normalize_tag(k)
+            if nk and isinstance(v, dict):
+                normalized[nk] = v
+        return normalized
+    key = normalize_tag(tag)
+    item = sess.get(key, sess.get(str(tag), sess.get(str(tag).upper(), {})))
     return item if isinstance(item, dict) else {}
 
 
@@ -193,7 +211,7 @@ def update_session_rows_meta(session_id, rows):
     state = load_session_state()
     sess = state.setdefault(session_id, {})
     for row in rows or []:
-        tag = str((row or {}).get('tag', '')).strip()
+        tag = normalize_tag((row or {}).get('tag', ''))
         if not tag:
             continue
         item = sess.setdefault(tag, {})
