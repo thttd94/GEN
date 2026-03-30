@@ -5,39 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Genrouter Proxy Manager _ By Hồng Thái</title>
   <style>
-    body { font-family: Arial, sans-serif; background:#f3f4f6; color:#111827; margin:0; }
-    .wrap { max-width: 1760px; margin: 0 auto; padding: 18px; }
-    .toolbar { display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
-    .toolbar-left,.toolbar-right { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .btn { border:1px solid #d1d5db; background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:700; }
+    body { font-family: Arial, sans-serif; background:#eef2f7; color:#111827; margin:0; }
+    .wrap { max-width: 1780px; margin: 0 auto; padding: 14px; }
+    .titlebar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .title { font-size:26px; font-weight:800; }
+    .brand { font-size:14px; font-weight:700; color:#2563eb; }
+    .toolbar { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px; }
+    .toolbar-left,.toolbar-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .btn { border:1px solid #d1d5db; background:#fff; padding:9px 13px; border-radius:10px; cursor:pointer; font-weight:700; }
     .btn.tab.active { background:#2563eb; color:#fff; border-color:#2563eb; }
     .btn.apply { background:#16a34a; color:#fff; border-color:#16a34a; }
     .btn.warn { background:#f59e0b; color:#fff; border-color:#f59e0b; }
-    .btn.ghost { background:#fff; }
-    .btn.small { padding:7px 10px; font-size:12px; }
-    .title { font-size:24px; font-weight:800; margin-bottom:12px; }
-    .panel { background:#fff; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden; }
-    .meta { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid #e5e7eb; }
-    .sub { color:#6b7280; font-size:13px; }
-    .notes-summary-wrap { padding:14px 16px; border-bottom:1px solid #e5e7eb; background:#fff; }
-    .notes-summary-title { font-size:14px; font-weight:700; margin-bottom:8px; }
-    .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:110px; max-height:170px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.5; }
+    .btn.small { padding:6px 10px; font-size:12px; }
+    .status { font-size:13px; color:#2563eb; font-weight:700; margin-left:6px; }
+    .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
+    .meta { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
+    .notes-wrap { padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
+    .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:105px; max-height:165px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
     .notes-summary-empty { color:#9ca3af; }
+    .bulkbar { display:grid; grid-template-columns: 370px 1fr auto; gap:10px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
+    .bulk-actions { display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
+    .sub { color:#6b7280; font-size:12px; margin-top:5px; }
     .grid { max-height:76vh; overflow:auto; }
     table { width:100%; border-collapse:collapse; }
-    th, td { padding:12px 10px; border-bottom:1px solid #f1f5f9; font-size:14px; vertical-align:middle; }
-    th { text-align:left; background:#f9fafb; position:sticky; top:0; z-index:1; }
-    input, textarea { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:9px 10px; font-size:14px; }
+    th, td { padding:10px 8px; border-bottom:1px solid #edf2f7; font-size:14px; vertical-align:middle; }
+    th { text-align:left; background:#f8fafc; position:sticky; top:0; z-index:1; }
+    input, textarea { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:8px 10px; font-size:14px; }
     textarea { min-height:90px; resize:vertical; }
     .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; }
     .online { background:#dcfce7; color:#166534; }
     .offline { background:#fee2e2; color:#991b1b; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .status { font-size:13px; color:#2563eb; font-weight:600; }
     .proxy-cell { min-width:420px; }
     .note-cell { min-width:220px; }
-    .bulkbar { display:grid; grid-template-columns: 420px auto; gap:12px; padding:14px 16px; border-bottom:1px solid #e5e7eb; background:#fcfcfd; }
-    .bulk-actions { display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; }
     .check-ok { color:#15803d; font-weight:800; }
     .check-bad { color:#b91c1c; font-weight:800; }
     .check-wait { color:#2563eb; font-weight:700; }
@@ -53,17 +53,20 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="title">Genrouter Proxy Manager _ By Hồng Thái</div>
+    <div class="titlebar">
+      <div class="title">Genrouter Proxy Manager _ By Hồng Thái</div>
+      <div class="brand">Hồng Thái</div>
+    </div>
 
     <div class="toolbar">
       <div class="toolbar-left">
         <button class="btn tab active" id="tab1" onclick="switchSession('1')">Session 1</button>
         <button class="btn tab" id="tab2" onclick="switchSession('2')">Session 2</button>
-        <button class="btn ghost" onclick="saveCurrent()">Save</button>
+        <button class="btn" onclick="saveCurrent()">Save</button>
         <button class="btn apply" onclick="applySession('1')">Apply SS1</button>
         <button class="btn apply" onclick="applySession('2')">Apply SS2</button>
-        <button class="btn ghost" onclick="clone1to2()">Clone SS1 → SS2</button>
-        <div class="status" id="status">Ready</div>
+        <button class="btn" onclick="clone1to2()">Clone SS1 → SS2</button>
+        <span class="status" id="status">Ready</span>
       </div>
       <div class="toolbar-right">
         <button class="btn warn" onclick="rebootRouter()">Reboot Router</button>
@@ -73,34 +76,30 @@
 
     <div class="panel">
       <div class="meta">
-        <div>
-          <div><b id="sessionLabel">Session 1</b></div>
-        </div>
+        <div><b id="sessionLabel">Session 1</b></div>
         <div class="sub" id="countLabel">0 rows</div>
       </div>
 
-      <div class="notes-summary-wrap">
-        <div class="notes-summary-title">Notes</div>
+      <div class="notes-wrap">
         <div class="notes-summary-box" id="notesSummary"></div>
       </div>
 
       <div class="bulkbar">
         <div>
           <input id="bulkProxy" placeholder="1 proxy cho tất cả: server:port:user:pass">
-          <div class="sub" style="margin-top:6px;">Gán toàn bộ thiết bị của session đang mở</div>
+          <div class="sub">Gán toàn bộ thiết bị của session đang mở</div>
         </div>
         <div>
-          <textarea id="bulkMap" placeholder="Gán hàng loạt, chấp nhận các dạng:
-225|1.2.3.4:1080:user:pass
+          <textarea id="bulkMap" placeholder="225|1.2.3.4:1080:user:pass
 225;1.2.3.4:1080:user:pass
 225 1.2.3.4:1080:user:pass"></textarea>
-          <div class="sub" style="margin-top:6px;">x = số tag. Ví dụ 225 = gán cho proxy_225. Chỉ đổi các dòng có trong danh sách nhập.</div>
+          <div class="sub">x = số tag. Ví dụ 225 = proxy_225. Chỉ đổi các dòng có trong danh sách nhập.</div>
         </div>
         <div class="bulk-actions">
-          <button class="btn ghost" onclick="assignAllProxy()">Gán tất cả</button>
-          <button class="btn ghost" onclick="clearAllProxy()">Xóa tất cả proxy</button>
-          <button class="btn ghost" onclick="clearAllNotes()">Clear Notes</button>
-          <button class="btn ghost" onclick="applyBulkMap()">Gán hàng loạt</button>
+          <button class="btn" onclick="assignAllProxy()">1 Proxy All</button>
+          <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
+          <button class="btn" onclick="clearAllNotes()">Clear Notes</button>
+          <button class="btn" onclick="applyBulkMap()">Bulk Assign</button>
         </div>
       </div>
 
@@ -108,10 +107,10 @@
         <table>
           <thead>
             <tr>
-              <th style="width:64px;">#</th>
+              <th style="width:60px;">#</th>
               <th style="width:170px;">MAC</th>
-              <th style="width:130px;">IP</th>
-              <th style="width:100px;">Status</th>
+              <th style="width:135px;">IP</th>
+              <th style="width:95px;">Status</th>
               <th style="width:120px;">Proxy Tag</th>
               <th class="proxy-cell">Proxy</th>
               <th class="note-cell">Note</th>
@@ -133,7 +132,7 @@
     <div class="modal-card">
       <div class="modal-head">
         <b>Set up Router</b>
-        <button class="btn small ghost" onclick="closeRouterModal()">Đóng</button>
+        <button class="btn small" onclick="closeRouterModal()">Đóng</button>
       </div>
       <div class="modal-body">
         <div class="field">
@@ -143,7 +142,7 @@
         <div class="sub" id="routerInfo">Chỉ sửa LAN IP của router</div>
       </div>
       <div class="modal-foot">
-        <button class="btn ghost" onclick="closeRouterModal()">Hủy</button>
+        <button class="btn" onclick="closeRouterModal()">Hủy</button>
         <button class="btn apply" onclick="submitRouterSetup()">Lưu LAN IP</button>
       </div>
     </div>
@@ -152,6 +151,7 @@
   <script>
     let currentSession = '1';
     let currentRows = [];
+
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     async function fetchJSON(url, options={}) {
       const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...options });
@@ -160,6 +160,7 @@
       return data;
     }
     function esc(v) { return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
+
     function renderNotesSummary() {
       const box = document.getElementById('notesSummary');
       const lines = currentRows.filter(r => String(r.note || '').trim()).map(r => `${r.ip} | ${r.tag} | ${r.note.trim()}`);
@@ -169,6 +170,7 @@
       }
       box.textContent = lines.join('\n');
     }
+
     function render() {
       document.getElementById('tab1').classList.toggle('active', currentSession === '1');
       document.getElementById('tab2').classList.toggle('active', currentSession === '2');
@@ -183,31 +185,37 @@
           <td class="mono">${esc(row.tag)}</td>
           <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
-          <td><button class="btn small ghost" onclick="checkProxy('${esc(row.tag)}')">Check</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
+          <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">Check</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
         </tr>`).join('');
       renderNotesSummary();
     }
+
     function updateField(el) {
       const row = currentRows.find(r => r.tag === el.dataset.tag);
       if (row) row[el.dataset.field] = el.value;
       if (el.dataset.field === 'note') renderNotesSummary();
     }
+
     function assignAllProxy() {
       const value = document.getElementById('bulkProxy').value.trim();
       currentRows.forEach(r => r.proxy = value);
       render();
       setStatus('Đã gán 1 proxy cho toàn bộ session ' + currentSession);
     }
+
     function clearAllProxy() {
       currentRows.forEach(r => r.proxy = '');
       render();
       setStatus('Đã xóa toàn bộ proxy của session ' + currentSession);
     }
+
     function clearAllNotes() {
       currentRows.forEach(r => r.note = '');
+      renderNotesSummary();
       render();
       setStatus('Đã xóa toàn bộ note của session ' + currentSession);
     }
+
     function parseBulkLine(line) {
       let m = line.match(/^\s*(\d+)\s*[|;]\s*(.+)\s*$/);
       if (m) return { x: m[1], proxy: m[2] };
@@ -215,6 +223,7 @@
       if (m) return { x: m[1], proxy: m[2] };
       return null;
     }
+
     function applyBulkMap() {
       const text = document.getElementById('bulkMap').value.trim();
       if (!text) return setStatus('Chưa nhập danh sách gán hàng loạt');
@@ -232,6 +241,7 @@
       render();
       setStatus(`Đã gán hàng loạt ${changed} dòng theo danh sách nhập`);
     }
+
     async function checkProxy(tag) {
       const row = currentRows.find(r => r.tag === tag);
       const box = document.getElementById(`check-${tag}`);
@@ -239,7 +249,7 @@
       box.className = 'check-wait';
       box.textContent = 'CHECK...';
       try {
-        const data = await fetchJSON('/api/pm/check-proxy', { method: 'POST', body: JSON.stringify({ proxy: row.proxy || '' }) });
+        const data = await fetchJSON('/api/pm/check-proxy', { method:'POST', body: JSON.stringify({ proxy: row.proxy || '' }) });
         box.className = data.ok ? 'check-ok' : 'check-bad';
         box.textContent = data.ok ? 'LIVE' : 'DEAD';
       } catch {
@@ -247,11 +257,13 @@
         box.textContent = 'DEAD';
       }
     }
+
     async function checkAllProxy() {
       setStatus('Đang check toàn bộ proxy...');
       await Promise.all(currentRows.map(row => checkProxy(row.tag)));
       setStatus('Đã check xong session ' + currentSession);
     }
+
     async function rebootRouter() {
       try {
         setStatus('Đang reboot router...');
@@ -261,6 +273,7 @@
         setStatus('Lỗi: ' + e.message);
       }
     }
+
     async function openSetupRouter() {
       try {
         setStatus('Đang lấy IP router...');
@@ -269,15 +282,17 @@
         document.getElementById('routerIp').value = ip;
         document.getElementById('routerModal').classList.add('show');
         setStatus('Đã mở Set up Router');
-      } catch (e) {
+      } catch {
         document.getElementById('routerIp').value = window.location.hostname || '';
         document.getElementById('routerModal').classList.add('show');
         setStatus('Đã mở Set up Router');
       }
     }
+
     function closeRouterModal() {
       document.getElementById('routerModal').classList.remove('show');
     }
+
     async function submitRouterSetup() {
       try {
         const payload = { ip_lan: document.getElementById('routerIp').value.trim() };
@@ -289,6 +304,7 @@
         setStatus('Lỗi: ' + e.message);
       }
     }
+
     async function loadSession(session) {
       setStatus('Loading session ' + session + '...');
       const data = await fetchJSON(`/api/pm/sessions/${session}`);
@@ -297,7 +313,11 @@
       render();
       setStatus('Loaded session ' + session);
     }
-    async function switchSession(session) { try { await loadSession(session); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+
+    async function switchSession(session) {
+      try { await loadSession(session); } catch (e) { setStatus('Lỗi: ' + e.message); }
+    }
+
     async function saveCurrent() {
       try {
         setStatus('Saving session ' + currentSession + '...');
@@ -307,6 +327,7 @@
         setStatus('Lỗi: ' + e.message);
       }
     }
+
     async function applySession(session) {
       try {
         if (currentSession === session) await saveCurrent();
@@ -317,6 +338,7 @@
         setStatus('Lỗi: ' + e.message);
       }
     }
+
     async function clone1to2() {
       try {
         setStatus('Cloning SS1 -> SS2...');
@@ -327,6 +349,7 @@
         setStatus('Lỗi: ' + e.message);
       }
     }
+
     loadSession('1');
   </script>
 </body>

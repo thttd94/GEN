@@ -7,6 +7,8 @@ import subprocess
 import time
 import urllib.request
 import urllib.error
+import socket
+import struct
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
@@ -90,10 +92,10 @@ def load_device_map():
         try:
             data = json.loads(STATIC_HOSTS_FILE.read_text(encoding='utf-8'))
             for sec in data.values():
-                ip = sec.get('ip')
+                ip = str(sec.get('ip', '')).strip()
                 if not ip:
                     continue
-                device_map[ip] = {'mac': sec.get('mac', ''), 'status': 'offline'}
+                device_map[ip] = {'mac': str(sec.get('mac', '')).strip(), 'status': 'offline'}
         except Exception:
             pass
     if LEASES_FILE.exists():
@@ -109,7 +111,7 @@ def load_device_map():
                 except Exception:
                     online = True
                 row = device_map.setdefault(ip, {})
-                row['mac'] = mac
+                row['mac'] = str(mac).strip()
                 row['status'] = 'online' if online else 'offline'
         except Exception:
             pass
@@ -117,34 +119,46 @@ def load_device_map():
 
 
 def extract_rows(data):
-    outbounds = {item.get('tag'): item for item in data.get('outbounds', []) if str(item.get('tag', '')).startswith('proxy_')}
+    outbounds = {
+        str(item.get('tag')): item
+        for item in data.get('outbounds', [])
+        if str(item.get('tag', '')).startswith('proxy_')
+    }
     devices = load_device_map()
     notes = load_notes()
     rows = []
+    seen_tags = set()
+
     for rule in data.get('route', {}).get('rules', []):
-        ip = rule.get('source_ip_cidr')
-        tag = rule.get('outbound')
-        if not ip or not tag or not str(tag).startswith('proxy_'):
+        if str(rule.get('action', '')).strip() != 'route':
             continue
+        tag = str(rule.get('outbound', '')).strip()
+        ip = str(rule.get('source_ip_cidr', '')).strip()
+        if not tag.startswith('proxy_') or not ip:
+            continue
+        if tag in seen_tags:
+            continue
+        seen_tags.add(tag)
         outbound = outbounds.get(tag, {})
         dev = devices.get(ip, {})
         rows.append({
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
-            'mac': dev.get('mac', ''),
-            'status': dev.get('status', 'offline'),
-            'note': notes.get(ip, ''),
+            'mac': str(dev.get('mac', '')).strip(),
+            'status': str(dev.get('status', 'offline')).strip() or 'offline',
+            'note': str(notes.get(ip, '')).strip(),
         })
+
     rows.sort(key=lambda x: proxy_tag_num(x['tag']))
     return rows
 
 
 def format_proxy(outbound):
-    server = outbound.get('server')
+    server = str(outbound.get('server', '')).strip()
     port = outbound.get('server_port')
-    user = outbound.get('username', '')
-    password = outbound.get('password', '')
+    user = str(outbound.get('username', '')).strip()
+    password = str(outbound.get('password', '')).strip()
     if not server or not port:
         return ''
     return f"{server}:{port}:{user}:{password}"
@@ -152,14 +166,16 @@ def format_proxy(outbound):
 
 def apply_rows_to_data(data, rows_by_tag):
     outbounds = data.setdefault('outbounds', [])
-    outbound_idx = {item.get('tag'): i for i, item in enumerate(outbounds) if item.get('tag')}
+    outbound_idx = {str(item.get('tag')): i for i, item in enumerate(outbounds) if item.get('tag')}
     notes = load_notes()
+
     for tag, row in rows_by_tag.items():
         proxy = str(row.get('proxy', '')).strip()
         set_outbound_proxy(outbounds, outbound_idx, tag, proxy)
         ip = str(row.get('ip', '')).strip()
         if ip:
             notes[ip] = str(row.get('note', '')).strip()
+
     save_notes(notes)
     return data
 
@@ -172,7 +188,15 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy):
         outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
     server, port, user, password = parse_proxy(proxy)
-    outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': server, 'server_port': port, 'username': user, 'password': password, 'version': '5'}
+    outbounds[idx] = {
+        'tag': tag,
+        'type': 'socks',
+        'server': server,
+        'server_port': port,
+        'username': user,
+        'password': password,
+        'version': '5'
+    }
 
 
 def parse_proxy(proxy):
@@ -188,8 +212,8 @@ def parse_proxy(proxy):
 
 def clear_session_proxies(data):
     for item in data.get('outbounds', []):
-        tag = item.get('tag', '')
-        if str(tag).startswith('proxy_'):
+        tag = str(item.get('tag', '')).strip()
+        if tag.startswith('proxy_'):
             item.clear()
             item.update({'tag': tag, 'type': 'direct'})
 
@@ -201,27 +225,75 @@ def run_apply(session: str):
         subprocess.run([str(GENRUNNER), '-c'], check=False)
 
 
-def try_curl(cmd):
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        return False
-    return bool((result.stdout or '').strip())
+def recv_exact(sock, n):
+    data = b''
+    while len(data) < n:
+        chunk = sock.recv(n - len(data))
+        if not chunk:
+            raise OSError('Kết nối bị đóng')
+        data += chunk
+    return data
+
+
+def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.1', target_port=80, timeout=12):
+    sock = socket.create_connection((proxy_host, proxy_port), timeout=timeout)
+    try:
+        sock.settimeout(timeout)
+        sock.sendall(b'\x05\x01\x02')
+        resp = recv_exact(sock, 2)
+        if resp[0] != 5 or resp[1] != 2:
+            raise OSError('SOCKS5 auth method không hợp lệ')
+
+        u = username.encode('utf-8')
+        p = password.encode('utf-8')
+        if len(u) > 255 or len(p) > 255:
+            raise OSError('Username/password quá dài')
+        sock.sendall(b'\x01' + bytes([len(u)]) + u + bytes([len(p)]) + p)
+        auth = recv_exact(sock, 2)
+        if auth[1] != 0:
+            raise OSError('Sai user/pass proxy')
+
+        try:
+            addr = socket.inet_aton(target_host)
+            req = b'\x05\x01\x00\x01' + addr + struct.pack('!H', target_port)
+        except OSError:
+            host_bytes = target_host.encode('idna')
+            req = b'\x05\x01\x00\x03' + bytes([len(host_bytes)]) + host_bytes + struct.pack('!H', target_port)
+
+        sock.sendall(req)
+        head = recv_exact(sock, 4)
+        if head[1] != 0:
+            raise OSError(f'SOCKS5 connect fail code {head[1]}')
+
+        atyp = head[3]
+        if atyp == 1:
+            recv_exact(sock, 4)
+        elif atyp == 3:
+            ln = recv_exact(sock, 1)[0]
+            recv_exact(sock, ln)
+        elif atyp == 4:
+            recv_exact(sock, 16)
+        recv_exact(sock, 2)
+
+        sock.sendall(b'GET / HTTP/1.1\r\nHost: 1.1.1.1\r\nConnection: close\r\n\r\n')
+        data = sock.recv(32)
+        return bool(data)
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
 
 
 def check_proxy(proxy: str):
     if not proxy.strip():
         return {'ok': False, 'status': 'empty', 'message': 'Proxy trống'}
-    server, port, user, password = parse_proxy(proxy)
-    tests = [
-        ['curl', '-sS', '--max-time', '12', '--proxy', f'socks5h://{user}:{password}@{server}:{port}', 'http://api.ipify.org'],
-        ['curl', '-sS', '--max-time', '12', '--proxy', f'socks5://{user}:{password}@{server}:{port}', 'http://api.ipify.org'],
-        ['curl', '-k', '-sS', '--max-time', '12', '--proxy', f'socks5h://{user}:{password}@{server}:{port}', 'https://api.ipify.org'],
-        ['curl', '-k', '-sS', '--max-time', '12', '--proxy', f'socks5://{user}:{password}@{server}:{port}', 'https://api.ipify.org'],
-    ]
-    for cmd in tests:
-        if try_curl(cmd):
-            return {'ok': True, 'status': 'live', 'message': 'Live'}
-    return {'ok': False, 'status': 'dead', 'message': 'Fail'}
+    try:
+        server, port, user, password = parse_proxy(proxy)
+        ok = socks5_probe(server, port, user, password)
+        return {'ok': bool(ok), 'status': 'live' if ok else 'dead', 'message': 'Live' if ok else 'Fail'}
+    except Exception as e:
+        return {'ok': False, 'status': 'dead', 'message': str(e)}
 
 
 def call_old_gui(path, method='GET', data=None):
@@ -282,7 +354,7 @@ class Handler(BaseHTTPRequestHandler):
             if path in ('/api/pm/sessions/1', '/api/pm/sessions/2'):
                 session_id = path.rsplit('/', 1)[-1]
                 rows = payload.get('rows', [])
-                rows_by_tag = {str(row['tag']): row for row in rows if row.get('tag')}
+                rows_by_tag = {str(row['tag']).strip(): row for row in rows if row.get('tag')}
                 data = load_json(SESSION_FILES[session_id])
                 save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag))
                 return self._send_json({'ok': True, 'session': session_id})
