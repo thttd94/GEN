@@ -19,6 +19,16 @@
     .btn.warn { background:#f59e0b; color:#fff; border-color:#f59e0b; }
     .status { padding:12px 14px; border-top:1px solid #e5e7eb; background:#f8fafc; font-size:14px; color:#1d4ed8; font-weight:700; white-space:pre-wrap; }
     .example { background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; padding:12px; }
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:9999; }
+    .modal.show { display:flex; }
+    .modal-card { width:min(980px, 95vw); background:#fff; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+    .modal-head { display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-bottom:1px solid #e5e7eb; }
+    .modal-body { padding:16px 18px; display:grid; gap:12px; }
+    .modal-foot { padding:16px 18px; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+    .table-wrap { max-height:360px; overflow:auto; border:1px solid #e5e7eb; border-radius:10px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid #edf2f7; padding:8px 10px; text-align:left; font-size:14px; }
+    th { background:#f8fafc; position:sticky; top:0; }
   </style>
 </head>
 <body>
@@ -45,6 +55,29 @@
     </div>
   </div>
 
+  <div class="modal" id="macModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <b>Danh sách MAC đang connect</b>
+        <button class="btn" onclick="closeMacModal()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub">Hiển thị toàn bộ IP đang đi cùng MAC để anh copy cho tiện.</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:70px;">#</th><th>IP</th><th>MAC</th></tr></thead>
+            <tbody id="macRows"></tbody>
+          </table>
+        </div>
+        <textarea id="macRawText" spellcheck="false" style="min-height:180px;"></textarea>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="copyMacList()">Copy</button>
+        <button class="btn apply" onclick="useMacList()">Dùng danh sách này</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     async function fetchJSON(url, options={}) {
@@ -68,16 +101,36 @@
         setStatus('Lỗi: ' + e.message);
       }
     }
+    function closeMacModal() {
+      document.getElementById('macModal').classList.remove('show');
+    }
     async function loadConnectedMacs() {
       try {
         setStatus('Đang lấy MAC đang connect...');
         const data = await fetchJSON('/api/connected-macs');
-        document.getElementById('mappingText').value = data.text || '';
-        updateCount();
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        document.getElementById('macRows').innerHTML = rows.map((row, idx) => `<tr><td>${idx + 1}</td><td>${row.ip || ''}</td><td>${row.mac || ''}</td></tr>`).join('');
+        document.getElementById('macRawText').value = data.text || '';
+        document.getElementById('macModal').classList.add('show');
         setStatus(`Đã lấy ${data.count || 0} dòng MAC đang connect`);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
+    }
+    async function copyMacList() {
+      const text = document.getElementById('macRawText').value || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus('Đã copy danh sách MAC');
+      } catch {
+        setStatus('Copy thất bại, anh copy tay giúp em');
+      }
+    }
+    function useMacList() {
+      document.getElementById('mappingText').value = document.getElementById('macRawText').value || '';
+      updateCount();
+      closeMacModal();
+      setStatus('Đã đưa danh sách MAC vào ô nhập');
     }
 
     async function applyAll() {
