@@ -340,6 +340,10 @@ def parse_ip_mac_config_text(text):
     rows = []
     seen_tags = set()
     seen_ips = set()
+    seen_macs = set()
+    dup_tags = set()
+    dup_ips = set()
+    dup_macs = set()
     for raw in str(text or '').splitlines():
         line = raw.strip()
         if not line:
@@ -356,12 +360,27 @@ def parse_ip_mac_config_text(text):
         if not mac:
             raise ValueError(f'MAC trống ở dòng: {line}')
         if tag in seen_tags:
-            raise ValueError(f'Tag bị trùng: {tag}')
+            dup_tags.add(tag)
+        else:
+            seen_tags.add(tag)
         if ip in seen_ips:
-            raise ValueError(f'IP bị trùng: {ip}')
-        seen_tags.add(tag)
-        seen_ips.add(ip)
+            dup_ips.add(ip)
+        else:
+            seen_ips.add(ip)
+        if mac in seen_macs:
+            dup_macs.add(mac)
+        else:
+            seen_macs.add(mac)
         rows.append({'tag': tag, 'ip': ip, 'mac': mac})
+    errs = []
+    if dup_tags:
+        errs.append('Proxy bị trùng: ' + ', '.join(sorted(dup_tags, key=proxy_tag_num)))
+    if dup_ips:
+        errs.append('IP bị trùng: ' + ', '.join(sorted(dup_ips)))
+    if dup_macs:
+        errs.append('MAC bị trùng: ' + ', '.join(sorted(dup_macs)))
+    if errs:
+        raise ValueError(' | '.join(errs))
     rows.sort(key=lambda x: (proxy_tag_num(x['tag']), x['ip']))
     return rows
 
@@ -377,8 +396,27 @@ def apply_ip_mac_config(data, text):
 def run_apply(session: str):
     source = SESSION_FILES[session]
     shutil.copy2(source, RUNTIME_FILE)
+    results = []
     if GENRUNNER.exists():
-        subprocess.run([str(GENRUNNER), '-c'], check=False)
+        try:
+            r = subprocess.run([str(GENRUNNER), '-c'], check=False, capture_output=True, text=True)
+            results.append({'cmd': f'{GENRUNNER} -c', 'code': r.returncode, 'stdout': (r.stdout or '').strip(), 'stderr': (r.stderr or '').strip()})
+        except Exception as e:
+            results.append({'cmd': f'{GENRUNNER} -c', 'error': str(e)})
+
+    extra_cmds = [
+        ['/etc/init.d/genrouter', 'restart'],
+        ['/etc/init.d/genrouter_server', 'restart'],
+        ['/etc/init.d/odhcpd', 'reload'],
+    ]
+    for cmd in extra_cmds:
+        try:
+            if Path(cmd[0]).exists():
+                r = subprocess.run(cmd, check=False, capture_output=True, text=True)
+                results.append({'cmd': ' '.join(cmd), 'code': r.returncode, 'stdout': (r.stdout or '').strip(), 'stderr': (r.stderr or '').strip()})
+        except Exception as e:
+            results.append({'cmd': ' '.join(cmd), 'error': str(e)})
+    return results
 
 
 def recv_exact(sock, n):
@@ -543,9 +581,21 @@ def call_static_api(path, method='GET', data=None):
 
 def sync_static_to_router(rows):
     for row in rows:
+        ip = str(row.get('ip', '')).strip()
+        mac = normalize_mac(row.get('mac', ''))
+        if not ip or not mac:
+            continue
+        try:
+            call_static_api('/del_static', method='GET', data={'ip': ip})
+        except Exception:
+            pass
+        try:
+            call_static_api('/del_static', method='GET', data={'mac': mac})
+        except Exception:
+            pass
         call_static_api('/add_static', method='GET', data={
-            'ip': str(row.get('ip', '')).strip(),
-            'mac': normalize_mac(row.get('mac', '')),
+            'ip': ip,
+            'mac': mac,
         })
 
 
@@ -601,8 +651,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({'ok': True, 'session': session_id})
             if path in ('/api/pm/apply/1', '/api/pm/apply/2'):
                 session_id = path.rsplit('/', 1)[-1]
-                run_apply(session_id)
-                return self._send_json({'ok': True, 'applied': session_id})
+                results = run_apply(session_id)
+                return self._send_json({'ok': True, 'applied': session_id, 'results': results})
             if path == '/api/pm/clone/1-to-2':
                 save_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
                 return self._send_json({'ok': True})
@@ -622,10 +672,10 @@ class Handler(BaseHTTPRequestHandler):
                 if sync_router:
                     sync_static_to_router(rows)
                 if payload.get('apply_runtime'):
-                    run_apply(session_id)
+                    apply_results = run_apply(session_id)
                 if payload.get('reboot_router'):
                     call_old_gui('/api/system/reboot', method='GET')
-                return self._send_json({'ok': True, 'session': session_id, 'count': len(rows)})
+                return self._send_json({'ok': True, 'session': session_id, 'count': len(rows), 'apply_results': locals().get('apply_results', [])})
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', '')), session=str(payload.get('session', '1'))))
             if path == '/api/pm/reboot-router':
