@@ -57,8 +57,6 @@ def proxy_tag_num(tag):
 
 
 def load_session_data(session_id: str):
-    if session_id == '1' and RUNTIME_FILE.exists():
-        return load_json(RUNTIME_FILE)
     return load_json(SESSION_FILES[session_id])
 
 
@@ -278,6 +276,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'session': '1', 'rows': extract_rows(load_session_data('1'))})
         if path == '/api/pm/sessions/2':
             return self._send_json({'session': '2', 'rows': extract_rows(load_session_data('2'))})
+        if path == '/api/pm/router-network':
+            return self._send_json(call_old_gui('/api/system/network'))
         self._send_json({'error': 'Not found'}, 404)
 
     def do_POST(self):
@@ -307,6 +307,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(call_old_gui('/api/system/reboot'))
             if path == '/api/pm/setup-router':
                 return self._send_json(call_old_gui('/api/system/network'))
+            if path == '/api/pm/router-change-lan':
+                return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data=payload))
             return self._send_json({'error': 'Not found'}, 404)
         except urllib.error.HTTPError as e:
             return self._send_json({'ok': False, 'error': f'HTTP {e.code}'}, 400)

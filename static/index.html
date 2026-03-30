@@ -38,6 +38,13 @@
     .check-bad { color:#b91c1c; font-weight:800; }
     .check-wait { color:#2563eb; font-weight:700; }
     .th-check { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:9999; }
+    .modal.show { display:flex; }
+    .modal-card { width:min(560px, 92vw); background:#fff; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+    .modal-head { display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-bottom:1px solid #e5e7eb; }
+    .modal-body { padding:16px 18px; display:grid; gap:12px; }
+    .modal-foot { padding:16px 18px; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:10px; }
+    .field label { display:block; font-size:13px; font-weight:700; margin-bottom:6px; }
   </style>
 </head>
 <body>
@@ -56,7 +63,7 @@
       </div>
       <div class="toolbar-right">
         <button class="btn warn" onclick="rebootRouter()">Reboot Router</button>
-        <button class="btn warn" onclick="setupRouter()">Set up Router</button>
+        <button class="btn warn" onclick="openSetupRouter()">Set up Router</button>
       </div>
     </div>
 
@@ -109,6 +116,38 @@
           </thead>
           <tbody id="rows"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="routerModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <b>Set up Router</b>
+        <button class="btn small ghost" onclick="closeRouterModal()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Router IP / LAN IP</label>
+          <input id="routerIp" placeholder="192.168.1.1">
+        </div>
+        <div class="field">
+          <label>Subnet Mask</label>
+          <input id="routerMask" placeholder="255.255.255.0">
+        </div>
+        <div class="field">
+          <label>Gateway</label>
+          <input id="routerGw" placeholder="192.168.1.1">
+        </div>
+        <div class="field">
+          <label>DNS</label>
+          <input id="routerDns" placeholder="8.8.8.8">
+        </div>
+        <div class="sub" id="routerInfo"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" onclick="closeRouterModal()">Hủy</button>
+        <button class="btn apply" onclick="submitRouterSetup()">Lưu cấu hình</button>
       </div>
     </div>
   </div>
@@ -201,7 +240,41 @@
       setStatus('Đã check xong session ' + currentSession);
     }
     async function rebootRouter() { try { setStatus('Đang reboot router...'); await fetchJSON('/api/pm/reboot-router', { method:'POST', body:'{}' }); setStatus('Đã gửi lệnh reboot router'); } catch (e) { setStatus('Lỗi: ' + e.message); } }
-    async function setupRouter() { try { setStatus('Đang gọi Set up Router...'); await fetchJSON('/api/pm/setup-router', { method:'POST', body:'{}' }); setStatus('Đã gọi Set up Router'); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    async function openSetupRouter() {
+      try {
+        setStatus('Đang lấy cấu hình router...');
+        const data = await fetchJSON('/api/pm/router-network');
+        const payload = data.data || data || {};
+        document.getElementById('routerIp').value = payload.ip || payload.lan_ip || payload.address || '';
+        document.getElementById('routerMask').value = payload.mask || payload.netmask || '255.255.255.0';
+        document.getElementById('routerGw').value = payload.gateway || payload.gw || '';
+        document.getElementById('routerDns').value = payload.dns || '';
+        document.getElementById('routerInfo').textContent = JSON.stringify(payload);
+        document.getElementById('routerModal').classList.add('show');
+        setStatus('Đã mở Set up Router');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+    function closeRouterModal() {
+      document.getElementById('routerModal').classList.remove('show');
+    }
+    async function submitRouterSetup() {
+      try {
+        const payload = {
+          ip: document.getElementById('routerIp').value.trim(),
+          mask: document.getElementById('routerMask').value.trim(),
+          gateway: document.getElementById('routerGw').value.trim(),
+          dns: document.getElementById('routerDns').value.trim(),
+        };
+        setStatus('Đang lưu cấu hình router...');
+        await fetchJSON('/api/pm/router-change-lan', { method:'POST', body: JSON.stringify(payload) });
+        closeRouterModal();
+        setStatus('Đã gửi cấu hình đổi IP router');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
     async function loadSession(session) { setStatus('Loading session ' + session + '...'); const data = await fetchJSON(`/api/pm/sessions/${session}`); currentSession = session; currentRows = data.rows || []; render(); setStatus('Loaded session ' + session); }
     async function switchSession(session) { try { await loadSession(session); } catch (e) { setStatus('Lỗi: ' + e.message); } }
     async function saveCurrent() { try { setStatus('Saving session ' + currentSession + '...'); await fetchJSON(`/api/pm/sessions/${currentSession}`, { method:'POST', body: JSON.stringify({ rows: currentRows }) }); setStatus('Saved session ' + currentSession); } catch (e) { setStatus('Lỗi: ' + e.message); } }
