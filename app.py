@@ -71,6 +71,9 @@ def ensure_session2_exists():
     data = load_json(SESSION_FILES['1'])
     clear_session_proxies(data)
     save_json(s2, data)
+    s1_text = get_saved_ip_identity_text('1')
+    if s1_text and not get_saved_ip_identity_text('2'):
+        set_saved_ip_identity_text('2', s1_text)
 
 
 def load_json(path: Path):
@@ -328,7 +331,10 @@ def extract_rows(data, session='1'):
     devices = load_device_map()
     session_meta = get_session_meta(session)
     saved_text = get_saved_ip_identity_text(session)
-    configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
+    if saved_text:
+        configured_rows = parse_ip_identity_text(saved_text)
+    else:
+        configured_rows = [{'tag': tag, 'ip': ip} for tag, ip in sorted(build_tag_to_ip(data).items(), key=lambda kv: proxy_tag_num(kv[0])) if str(tag).startswith('proxy_') and str(ip).strip()]
     configured_ips = set()
     rows = []
 
@@ -885,6 +891,9 @@ class Handler(BaseHTTPRequestHandler):
                     names = meta.setdefault('session_names', {}) if isinstance(meta, dict) else {}
                     if isinstance(names, dict) and '1' in names:
                         names['2'] = names['1']
+                    ip_text = meta.setdefault('ip_identity_text', {}) if isinstance(meta, dict) else {}
+                    if isinstance(ip_text, dict) and '1' in ip_text:
+                        ip_text['2'] = ip_text['1']
                     save_session_state(state)
                 return self._send_json({'ok': True})
             if path == '/api/pm/meta':
