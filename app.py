@@ -61,6 +61,30 @@ def save_static_cache(rows):
     save_json(STATIC_HOSTS_FILE, data)
 
 
+def load_connected_clients():
+    rows = []
+    seen = set()
+    leases = Path('/tmp/dhcp.leases')
+    if not leases.exists():
+        return rows
+    for line in leases.read_text(encoding='utf-8', errors='ignore').splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        _expiry, mac, ip, _hostname = parts[:4]
+        mac = normalize_mac(mac)
+        ip = str(ip).strip()
+        if not ip or not mac:
+            continue
+        key = (ip, mac)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({'ip': ip, 'mac': mac})
+    rows.sort(key=lambda x: (x['ip'], x['mac']))
+    return rows
+
+
 def parse_mapping_text(text: str):
     rows = []
     seen_ips = {}
@@ -146,6 +170,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/api/mappings':
             rows = load_static_hosts()
+            text = '\n'.join(f"{row['ip']} {row['mac']}" for row in rows if row.get('ip') and row.get('mac'))
+            return self._send_json({'ok': True, 'rows': rows, 'text': text, 'count': len(rows)})
+        if path == '/api/connected-macs':
+            rows = load_connected_clients()
             text = '\n'.join(f"{row['ip']} {row['mac']}" for row in rows if row.get('ip') and row.get('mac'))
             return self._send_json({'ok': True, 'rows': rows, 'text': text, 'count': len(rows)})
         return self._send_json({'error': 'Not found'}, 404)

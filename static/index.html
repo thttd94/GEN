@@ -36,6 +36,7 @@
         <textarea id="mappingText" spellcheck="false" placeholder="192.15.4.1 22:BE:61:3E:26:CF"></textarea>
         <div class="actions">
           <button class="btn" onclick="loadData()">Reload</button>
+          <button class="btn" onclick="loadConnectedMacs()">Lấy MAC</button>
           <button class="btn apply" onclick="applyAll()">Apply</button>
           <button class="btn warn" onclick="rebootRouter()">Reboot</button>
         </div>
@@ -67,6 +68,18 @@
         setStatus('Lỗi: ' + e.message);
       }
     }
+    async function loadConnectedMacs() {
+      try {
+        setStatus('Đang lấy MAC đang connect...');
+        const data = await fetchJSON('/api/connected-macs');
+        document.getElementById('mappingText').value = data.text || '';
+        updateCount();
+        setStatus(`Đã lấy ${data.count || 0} dòng MAC đang connect`);
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
     async function applyAll() {
       try {
         const text = document.getElementById('mappingText').value;
