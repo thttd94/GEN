@@ -310,7 +310,7 @@
     }
 
     function getVisibleRows() {
-      return currentRows.filter(r => viewMode === 'configured' ? !r.configured : !!r.configured);
+      return currentRows.filter(r => viewMode === 'configured' ? !!r.configured : !r.configured);
     }
 
     function switchViewMode(mode) {
