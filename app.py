@@ -306,11 +306,15 @@ def extract_rows(data, session='1'):
     }
     devices = load_device_map()
     session_meta = get_session_meta(session)
+    tag_ip_map = build_tag_to_ip(data)
+    configured_ips = set()
     rows = []
 
-    for i in range(1, MAX_PROXY_TAG + 1):
-        tag = f'proxy_{i}'
-        ip = tag_to_ip(tag)
+    for tag, ip in sorted(tag_ip_map.items(), key=lambda kv: proxy_tag_num(kv[0])):
+        ip = str(ip).strip()
+        if not ip:
+            continue
+        configured_ips.add(ip)
         dev = devices.get(ip, {})
         meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) else {}
         outbound = outbounds.get(tag, {})
@@ -318,9 +322,24 @@ def extract_rows(data, session='1'):
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
-            'mac': normalize_mac(meta.get('mac', '')),
+            'mac': normalize_mac(meta.get('mac', '') or dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
             'note': str(meta.get('note', '')).strip(),
+            'configured': True,
+        })
+
+    for ip, dev in sorted(devices.items(), key=lambda kv: kv[0]):
+        ip = str(ip).strip()
+        if not ip or ip in configured_ips:
+            continue
+        rows.append({
+            'ip': ip,
+            'tag': '',
+            'proxy': '',
+            'mac': normalize_mac(dev.get('mac', '')),
+            'status': str(dev.get('status', 'offline')).strip() or 'offline',
+            'note': '',
+            'configured': False,
         })
 
     return rows

@@ -32,6 +32,11 @@
     .notes-summary-empty { color:#9ca3af; }
     .bulkbar { display:grid; grid-template-columns: 370px 1fr auto; gap:10px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
     .bulk-actions { display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
+    .view-tabs { display:flex; gap:0; align-items:center; margin-top:10px; }
+    .view-tab { border:1px solid #a16207; background:#92400e; color:#fff; padding:10px 16px; cursor:pointer; font-weight:800; }
+    .view-tab:first-child { border-radius:10px 0 0 10px; }
+    .view-tab:last-child { border-radius:0 10px 10px 0; }
+    .view-tab.active { background:#06b6d4; border-color:#0891b2; }
     .sub { color:#6b7280; font-size:12px; margin-top:5px; }
     .grid { max-height:76vh; overflow:auto; }
     table { width:100%; border-collapse:collapse; }
@@ -117,6 +122,13 @@
         </div>
       </div>
 
+      <div class="notes-wrap" style="padding-top:10px;padding-bottom:10px;">
+        <div class="view-tabs">
+          <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
+          <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
+        </div>
+      </div>
+
       <div class="grid">
         <table>
           <thead>
@@ -187,6 +199,7 @@
   <script>
     let currentSession = '1';
     let currentRows = [];
+    let viewMode = 'configured';
     let sessionNames = { '1': 'Session 1', '2': 'Session 2' };
     let networkPollTimer = null;
     let appTitlePrefix = 'Genrouter';
@@ -238,7 +251,7 @@
 
     function renderNotesSummary() {
       const box = document.getElementById('notesSummary');
-      const lines = currentRows.filter(r => String(r.note || '').trim()).map(r => `${r.ip} | ${r.tag} | ${r.note.trim()}`);
+      const lines = currentRows.filter(r => r.configured && String(r.note || '').trim()).map(r => `${r.ip} | ${r.tag} | ${r.note.trim()}`);
       if (!lines.length) {
         box.innerHTML = '<span class="notes-summary-empty">Chưa có note</span>';
         return;
@@ -263,16 +276,29 @@
       }
     }
 
+    function getVisibleRows() {
+      return currentRows.filter(r => viewMode === 'configured' ? !!r.configured : !r.configured);
+    }
+
+    function switchViewMode(mode) {
+      viewMode = mode === 'unconfigured' ? 'unconfigured' : 'configured';
+      render();
+      setStatus(viewMode === 'configured' ? ('Đang xem đã cấu hình của ' + sessionNameOf(currentSession)) : 'Đang xem IP/MAC chưa được định danh');
+    }
+
     function render() {
       document.getElementById('tab1').classList.toggle('active', currentSession === '1');
       document.getElementById('tab2').classList.toggle('active', currentSession === '2');
       document.getElementById('tab1').textContent = sessionNameOf('1');
       document.getElementById('tab2').textContent = sessionNameOf('2');
+      document.getElementById('viewConfiguredBtn').classList.toggle('active', viewMode === 'configured');
+      document.getElementById('viewUnconfiguredBtn').classList.toggle('active', viewMode === 'unconfigured');
       renderAppTitle();
       document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
       document.querySelector('.btn.apply').textContent = 'Apply ' + sessionNameOf(currentSession);
-      document.getElementById('countLabel').textContent = `${currentRows.length} rows`;
-      document.getElementById('rows').innerHTML = currentRows.map((row, idx) => `
+      const visibleRows = getVisibleRows();
+      document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
+      document.getElementById('rows').innerHTML = visibleRows.map((row, idx) => `
         <tr>
           <td>${idx + 1}</td>
           <td class="mono">${esc(row.mac || '')}</td>
