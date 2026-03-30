@@ -10,8 +10,12 @@
     .titlebar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
     .title { font-size:26px; font-weight:800; }
     .brand { font-size:14px; font-weight:700; color:#2563eb; }
+    .titlebar-right { display:flex; align-items:center; gap:8px; }
     .toolbar { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px; }
     .toolbar-left,.toolbar-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .conn-badge { display:inline-flex; align-items:center; justify-content:center; min-width:110px; padding:9px 14px; border-radius:10px; font-weight:800; font-size:13px; border:1px solid transparent; }
+    .conn-badge.connected { background:#dcfce7; color:#166534; border-color:#86efac; }
+    .conn-badge.disconnected { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
     .btn { border:1px solid #d1d5db; background:#fff; padding:9px 13px; border-radius:10px; cursor:pointer; font-weight:700; }
     .btn.tab.active { background:#2563eb; color:#fff; border-color:#2563eb; }
     .btn.apply { background:#16a34a; color:#fff; border-color:#16a34a; }
@@ -20,6 +24,8 @@
     .status { font-size:13px; color:#2563eb; font-weight:700; margin-left:6px; }
     .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
     .meta { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
+    .session-meta { display:flex; align-items:center; gap:8px; }
+    .icon-btn { border:1px solid #d1d5db; background:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
     .notes-wrap { padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
     .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:105px; max-height:165px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
     .notes-summary-empty { color:#9ca3af; }
@@ -58,7 +64,9 @@
   <div class="wrap">
     <div class="titlebar">
       <div class="title">Genrouter Proxy Manager _ By Hồng Thái</div>
-      <div class="brand">Hồng Thái</div>
+      <div class="titlebar-right">
+        <div class="conn-badge disconnected" id="connBadge">Disconnected</div>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -66,13 +74,12 @@
         <button class="btn tab active" id="tab1" onclick="switchSession('1')">Session 1</button>
         <button class="btn tab" id="tab2" onclick="switchSession('2')">Session 2</button>
         <button class="btn" onclick="saveCurrent()">Save</button>
-        <button class="btn apply" onclick="applySession('1')">Apply SS1</button>
-        <button class="btn apply" onclick="applySession('2')">Apply SS2</button>
+        <button class="btn apply" onclick="applyCurrentSession()">Apply Session đang mở</button>
         <button class="btn" onclick="clone1to2()">Clone SS1 → SS2</button>
         <span class="status" id="status">Ready</span>
       </div>
       <div class="toolbar-right">
-        <button class="btn warn" onclick="openIpMacConfig()">CẤU HÌNH IP/MAC</button>
+        <button class="btn warn" onclick="openIpMacConfig()">ĐỊNH DANH IP</button>
         <button class="btn warn" onclick="rebootRouter()">Reboot Router</button>
         <button class="btn warn" onclick="openSetupRouter()">Set up Router</button>
       </div>
@@ -80,7 +87,7 @@
 
     <div class="panel">
       <div class="meta">
-        <div><b id="sessionLabel">Session 1</b></div>
+        <div class="session-meta"><b id="sessionLabel">Session 1</b><button class="icon-btn" onclick="editSessionName()" title="Đổi tên session">✏️</button></div>
         <div class="sub" id="countLabel">0 rows</div>
       </div>
 
@@ -103,7 +110,7 @@
           <button class="btn" onclick="assignAllProxy()">1 Proxy All</button>
           <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
           <button class="btn" onclick="clearAllNotes()">Clear Notes</button>
-          <button class="btn" onclick="applyBulkMap()">Bulk Assign</button>
+          <button class="btn" onclick="applyBulkMap()">Gán hàng loạt</button>
         </div>
       </div>
 
@@ -120,8 +127,8 @@
               <th class="note-cell">Note</th>
               <th style="width:190px;">
                 <div class="th-check">
-                  <span>Check Proxy</span>
-                  <button class="btn small warn" onclick="checkAllProxy()">Check All</button>
+                  <span>Kiểm tra Proxy</span>
+                  <button class="btn small warn" onclick="checkAllProxy()">Kiểm tra tất cả</button>
                 </div>
               </th>
             </tr>
@@ -155,11 +162,11 @@
   <div class="modal" id="ipMacModal">
     <div class="modal-card">
       <div class="modal-head">
-        <b>CẤU HÌNH IP/MAC</b>
+        <b>ĐỊNH DANH IP</b>
         <button class="btn small" onclick="closeIpMacModal()">Đóng</button>
       </div>
       <div class="modal-body">
-        <div class="sub">Mỗi dòng: <b>proxy_x|ip|mac</b> — ví dụ: <span class="mono">proxy_1|192.15.4.1|22:BE:61:3E:26:CF</span></div>
+        <div class="sub">Mỗi dòng: <b>proxy_x|ip</b> — ví dụ: <span class="mono">proxy_1|192.15.4.1</span></div>
         <textarea id="ipMacText" class="cfg-text" spellcheck="false"></textarea>
         <div class="checkline">
           <label><input type="checkbox" id="cfgApplyRuntime" checked> Apply runtime ngay</label>
@@ -177,8 +184,39 @@
   <script>
     let currentSession = '1';
     let currentRows = [];
+    let sessionNames = { '1': 'Session 1', '2': 'Session 2' };
+    let networkPollTimer = null;
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    function setConnectionBadge(isConnected) {
+      const el = document.getElementById('connBadge');
+      if (!el) return;
+      el.className = 'conn-badge ' + (isConnected ? 'connected' : 'disconnected');
+      el.textContent = isConnected ? 'Connected' : 'Disconnected';
+    }
+    function extractNetworkConnected(data) {
+      if (!data) return false;
+      if (typeof data.success === 'boolean') return data.success;
+      if (typeof data.connected === 'boolean') return data.connected;
+      if (typeof data.ok === 'boolean') return data.ok;
+      const payload = data.data ?? data.result ?? data;
+      if (typeof payload === 'boolean') return payload;
+      if (payload && typeof payload.connected === 'boolean') return payload.connected;
+      if (payload && typeof payload.success === 'boolean') return payload.success;
+      const text = JSON.stringify(payload).toLowerCase();
+      if (text.includes('disconnected') || text.includes('no internet') || text.includes('network issue')) return false;
+      if (text.includes('connected') || text.includes('online') || text.includes('success')) return true;
+      return false;
+    }
+    async function refreshConnectionStatus(silent=false) {
+      try {
+        const data = await fetchJSON('/api/pm/router-network');
+        setConnectionBadge(extractNetworkConnected(data));
+      } catch (e) {
+        setConnectionBadge(false);
+        if (!silent) setStatus('Lỗi mạng router: ' + e.message);
+      }
+    }
     async function fetchJSON(url, options={}) {
       const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...options });
       const data = await res.json();
@@ -197,10 +235,15 @@
       box.textContent = lines.join('\n');
     }
 
+    function sessionNameOf(session) { return sessionNames[String(session)] || `Session ${session}`; }
+
     function render() {
       document.getElementById('tab1').classList.toggle('active', currentSession === '1');
       document.getElementById('tab2').classList.toggle('active', currentSession === '2');
-      document.getElementById('sessionLabel').textContent = currentSession === '1' ? 'Session 1' : 'Session 2';
+      document.getElementById('tab1').textContent = sessionNameOf('1');
+      document.getElementById('tab2').textContent = sessionNameOf('2');
+      document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
+      document.querySelector('.btn.apply').textContent = 'Apply ' + sessionNameOf(currentSession);
       document.getElementById('countLabel').textContent = `${currentRows.length} rows`;
       document.getElementById('rows').innerHTML = currentRows.map((row, idx) => `
         <tr>
@@ -220,6 +263,21 @@
       const row = currentRows.find(r => r.tag === el.dataset.tag);
       if (row) row[el.dataset.field] = el.value;
       if (el.dataset.field === 'note') renderNotesSummary();
+    }
+
+    async function editSessionName() {
+      const current = sessionNameOf(currentSession);
+      const name = prompt(`Đổi tên Session ${currentSession}`, current);
+      if (name === null) return;
+      const clean = String(name || '').trim() || `Session ${currentSession}`;
+      try {
+        await fetchJSON(`/api/pm/sessions/${currentSession}`, { method:'POST', body: JSON.stringify({ rows: currentRows, name: clean }) });
+        sessionNames[currentSession] = clean;
+        render();
+        setStatus('Đã đổi tên session ' + currentSession);
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
     }
 
     function assignAllProxy() {
@@ -264,7 +322,7 @@
         changed++;
       }
       render();
-      setStatus(`Đã gán hàng loạt ${changed} dòng theo danh sách nhập`);
+      setStatus(`Đã gán hàng loạt ${changed} dòng cho session ${currentSession}`);
     }
 
     function closeIpMacModal() {
@@ -273,11 +331,11 @@
 
     async function openIpMacConfig() {
       try {
-        setStatus('Đang nạp cấu hình IP/MAC...');
+        setStatus('Đang nạp định danh IP...');
         const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`);
         document.getElementById('ipMacText').value = data.text || '';
         document.getElementById('ipMacModal').classList.add('show');
-        setStatus('Đã nạp cấu hình IP/MAC');
+        setStatus('Đã nạp định danh IP');
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
@@ -289,17 +347,17 @@
         let ip = '';
         if (i <= 250) ip = `192.15.4.${i}`;
         else ip = `192.15.5.${i - 250}`;
-        lines.push(`proxy_${i}|${ip}|`);
+        lines.push(`proxy_${i}|${ip}`);
       }
       document.getElementById('ipMacText').value = lines.join('\n');
-      setStatus('Đã nạp mẫu mặc định proxy|ip|mac');
+      setStatus('Đã nạp mẫu định danh proxy|ip');
     }
 
     async function submitIpMacConfig() {
       try {
         const text = document.getElementById('ipMacText').value;
         if (!text.trim()) return setStatus('Chưa có dữ liệu IP/MAC');
-        setStatus('Đang apply cấu hình IP/MAC...');
+        setStatus('Đang khóa định danh IP...');
         const payload = {
           text,
           sync_router: true,
@@ -309,7 +367,7 @@
         const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`, { method:'POST', body: JSON.stringify(payload) });
         closeIpMacModal();
         await loadSession(currentSession);
-        setStatus(`Đã apply cấu hình IP/MAC (${data.count || 0} dòng)`);
+        setStatus(`Đã khóa định danh IP (${data.count || 0} dòng)`);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
@@ -324,7 +382,7 @@
       try {
         const data = await fetchJSON('/api/pm/check-proxy', { method:'POST', body: JSON.stringify({ proxy: row.proxy || '', session: currentSession }) });
         box.className = data.ok ? 'check-ok' : 'check-bad';
-        box.textContent = data.ok ? (data.message || 'LIVE') : 'DEAD';
+        box.textContent = data.ok ? 'LIVE' : 'DEAD';
       } catch {
         box.className = 'check-bad';
         box.textContent = 'DEAD';
@@ -383,7 +441,9 @@
       const data = await fetchJSON(`/api/pm/sessions/${session}`);
       currentSession = session;
       currentRows = data.rows || [];
+      if (data.name) sessionNames[String(session)] = data.name;
       render();
+      await refreshConnectionStatus(true);
       setStatus('Loaded session ' + session);
     }
 
@@ -391,21 +451,37 @@
       try { await loadSession(session); } catch (e) { setStatus('Lỗi: ' + e.message); }
     }
 
+    async function saveSession(session, rowsOverride=null) {
+      const rows = Array.isArray(rowsOverride) ? rowsOverride : currentRows;
+      setStatus('Saving session ' + session + '...');
+      const resp = await fetchJSON(`/api/pm/sessions/${session}`, { method:'POST', body: JSON.stringify({ rows, name: sessionNameOf(session) }) });
+      if (resp.name) sessionNames[String(session)] = resp.name;
+      setStatus('Saved session ' + session);
+    }
+
     async function saveCurrent() {
       try {
-        setStatus('Saving session ' + currentSession + '...');
-        await fetchJSON(`/api/pm/sessions/${currentSession}`, { method:'POST', body: JSON.stringify({ rows: currentRows }) });
-        setStatus('Saved session ' + currentSession);
+        await saveSession(currentSession);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
     }
 
+    async function applyCurrentSession() {
+      return applySession(currentSession);
+    }
+
     async function applySession(session) {
       try {
-        if (currentSession === session) await saveCurrent();
+        if (currentSession !== session) await loadSession(session);
+        await saveCurrent();
         setStatus('Applying session ' + session + '...');
-        await fetchJSON(`/api/pm/apply/${session}`, { method:'POST' });
+        const data = await fetchJSON(`/api/pm/apply/${session}`, { method:'POST', body: JSON.stringify({ rows: currentRows }) });
+        const bad = Array.isArray(data.results) ? data.results.find(x => x && (x.error || x.ok === false || (typeof x.code === 'number' && x.code !== 0))) : null;
+        if (bad) {
+          setStatus('Apply SS' + session + ' lỗi: ' + (bad.cmd || '') + ' ' + (bad.stderr || bad.error || ('code ' + bad.code)));
+          return;
+        }
         setStatus('Đã apply session ' + session);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
@@ -423,6 +499,10 @@
       }
     }
 
+    setConnectionBadge(false);
+    refreshConnectionStatus(true);
+    if (networkPollTimer) clearInterval(networkPollTimer);
+    networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
     loadSession('1');
   </script>
 </body>

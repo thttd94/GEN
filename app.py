@@ -13,6 +13,7 @@ import struct
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
 NOTES_FILE = BASE_DIR / 'notes.json'
+SESSION_STATE_FILE = BASE_DIR / 'session_state.json'
 
 ROUTER_CONFIG_DIR = Path('/etc/genrouter/config')
 ROUTER_RUNTIME_DIR = Path('/etc/genrouter')
@@ -88,6 +89,69 @@ def load_notes():
 
 def save_notes(notes):
     save_json(NOTES_FILE, notes)
+
+
+def load_session_state():
+    if not SESSION_STATE_FILE.exists():
+        return {}
+    try:
+        return load_json(SESSION_STATE_FILE)
+    except Exception:
+        return {}
+
+
+def save_session_state(state):
+    save_json(SESSION_STATE_FILE, state)
+
+
+def get_session_meta(session_id, tag=None):
+    state = load_session_state()
+    sess = state.get(str(session_id), {})
+    if tag is None:
+        return sess if isinstance(sess, dict) else {}
+    item = sess.get(str(tag), {})
+    return item if isinstance(item, dict) else {}
+
+
+def get_session_display_name(session_id):
+    state = load_session_state()
+    meta = state.get('__meta__', {}) if isinstance(state, dict) else {}
+    names = meta.get('session_names', {}) if isinstance(meta, dict) else {}
+    name = str(names.get(str(session_id), '')).strip()
+    return name or f'Session {session_id}'
+
+
+def set_session_display_name(session_id, name):
+    session_id = str(session_id)
+    name = str(name or '').strip() or f'Session {session_id}'
+    state = load_session_state()
+    meta = state.setdefault('__meta__', {}) if isinstance(state, dict) else {}
+    if not isinstance(meta, dict):
+        state['__meta__'] = {}
+        meta = state['__meta__']
+    names = meta.setdefault('session_names', {})
+    if not isinstance(names, dict):
+        meta['session_names'] = {}
+        names = meta['session_names']
+    names[session_id] = name
+    save_session_state(state)
+    return name
+
+
+def update_session_rows_meta(session_id, rows):
+    session_id = str(session_id)
+    state = load_session_state()
+    sess = state.setdefault(session_id, {})
+    for row in rows or []:
+        tag = str((row or {}).get('tag', '')).strip()
+        if not tag:
+            continue
+        item = sess.setdefault(tag, {})
+        if 'mac' in row:
+            item['mac'] = normalize_mac(row.get('mac', ''))
+        if 'note' in row:
+            item['note'] = str(row.get('note', '')).strip()
+    save_session_state(state)
 
 
 def normalize_mac(mac):
@@ -208,51 +272,49 @@ def format_proxy(outbound):
     return f"{server}:{port}:{user}:{password}"
 
 
-def extract_rows(data):
+def extract_rows(data, session='1'):
     outbounds = {
         str(item.get('tag')): item
         for item in data.get('outbounds', [])
         if str(item.get('tag', '')).startswith('proxy_')
     }
     devices = load_device_map()
-    notes = load_notes()
-    route_by_ip = build_route_ip_to_tag(data)
+    session_meta = get_session_meta(session)
     rows = []
 
-    for ip, dev in devices.items():
-        ip = str(ip).strip()
-        tag = route_by_ip.get(ip, '')
-        if not tag:
-            continue
+    for i in range(1, 313):
+        tag = f'proxy_{i}'
+        ip = tag_to_ip(tag)
+        dev = devices.get(ip, {})
+        meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) else {}
         outbound = outbounds.get(tag, {})
         rows.append({
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
-            'mac': normalize_mac(dev.get('mac', '')),
+            'mac': normalize_mac(meta.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
-            'note': str(notes.get(ip, '')).strip(),
+            'note': str(meta.get('note', '')).strip(),
         })
 
-    rows.sort(key=lambda x: (proxy_tag_num(x['tag']), x['ip']))
     return rows
 
-
-def apply_rows_to_data(data, rows_by_tag):
+def apply_rows_to_data(data, rows_by_tag, session='1'):
     outbounds = data.setdefault('outbounds', [])
     outbound_idx = {str(item.get('tag')): i for i, item in enumerate(outbounds) if item.get('tag')}
-    notes = load_notes()
 
+    touched_rows = []
     for tag, row in rows_by_tag.items():
         proxy = str(row.get('proxy', '')).strip()
         set_outbound_proxy(outbounds, outbound_idx, tag, proxy)
-        ip = str(row.get('ip', '')).strip()
-        if ip:
-            notes[ip] = str(row.get('note', '')).strip()
+        touched_rows.append({
+            'tag': tag,
+            'mac': row.get('mac', ''),
+            'note': row.get('note', ''),
+        })
 
-    save_notes(notes)
+    update_session_rows_meta(session, touched_rows)
     return data
-
 
 def set_outbound_proxy(outbounds, outbound_idx, tag, proxy):
     idx = outbound_idx.get(tag)
@@ -325,40 +387,44 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     return data
 
 
-def build_ip_mac_config_text(data):
-    tag_to_ip = build_tag_to_ip(data)
-    static_rows = load_static_hosts_raw()
-    mac_by_ip = {str(row.get('ip', '')).strip(): normalize_mac(row.get('mac', '')) for row in static_rows}
+def build_ip_identity_text(data, session='1'):
     items = []
-    for tag, ip in tag_to_ip.items():
-        items.append((proxy_tag_num(tag), f'{tag}|{ip}|{mac_by_ip.get(ip, "")}'))
-    items.sort(key=lambda x: (x[0], x[1]))
+    for i in range(1, 313):
+        tag = f'proxy_{i}'
+        ip = tag_to_ip(tag)
+        items.append((i, f"{tag}|{ip}"))
     return '\n'.join(line for _num, line in items)
 
 
-def parse_ip_mac_config_text(text):
+def normalize_ip_identity_text(text):
+    text = str(text or '').replace('\r\n', '\n').replace('\r', '\n')
+    text = __import__('re').sub(r'(?<!\n)(proxy_\d+\|)', r'\n\1', text)
+    return text.strip()
+
+
+def parse_ip_identity_text(text):
+    text = normalize_ip_identity_text(text)
     rows = []
     seen_tags = set()
     seen_ips = set()
-    seen_macs = set()
     dup_tags = set()
     dup_ips = set()
-    dup_macs = set()
+
     for raw in str(text or '').splitlines():
         line = raw.strip()
         if not line:
             continue
         parts = [p.strip() for p in line.split('|')]
-        if len(parts) != 3:
+        if len(parts) != 2:
             raise ValueError(f'Dòng không hợp lệ: {line}')
-        tag, ip, mac = parts
+        tag, ip = parts
         if not tag.startswith('proxy_'):
             raise ValueError(f'Tag không hợp lệ: {tag}')
         if not ip:
             raise ValueError(f'IP trống ở dòng: {line}')
-        mac = normalize_mac(mac)
-        if not mac:
-            raise ValueError(f'MAC trống ở dòng: {line}')
+        expected_ip = tag_to_ip(tag)
+        if ip != expected_ip:
+            raise ValueError(f'Sai định danh IP: {tag} phải là {expected_ip}, đang là {ip}')
         if tag in seen_tags:
             dup_tags.add(tag)
         else:
@@ -367,55 +433,85 @@ def parse_ip_mac_config_text(text):
             dup_ips.add(ip)
         else:
             seen_ips.add(ip)
-        if mac in seen_macs:
-            dup_macs.add(mac)
-        else:
-            seen_macs.add(mac)
-        rows.append({'tag': tag, 'ip': ip, 'mac': mac})
+        rows.append({'tag': tag, 'ip': ip})
+
     errs = []
     if dup_tags:
         errs.append('Proxy bị trùng: ' + ', '.join(sorted(dup_tags, key=proxy_tag_num)))
     if dup_ips:
         errs.append('IP bị trùng: ' + ', '.join(sorted(dup_ips)))
-    if dup_macs:
-        errs.append('MAC bị trùng: ' + ', '.join(sorted(dup_macs)))
+
+    expected_tags = {f'proxy_{i}' for i in range(1, 313)}
+    got_tags = {row['tag'] for row in rows}
+    missing_tags = sorted(expected_tags - got_tags, key=proxy_tag_num)
+    extra_tags = sorted(got_tags - expected_tags, key=proxy_tag_num)
+    if len(rows) != 312:
+        errs.append(f'Cần đủ 312 dòng, hiện có {len(rows)} dòng')
+    if missing_tags:
+        preview = ', '.join(missing_tags[:12])
+        if len(missing_tags) > 12:
+            preview += ', ...'
+        errs.append('Thiếu proxy: ' + preview)
+    if extra_tags:
+        errs.append('Proxy ngoài phạm vi: ' + ', '.join(extra_tags))
     if errs:
         raise ValueError(' | '.join(errs))
+
     rows.sort(key=lambda x: (proxy_tag_num(x['tag']), x['ip']))
     return rows
 
 
-def apply_ip_mac_config(data, text):
-    rows = parse_ip_mac_config_text(text)
-    tag_to_ip = {row['tag']: row['ip'] for row in rows}
-    rebuild_gencore_rules(data, tag_to_ip)
-    save_static_hosts_rows([{'ip': row['ip'], 'mac': row['mac']} for row in rows])
+def apply_ip_identity_config(data, text, session='1'):
+    rows = parse_ip_identity_text(text)
+    tag_to_ip_map = {row['tag']: row['ip'] for row in rows}
+    rebuild_gencore_rules(data, tag_to_ip_map)
     return data
 
 
-def run_apply(session: str):
-    source = SESSION_FILES[session]
-    shutil.copy2(source, RUNTIME_FILE)
-    results = []
-    if GENRUNNER.exists():
+def build_old_gui_update_proxy_payload_from_rows(rows):
+    payload = {}
+    for row in rows or []:
+        ip = str((row or {}).get('ip', '')).strip()
+        proxy = str((row or {}).get('proxy', '')).strip()
+        if not ip:
+            continue
+        if not proxy:
+            payload[ip] = 'ALLOW'
+            continue
         try:
-            r = subprocess.run([str(GENRUNNER), '-c'], check=False, capture_output=True, text=True)
-            results.append({'cmd': f'{GENRUNNER} -c', 'code': r.returncode, 'stdout': (r.stdout or '').strip(), 'stderr': (r.stderr or '').strip()})
-        except Exception as e:
-            results.append({'cmd': f'{GENRUNNER} -c', 'error': str(e)})
+            server, port, username, password = parse_proxy(proxy)
+            item = {'type': 'socks5', 'server': server, 'port': int(port)}
+            if username or password:
+                item['username'] = username
+                item['password'] = password
+            payload[ip] = item
+        except Exception:
+            payload[ip] = 'ALLOW'
+    return payload
 
-    extra_cmds = [
-        ['/etc/init.d/genrouter', 'restart'],
-        ['/etc/init.d/genrouter_server', 'restart'],
-        ['/etc/init.d/odhcpd', 'reload'],
-    ]
-    for cmd in extra_cmds:
-        try:
-            if Path(cmd[0]).exists():
-                r = subprocess.run(cmd, check=False, capture_output=True, text=True)
-                results.append({'cmd': ' '.join(cmd), 'code': r.returncode, 'stdout': (r.stdout or '').strip(), 'stderr': (r.stderr or '').strip()})
-        except Exception as e:
-            results.append({'cmd': ' '.join(cmd), 'error': str(e)})
+
+def run_apply(session: str, rows_override=None):
+    source = SESSION_FILES[session]
+    results = []
+    rows = rows_override if isinstance(rows_override, list) else extract_rows(load_json(source), session=session)
+    payload = build_old_gui_update_proxy_payload_from_rows(rows)
+    try:
+        resp = call_old_gui('/api/update_proxy', method='POST', data=payload)
+        results.append({
+            'cmd': 'POST /api/update_proxy',
+            'ok': True,
+            'source': str(source),
+            'count': len(payload),
+            'response': resp.get('data'),
+        })
+    except Exception as e:
+        results.append({
+            'cmd': 'POST /api/update_proxy',
+            'ok': False,
+            'source': str(source),
+            'count': len(payload),
+            'error': str(e),
+        })
     return results
 
 
@@ -429,7 +525,7 @@ def recv_exact(sock, n):
     return data
 
 
-def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.1', target_port=80, timeout=12):
+def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.1', target_port=80, timeout=12, send_http=True):
     sock = socket.create_connection((proxy_host, proxy_port), timeout=timeout)
     try:
         sock.settimeout(timeout)
@@ -469,7 +565,10 @@ def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.
             recv_exact(sock, 16)
         recv_exact(sock, 2)
 
-        sock.sendall(b'GET / HTTP/1.1\r\nHost: 1.1.1.1\r\nConnection: close\r\n\r\n')
+        if not send_http:
+            return True
+
+        sock.sendall(f'HEAD / HTTP/1.1\r\nHost: {target_host}\r\nConnection: close\r\n\r\n'.encode('utf-8'))
         data = sock.recv(32)
         return bool(data)
     finally:
@@ -477,6 +576,25 @@ def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.
             sock.close()
         except Exception:
             pass
+
+
+def socks5_probe_multi(proxy_host, proxy_port, username, password, timeout=12):
+    targets = [
+        ('1.1.1.1', 80, True),
+        ('8.8.8.8', 53, False),
+        ('api.ipify.org', 443, False),
+        ('ifconfig.me', 443, False),
+    ]
+    last_error = None
+    for host, port, send_http in targets:
+        try:
+            if socks5_probe(proxy_host, proxy_port, username, password, target_host=host, target_port=port, timeout=timeout, send_http=send_http):
+                return True, host, port
+        except Exception as e:
+            last_error = e
+    if last_error:
+        raise last_error
+    return False, None, None
 
 
 def get_proxy_public_ip(proxy_host, proxy_port, username, password, timeout=15):
@@ -524,21 +642,15 @@ def find_duplicate_proxy_tags(public_ip, session='1'):
 
 def check_proxy(proxy: str, session='1'):
     if not proxy.strip():
-        return {'ok': False, 'status': 'empty', 'message': 'Proxy trống'}
+        return {'ok': False, 'status': 'empty', 'message': 'DEAD'}
     try:
         server, port, user, password = parse_proxy(proxy)
-        ok = socks5_probe(server, port, user, password)
+        ok, _probe_host, _probe_port = socks5_probe_multi(server, port, user, password)
         if not ok:
-            return {'ok': False, 'status': 'dead', 'message': 'Fail'}
-        public_ip = get_proxy_public_ip(server, port, user, password)
-        duplicates = find_duplicate_proxy_tags(public_ip, session=session)
-        if len(duplicates) > 1:
-            msg = f"LIVE|{public_ip}|Trùng|{','.join(duplicates)}"
-            return {'ok': True, 'status': 'live', 'message': msg, 'ip': public_ip, 'duplicates': duplicates, 'duplicate': True}
-        msg = f'LIVE|{public_ip}'
-        return {'ok': True, 'status': 'live', 'message': msg, 'ip': public_ip, 'duplicates': duplicates, 'duplicate': False}
-    except Exception as e:
-        return {'ok': False, 'status': 'dead', 'message': str(e)}
+            return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
+        return {'ok': True, 'status': 'live', 'message': 'LIVE'}
+    except Exception:
+        return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
 
 
 def call_old_gui(path, method='GET', data=None):
@@ -579,12 +691,23 @@ def call_static_api(path, method='GET', data=None):
             return {'ok': True, 'data': raw}
 
 
-def sync_static_to_router(rows):
-    for row in rows:
+def sync_static_to_router(rows, clear_first=False):
+    valid_rows = []
+    for row in rows or []:
         ip = str(row.get('ip', '')).strip()
         mac = normalize_mac(row.get('mac', ''))
         if not ip or not mac:
             continue
+        valid_rows.append({'ip': ip, 'mac': mac})
+
+    if clear_first and valid_rows:
+        try:
+            call_static_api('/del_all_static', method='GET')
+        except Exception:
+            pass
+    for row in valid_rows:
+        ip = str(row.get('ip', '')).strip()
+        mac = normalize_mac(row.get('mac', ''))
         try:
             call_static_api('/del_static', method='GET', data={'ip': ip})
         except Exception:
@@ -622,9 +745,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/api/pm/sessions/1':
-            return self._send_json({'session': '1', 'source': str(SESSION_FILES['1']), 'rows': extract_rows(load_json(SESSION_FILES['1']))})
+            return self._send_json({'session': '1', 'name': get_session_display_name('1'), 'source': str(SESSION_FILES['1']), 'rows': extract_rows(load_json(SESSION_FILES['1']), session='1')})
         if path == '/api/pm/sessions/2':
-            return self._send_json({'session': '2', 'source': str(SESSION_FILES['2']), 'rows': extract_rows(load_json(SESSION_FILES['2']))})
+            return self._send_json({'session': '2', 'name': get_session_display_name('2'), 'source': str(SESSION_FILES['2']), 'rows': extract_rows(load_json(SESSION_FILES['2']), session='2')})
         if path == '/api/pm/router-network':
             return self._send_json(call_old_gui('/api/system/network'))
         if path == '/api/pm/router-info':
@@ -632,7 +755,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in ('/api/pm/ip-mac-config/1', '/api/pm/ip-mac-config/2'):
             session_id = path.rsplit('/', 1)[-1]
             data = load_json(SESSION_FILES[session_id])
-            return self._send_json({'ok': True, 'session': session_id, 'text': build_ip_mac_config_text(data)})
+            return self._send_json({'ok': True, 'session': session_id, 'text': build_ip_identity_text(data, session=session_id)})
         self._send_json({'error': 'Not found'}, 404)
 
     def do_POST(self):
@@ -647,11 +770,17 @@ class Handler(BaseHTTPRequestHandler):
                 rows = payload.get('rows', [])
                 rows_by_tag = {str(row['tag']).strip(): row for row in rows if row.get('tag')}
                 data = load_json(SESSION_FILES[session_id])
-                save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag))
-                return self._send_json({'ok': True, 'session': session_id})
+                save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag, session=session_id))
+                name = payload.get('name')
+                if name is not None:
+                    name = set_session_display_name(session_id, name)
+                else:
+                    name = get_session_display_name(session_id)
+                return self._send_json({'ok': True, 'session': session_id, 'name': name})
             if path in ('/api/pm/apply/1', '/api/pm/apply/2'):
                 session_id = path.rsplit('/', 1)[-1]
-                results = run_apply(session_id)
+                rows_override = payload.get('rows') if isinstance(payload, dict) else None
+                results = run_apply(session_id, rows_override=rows_override)
                 return self._send_json({'ok': True, 'applied': session_id, 'results': results})
             if path == '/api/pm/clone/1-to-2':
                 save_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
@@ -666,11 +795,11 @@ class Handler(BaseHTTPRequestHandler):
                 text = str(payload.get('text', ''))
                 sync_router = bool(payload.get('sync_router', True))
                 data = load_json(SESSION_FILES[session_id])
-                rows = parse_ip_mac_config_text(text)
-                data = apply_ip_mac_config(data, text)
+                rows = parse_ip_identity_text(text)
+                data = apply_ip_identity_config(data, text, session=session_id)
                 save_json(SESSION_FILES[session_id], data)
                 if sync_router:
-                    sync_static_to_router(rows)
+                    sync_static_to_router(rows, clear_first=True)
                 if payload.get('apply_runtime'):
                     apply_results = run_apply(session_id)
                 if payload.get('reboot_router'):
