@@ -3,543 +3,93 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Genrouter</title>
+  <title>Static IP/MAC Tool</title>
   <style>
     body { font-family: Arial, sans-serif; background:#eef2f7; color:#111827; margin:0; }
-    .wrap { max-width: 1780px; margin: 0 auto; padding: 14px; }
-    .titlebar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
-    .titlebar-left { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .title { font-size:26px; font-weight:800; }
-    .brand { font-size:14px; font-weight:700; color:#2563eb; }
-    .titlebar-right { display:flex; align-items:center; gap:8px; }
-    .toolbar { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px; }
-    .toolbar-left,.toolbar-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .conn-badge { display:inline-flex; align-items:center; justify-content:center; min-width:110px; padding:9px 14px; border-radius:10px; font-weight:800; font-size:13px; border:1px solid transparent; }
-    .conn-badge.connected { background:#dcfce7; color:#166534; border-color:#86efac; }
-    .conn-badge.disconnected { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
-    .btn { border:1px solid #d1d5db; background:#fff; padding:9px 13px; border-radius:10px; cursor:pointer; font-weight:700; }
-    .btn.tab.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 18px; }
+    .card { background:#fff; border:1px solid #dbe3ee; border-radius:16px; overflow:hidden; }
+    .head { padding:16px 18px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; }
+    .title { font-size:24px; font-weight:800; }
+    .sub { color:#6b7280; font-size:13px; }
+    .body { padding:18px; display:grid; gap:12px; }
+    textarea { width:100%; min-height:420px; box-sizing:border-box; border:1px solid #d1d5db; border-radius:12px; padding:12px; font-size:14px; resize:vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; }
+    .btn { border:1px solid #d1d5db; background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:700; }
     .btn.apply { background:#16a34a; color:#fff; border-color:#16a34a; }
     .btn.warn { background:#f59e0b; color:#fff; border-color:#f59e0b; }
-    .btn.small { padding:6px 10px; font-size:12px; }
-    .status { font-size:13px; color:#2563eb; font-weight:700; margin-left:6px; }
-    .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
-    .meta { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
-    .session-meta { display:flex; align-items:center; gap:8px; }
-    .icon-btn { border:1px solid #d1d5db; background:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
-    .notes-wrap { padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
-    .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:105px; max-height:165px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
-    .notes-summary-empty { color:#9ca3af; }
-    .bulkbar { display:grid; grid-template-columns: 370px 1fr auto; gap:10px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
-    .bulk-actions { display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
-    .sub { color:#6b7280; font-size:12px; margin-top:5px; }
-    .grid { max-height:76vh; overflow:auto; }
-    table { width:100%; border-collapse:collapse; }
-    th, td { padding:10px 8px; border-bottom:1px solid #edf2f7; font-size:14px; vertical-align:middle; }
-    th { text-align:left; background:#f8fafc; position:sticky; top:0; z-index:1; }
-    input, textarea { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:8px 10px; font-size:14px; }
-    textarea { min-height:90px; resize:vertical; }
-    .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; }
-    .online { background:#dcfce7; color:#166534; }
-    .offline { background:#fee2e2; color:#991b1b; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .proxy-cell { min-width:420px; }
-    .note-cell { min-width:220px; }
-    .check-ok { color:#15803d; font-weight:800; }
-    .check-bad { color:#b91c1c; font-weight:800; }
-    .check-wait { color:#2563eb; font-weight:700; }
-    .th-check { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-    .modal { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:9999; }
-    .modal.show { display:flex; }
-    .modal-card { width:min(920px, 95vw); background:#fff; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 20px 60px rgba(0,0,0,.2); }
-    .modal-head { display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-bottom:1px solid #e5e7eb; }
-    .modal-body { padding:16px 18px; display:grid; gap:12px; }
-    .modal-foot { padding:16px 18px; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
-    .field label { display:block; font-size:13px; font-weight:700; margin-bottom:6px; }
-    .cfg-text { min-height:360px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .checkline { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
-    .checkline label { display:flex; gap:8px; align-items:center; font-size:14px; }
+    .status { padding:12px 14px; border-top:1px solid #e5e7eb; background:#f8fafc; font-size:14px; color:#1d4ed8; font-weight:700; white-space:pre-wrap; }
+    .example { background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; padding:12px; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="titlebar">
-      <div class="titlebar-left">
-        <div class="title" id="appTitle">Genrouter Proxy Manager _ By Hồng Thái</div>
-        <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
-      </div>
-      <div class="titlebar-right">
-        <div class="conn-badge disconnected" id="connBadge">Disconnected</div>
-      </div>
-    </div>
-
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <button class="btn tab active" id="tab1" onclick="switchSession('1')">Session 1</button>
-        <button class="btn tab" id="tab2" onclick="switchSession('2')">Session 2</button>
-        <button class="btn" onclick="saveCurrent()">Save</button>
-        <button class="btn apply" onclick="applyCurrentSession()">Apply Session đang mở</button>
-        <button class="btn" onclick="clone1to2()">Clone SS1 → SS2</button>
-        <span class="status" id="status">Ready</span>
-      </div>
-      <div class="toolbar-right">
-        <button class="btn warn" onclick="openIpMacConfig()">ĐỊNH DANH IP</button>
-        <button class="btn warn" onclick="rebootRouter()">Reboot Router</button>
-        <button class="btn warn" onclick="openSetupRouter()">Set up Router</button>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="meta">
-        <div class="session-meta"><b id="sessionLabel">Session 1</b><button class="icon-btn" onclick="editSessionName()" title="Đổi tên session">✏️</button></div>
-        <div class="sub" id="countLabel">0 rows</div>
-      </div>
-
-      <div class="notes-wrap">
-        <div class="notes-summary-box" id="notesSummary"></div>
-      </div>
-
-      <div class="bulkbar">
+    <div class="card">
+      <div class="head">
         <div>
-          <input id="bulkProxy" placeholder="1 proxy cho tất cả: server:port:user:pass">
-          <div class="sub">Gán toàn bộ thiết bị của session đang mở</div>
+          <div class="title">Static IP/MAC Tool</div>
+          <div class="sub">Port 19123 · nhập dạng <b>IP MAC</b> · chấp nhận khoảng trắng hoặc dấu <b>|</b> hoặc <b>;</b></div>
         </div>
-        <div>
-          <textarea id="bulkMap" placeholder="225|1.2.3.4:1080:user:pass
-225;1.2.3.4:1080:user:pass
-225 1.2.3.4:1080:user:pass"></textarea>
-          <div class="sub">x = số tag. Ví dụ 225 = proxy_225. Chỉ đổi các dòng có trong danh sách nhập.</div>
-        </div>
-        <div class="bulk-actions">
-          <button class="btn" onclick="assignAllProxy()">1 Proxy All</button>
-          <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
-          <button class="btn" onclick="clearAllNotes()">Clear Notes</button>
-          <button class="btn" onclick="applyBulkMap()">Gán hàng loạt</button>
+        <div class="sub" id="countInfo">0 dòng</div>
+      </div>
+      <div class="body">
+        <div class="example">Ví dụ hợp lệ:<br><b>192.15.4.1 22:BE:61:3E:26:CF</b><br><b>192.15.4.2|AA:BB:CC:DD:EE:FF</b><br><b>192.15.4.3;11:22:33:44:55:66</b></div>
+        <textarea id="mappingText" spellcheck="false" placeholder="192.15.4.1 22:BE:61:3E:26:CF"></textarea>
+        <div class="actions">
+          <button class="btn" onclick="loadData()">Reload</button>
+          <button class="btn apply" onclick="applyAll()">Apply</button>
+          <button class="btn warn" onclick="rebootRouter()">Reboot</button>
         </div>
       </div>
-
-      <div class="grid">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:60px;">#</th>
-              <th style="width:170px;">MAC</th>
-              <th style="width:135px;">IP</th>
-              <th style="width:95px;">Status</th>
-              <th style="width:120px;">Proxy Tag</th>
-              <th class="proxy-cell">Proxy</th>
-              <th class="note-cell">Note</th>
-              <th style="width:190px;">
-                <div class="th-check">
-                  <span>Kiểm tra Proxy</span>
-                  <button class="btn small warn" onclick="checkAllProxy()">Kiểm tra tất cả</button>
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal" id="routerModal">
-    <div class="modal-card" style="width:min(520px, 92vw)">
-      <div class="modal-head">
-        <b>Set up Router</b>
-        <button class="btn small" onclick="closeRouterModal()">Đóng</button>
-      </div>
-      <div class="modal-body">
-        <div class="field">
-          <label>LAN IP</label>
-          <input id="routerIp" placeholder="192.168.1.1">
-        </div>
-        <div class="sub" id="routerInfo">Chỉ sửa LAN IP của router</div>
-      </div>
-      <div class="modal-foot">
-        <button class="btn" onclick="closeRouterModal()">Hủy</button>
-        <button class="btn apply" onclick="submitRouterSetup()">Lưu LAN IP</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal" id="ipMacModal">
-    <div class="modal-card">
-      <div class="modal-head">
-        <b>ĐỊNH DANH IP</b>
-        <button class="btn small" onclick="closeIpMacModal()">Đóng</button>
-      </div>
-      <div class="modal-body">
-        <div class="sub">Mỗi dòng: <b>proxy_x|ip</b> — ví dụ: <span class="mono">proxy_1|192.15.4.1</span> · tối đa 1000 dòng · sẽ ép gencore.json match đúng proxy tag và IP đã nhập</div>
-        <textarea id="ipMacText" class="cfg-text" spellcheck="false"></textarea>
-        <div class="checkline">
-          <label><input type="checkbox" id="cfgApplyRuntime" checked> Apply runtime ngay</label>
-          <label><input type="checkbox" id="cfgRebootRouter"> Reboot router sau khi lưu</label>
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button class="btn" onclick="loadDefaultIpMacMap()">Nạp mặc định theo proxy</button>
-        <button class="btn" onclick="closeIpMacModal()">Hủy</button>
-        <button class="btn apply" onclick="submitIpMacConfig()">Apply</button>
-      </div>
+      <div class="status" id="status">Ready</div>
     </div>
   </div>
 
   <script>
-    let currentSession = '1';
-    let currentRows = [];
-    let sessionNames = { '1': 'Session 1', '2': 'Session 2' };
-    let networkPollTimer = null;
-    let appTitlePrefix = 'Genrouter';
-
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
-    function renderAppTitle() {
-      const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
-      const full = `${prefix} Proxy Manager _ By Hồng Thái`;
-      const titleEl = document.getElementById('appTitle');
-      if (titleEl) titleEl.textContent = full;
-      document.title = prefix;
-    }
-    function setConnectionBadge(isConnected) {
-      const el = document.getElementById('connBadge');
-      if (!el) return;
-      el.className = 'conn-badge ' + (isConnected ? 'connected' : 'disconnected');
-      el.textContent = isConnected ? 'Connected' : 'Disconnected';
-    }
-    function extractNetworkConnected(data) {
-      if (!data) return false;
-      if (typeof data.success === 'boolean') return data.success;
-      if (typeof data.connected === 'boolean') return data.connected;
-      if (typeof data.ok === 'boolean') return data.ok;
-      const payload = data.data ?? data.result ?? data;
-      if (typeof payload === 'boolean') return payload;
-      if (payload && typeof payload.connected === 'boolean') return payload.connected;
-      if (payload && typeof payload.success === 'boolean') return payload.success;
-      const text = JSON.stringify(payload).toLowerCase();
-      if (text.includes('disconnected') || text.includes('no internet') || text.includes('network issue')) return false;
-      if (text.includes('connected') || text.includes('online') || text.includes('success')) return true;
-      return false;
-    }
-    async function refreshConnectionStatus(silent=false) {
-      try {
-        const data = await fetchJSON('/api/pm/router-network');
-        setConnectionBadge(extractNetworkConnected(data));
-      } catch (e) {
-        setConnectionBadge(false);
-        if (!silent) setStatus('Lỗi mạng router: ' + e.message);
-      }
-    }
     async function fetchJSON(url, options={}) {
       const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...options });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Request failed');
       return data;
     }
-    function esc(v) { return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
-
-    function renderNotesSummary() {
-      const box = document.getElementById('notesSummary');
-      const lines = currentRows.filter(r => String(r.note || '').trim()).map(r => `${r.ip} | ${r.tag} | ${r.note.trim()}`);
-      if (!lines.length) {
-        box.innerHTML = '<span class="notes-summary-empty">Chưa có note</span>';
-        return;
-      }
-      box.textContent = lines.join('\n');
+    function updateCount() {
+      const lines = document.getElementById('mappingText').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      document.getElementById('countInfo').textContent = `${lines.length} dòng`;
     }
-
-    function sessionNameOf(session) { return sessionNames[String(session)] || `Session ${session}`; }
-
-    async function editAppTitlePrefix() {
-      const current = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
-      const name = prompt('Sửa phần tên đầu tiêu đề', current);
-      if (name === null) return;
-      const clean = String(name || '').trim() || 'Genrouter';
+    async function loadData() {
       try {
-        const data = await fetchJSON('/api/pm/meta', { method:'POST', body: JSON.stringify({ app_title_prefix: clean }) });
-        appTitlePrefix = data.app_title_prefix || clean;
-        renderAppTitle();
-        setStatus('Đã đổi tên tiêu đề');
+        setStatus('Đang nạp danh sách hiện tại...');
+        const data = await fetchJSON('/api/mappings');
+        document.getElementById('mappingText').value = data.text || '';
+        updateCount();
+        setStatus(`Đã nạp ${data.count || 0} dòng`);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
     }
-
-    function render() {
-      document.getElementById('tab1').classList.toggle('active', currentSession === '1');
-      document.getElementById('tab2').classList.toggle('active', currentSession === '2');
-      document.getElementById('tab1').textContent = sessionNameOf('1');
-      document.getElementById('tab2').textContent = sessionNameOf('2');
-      renderAppTitle();
-      document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
-      document.querySelector('.btn.apply').textContent = 'Apply ' + sessionNameOf(currentSession);
-      document.getElementById('countLabel').textContent = `${currentRows.length} rows`;
-      document.getElementById('rows').innerHTML = currentRows.map((row, idx) => `
-        <tr>
-          <td>${idx + 1}</td>
-          <td class="mono">${esc(row.mac || '')}</td>
-          <td class="mono">${esc(row.ip)}</td>
-          <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
-          <td class="mono">${esc(row.tag)}</td>
-          <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
-          <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
-          <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">Check</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
-        </tr>`).join('');
-      renderNotesSummary();
-    }
-
-    function updateField(el) {
-      const row = currentRows.find(r => r.tag === el.dataset.tag);
-      if (row) row[el.dataset.field] = el.value;
-      if (el.dataset.field === 'note') renderNotesSummary();
-    }
-
-    async function editSessionName() {
-      const current = sessionNameOf(currentSession);
-      const name = prompt(`Đổi tên Session ${currentSession}`, current);
-      if (name === null) return;
-      const clean = String(name || '').trim() || `Session ${currentSession}`;
+    async function applyAll() {
       try {
-        await fetchJSON(`/api/pm/sessions/${currentSession}`, { method:'POST', body: JSON.stringify({ rows: currentRows, name: clean }) });
-        sessionNames[currentSession] = clean;
-        render();
-        setStatus('Đã đổi tên session ' + currentSession);
+        const text = document.getElementById('mappingText').value;
+        if (!text.trim()) return setStatus('Chưa có dữ liệu để apply');
+        setStatus('Đang apply danh sách IP/MAC...');
+        const data = await fetchJSON('/api/apply', { method:'POST', body: JSON.stringify({ text }) });
+        updateCount();
+        setStatus(`Đã apply ${data.count || 0} dòng`);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
     }
-
-    function assignAllProxy() {
-      const value = document.getElementById('bulkProxy').value.trim();
-      currentRows.forEach(r => r.proxy = value);
-      render();
-      setStatus('Đã gán 1 proxy cho toàn bộ session ' + currentSession);
-    }
-
-    function clearAllProxy() {
-      currentRows.forEach(r => r.proxy = '');
-      render();
-      setStatus('Đã xóa toàn bộ proxy của session ' + currentSession);
-    }
-
-    function clearAllNotes() {
-      currentRows.forEach(r => r.note = '');
-      render();
-      setStatus('Đã xóa toàn bộ note của session ' + currentSession);
-    }
-
-    function parseBulkLine(line) {
-      let m = line.match(/^\s*(\d+)\s*[|;]\s*(.+)\s*$/);
-      if (m) return { x: m[1], proxy: m[2] };
-      m = line.match(/^\s*(\d+)\s+(.+)\s*$/);
-      if (m) return { x: m[1], proxy: m[2] };
-      return null;
-    }
-
-    function applyBulkMap() {
-      const text = document.getElementById('bulkMap').value.trim();
-      if (!text) return setStatus('Chưa nhập danh sách gán hàng loạt');
-      const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      let changed = 0;
-      for (const line of lines) {
-        const item = parseBulkLine(line);
-        if (!item) continue;
-        const tag = `proxy_${item.x}`;
-        const row = currentRows.find(r => r.tag === tag);
-        if (!row) continue;
-        row.proxy = item.proxy.trim();
-        changed++;
-      }
-      render();
-      setStatus(`Đã gán hàng loạt ${changed} dòng cho session ${currentSession}`);
-    }
-
-    function closeIpMacModal() {
-      document.getElementById('ipMacModal').classList.remove('show');
-    }
-
-    async function openIpMacConfig() {
-      try {
-        setStatus('Đang nạp định danh IP...');
-        const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`);
-        document.getElementById('ipMacText').value = data.text || '';
-        document.getElementById('ipMacModal').classList.add('show');
-        setStatus('Đã nạp định danh IP');
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
-
-    function loadDefaultIpMacMap() {
-      const lines = [];
-      for (let i = 1; i <= 1000; i++) {
-        const subnet = 4 + Math.floor((i - 1) / 250);
-        const host = ((i - 1) % 250) + 1;
-        lines.push(`proxy_${i}|192.15.${subnet}.${host}`);
-      }
-      document.getElementById('ipMacText').value = lines.join('\n');
-      setStatus('Đã nạp mẫu định danh proxy|ip');
-    }
-
-    async function submitIpMacConfig() {
-      try {
-        const text = document.getElementById('ipMacText').value;
-        if (!text.trim()) return setStatus('Chưa có dữ liệu IP/MAC');
-        setStatus('Đang khóa định danh IP...');
-        const payload = {
-          text,
-          sync_router: true,
-          apply_runtime: document.getElementById('cfgApplyRuntime').checked,
-          reboot_router: document.getElementById('cfgRebootRouter').checked,
-        };
-        const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`, { method:'POST', body: JSON.stringify(payload) });
-        closeIpMacModal();
-        await loadSession(currentSession);
-        setStatus(`Đã khóa định danh IP (${data.count || 0} dòng)`);
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
-
-    async function checkProxy(tag) {
-      const row = currentRows.find(r => r.tag === tag);
-      const box = document.getElementById(`check-${tag}`);
-      if (!row || !box) return;
-      box.className = 'check-wait';
-      box.textContent = 'CHECK...';
-      try {
-        const data = await fetchJSON('/api/pm/check-proxy', { method:'POST', body: JSON.stringify({ proxy: row.proxy || '', session: currentSession }) });
-        box.className = data.ok ? 'check-ok' : 'check-bad';
-        box.textContent = data.ok ? 'LIVE' : 'DEAD';
-      } catch {
-        box.className = 'check-bad';
-        box.textContent = 'DEAD';
-      }
-    }
-
-    async function checkAllProxy() {
-      setStatus('Đang check toàn bộ proxy...');
-      await Promise.all(currentRows.map(row => checkProxy(row.tag)));
-      setStatus('Đã check xong session ' + currentSession);
-    }
-
     async function rebootRouter() {
       try {
-        setStatus('Đang reboot router...');
-        await fetchJSON('/api/pm/reboot-router', { method:'POST', body:'{}' });
-        setStatus('Đã gửi lệnh reboot router');
+        setStatus('Đang gửi lệnh reboot...');
+        await fetchJSON('/api/reboot', { method:'POST', body:'{}' });
+        setStatus('Đã gửi lệnh reboot');
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
     }
-
-    async function openSetupRouter() {
-      try {
-        setStatus('Đang lấy IP router...');
-        const info = await fetchJSON('/api/pm/router-info');
-        const ip = info?.data?.data?.lan?.networks?.[0]?.ip || info?.data?.lan?.networks?.[0]?.ip || window.location.hostname || '';
-        document.getElementById('routerIp').value = ip;
-        document.getElementById('routerModal').classList.add('show');
-        setStatus('Đã mở Set up Router');
-      } catch {
-        document.getElementById('routerIp').value = window.location.hostname || '';
-        document.getElementById('routerModal').classList.add('show');
-        setStatus('Đã mở Set up Router');
-      }
-    }
-
-    function closeRouterModal() {
-      document.getElementById('routerModal').classList.remove('show');
-    }
-
-    async function submitRouterSetup() {
-      try {
-        const payload = { ip_lan: document.getElementById('routerIp').value.trim() };
-        setStatus('Đang lưu LAN IP router...');
-        await fetchJSON('/api/pm/router-change-lan', { method:'POST', body: JSON.stringify(payload) });
-        closeRouterModal();
-        setStatus('Đã gửi cấu hình đổi LAN IP router');
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
-
-    async function loadSession(session) {
-      setStatus('Loading session ' + session + '...');
-      const data = await fetchJSON(`/api/pm/sessions/${session}`);
-      currentSession = session;
-      currentRows = data.rows || [];
-      if (data.name) sessionNames[String(session)] = data.name;
-      render();
-      await refreshConnectionStatus(true);
-      setStatus('Loaded session ' + session);
-    }
-
-    async function switchSession(session) {
-      try { await loadSession(session); } catch (e) { setStatus('Lỗi: ' + e.message); }
-    }
-
-    async function saveSession(session, rowsOverride=null) {
-      const rows = Array.isArray(rowsOverride) ? rowsOverride : currentRows;
-      setStatus('Saving session ' + session + '...');
-      const resp = await fetchJSON(`/api/pm/sessions/${session}`, { method:'POST', body: JSON.stringify({ rows, name: sessionNameOf(session) }) });
-      if (resp.name) sessionNames[String(session)] = resp.name;
-      setStatus('Saved session ' + session);
-    }
-
-    async function saveCurrent() {
-      try {
-        await saveSession(currentSession);
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
-
-    async function applyCurrentSession() {
-      return applySession(currentSession);
-    }
-
-    async function applySession(session) {
-      try {
-        if (currentSession !== session) await loadSession(session);
-        await saveCurrent();
-        setStatus('Applying session ' + session + '...');
-        const data = await fetchJSON(`/api/pm/apply/${session}`, { method:'POST', body: JSON.stringify({ rows: currentRows }) });
-        const bad = Array.isArray(data.results) ? data.results.find(x => x && (x.error || x.ok === false || (typeof x.code === 'number' && x.code !== 0))) : null;
-        if (bad) {
-          setStatus('Apply SS' + session + ' lỗi: ' + (bad.cmd || '') + ' ' + (bad.stderr || bad.error || ('code ' + bad.code)));
-          return;
-        }
-        setStatus('Đã apply session ' + session);
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
-
-    async function clone1to2() {
-      try {
-        setStatus('Cloning SS1 -> SS2...');
-        await fetchJSON('/api/pm/clone/1-to-2', { method:'POST' });
-        if (currentSession === '2') await loadSession('2');
-        setStatus('Đã clone SS1 -> SS2');
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
-
-    async function bootstrap() {
-      try {
-        const meta = await fetchJSON('/api/pm/meta');
-        appTitlePrefix = meta.app_title_prefix || 'Genrouter';
-      } catch {}
-      renderAppTitle();
-      setConnectionBadge(false);
-      refreshConnectionStatus(true);
-      if (networkPollTimer) clearInterval(networkPollTimer);
-      networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
-      loadSession('1');
-    }
-
-    bootstrap();
+    document.getElementById('mappingText').addEventListener('input', updateCount);
+    loadData();
   </script>
 </body>
 </html>
