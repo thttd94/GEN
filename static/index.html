@@ -118,14 +118,38 @@
         setStatus('Lỗi: ' + e.message);
       }
     }
-    async function copyMacList() {
-      const text = document.getElementById('macRawText').value || '';
+    async function copyTextSmart(text, okMsg) {
+      const value = String(text || '');
       try {
-        await navigator.clipboard.writeText(text);
-        setStatus('Đã copy danh sách MAC');
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(value);
+          setStatus(okMsg);
+          return;
+        }
+      } catch {}
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      ta.style.pointerEvents = 'none';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      try {
+        const ok = document.execCommand('copy');
+        setStatus(ok ? okMsg : 'Copy thất bại, anh copy tay giúp em');
       } catch {
         setStatus('Copy thất bại, anh copy tay giúp em');
+      } finally {
+        document.body.removeChild(ta);
       }
+    }
+
+    async function copyMacList() {
+      const text = document.getElementById('macRawText').value || '';
+      await copyTextSmart(text, 'Đã copy full IP + MAC');
     }
     async function copyMacOnly() {
       const text = (document.getElementById('macRawText').value || '')
@@ -138,12 +162,7 @@
         })
         .filter(Boolean)
         .join('\n');
-      try {
-        await navigator.clipboard.writeText(text);
-        setStatus('Đã copy danh sách MAC');
-      } catch {
-        setStatus('Copy thất bại, anh copy tay giúp em');
-      }
+      await copyTextSmart(text, 'Đã copy danh sách MAC');
     }
 
     function useMacList() {
