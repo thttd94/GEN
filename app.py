@@ -365,23 +365,16 @@ def extract_rows(data, session='1'):
         configured_ips = set()
         rows = []
         static_rows = sorted(load_static_hosts_raw(), key=lambda x: str(x.get('ip', '')).strip())
-
-        static_ip_to_tag = {}
-        for idx, item in enumerate(static_rows, 1):
-            ip = str(item.get('ip', '')).strip()
-            if not ip:
-                continue
-            tag = normalize_tag(route_by_ip.get(ip, ''))
-            if not tag:
-                tag = f'proxy_{idx}'
-            static_ip_to_tag[ip] = tag
+        saved_text = get_saved_ip_identity_text('2')
+        saved_rows = parse_ip_identity_text(saved_text) if saved_text else []
+        saved_ip_to_tag = {str(item.get('ip', '')).strip(): normalize_tag(item.get('tag', '')) for item in saved_rows if str(item.get('ip', '')).strip()}
 
         for item in static_rows:
             ip = str(item.get('ip', '')).strip()
             if not ip:
                 continue
             configured_ips.add(ip)
-            tag = static_ip_to_tag.get(ip, '')
+            tag = saved_ip_to_tag.get(ip) or normalize_tag(route_by_ip.get(ip, ''))
             dev = devices.get(ip, {})
             meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
             outbound = outbounds.get(tag, {}) if tag else {}
@@ -399,7 +392,7 @@ def extract_rows(data, session='1'):
             ip = str(ip).strip()
             if not ip or ip in configured_ips:
                 continue
-            tag = normalize_tag(route_by_ip.get(ip, ''))
+            tag = saved_ip_to_tag.get(ip) or normalize_tag(route_by_ip.get(ip, ''))
             meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
             outbound = outbounds.get(tag, {}) if tag else {}
             rows.append({
