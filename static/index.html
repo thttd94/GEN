@@ -309,8 +309,18 @@
       }
     }
 
+    function tagNum(tag) {
+      const m = String(tag || '').trim().match(/^proxy_(\d+)$/i);
+      return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+    }
     function getVisibleRows() {
-      return currentRows.filter(r => viewMode === 'configured' ? !!r.configured : !r.configured);
+      const rows = currentRows.filter(r => viewMode === 'configured' ? !!r.configured : !r.configured);
+      return rows.slice().sort((a, b) => {
+        const ta = tagNum(a.tag);
+        const tb = tagNum(b.tag);
+        if (ta !== tb) return ta - tb;
+        return String(a.ip || '').localeCompare(String(b.ip || ''), undefined, { numeric: true });
+      });
     }
 
     function switchViewMode(mode) {
