@@ -556,6 +556,7 @@ def remap_ip_by_tag(data):
 def rebuild_gencore_rules(data, tag_to_ip_map):
     dns = data.setdefault('dns', {})
     route = data.setdefault('route', {})
+    outbounds = data.setdefault('outbounds', [])
 
     input_map = {
         str(tag).strip(): str(ip).strip()
@@ -565,7 +566,14 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     ordered_items = sorted(input_map.items(), key=lambda kv: proxy_tag_num(kv[0]))
 
     old_dns_rules = list(dns.get('rules', []) or [])
+    old_dns_servers = list(dns.get('servers', []) or [])
     old_route_rules = list(route.get('rules', []) or [])
+    old_outbounds = list(outbounds or [])
+    old_outbound_map = {
+        str(item.get('tag', '')).strip(): item
+        for item in old_outbounds
+        if str(item.get('tag', '')).strip().startswith('proxy_')
+    }
 
     dns_rules = [
         rule for rule in old_dns_rules
@@ -573,6 +581,11 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     ]
     if not dns_rules:
         dns_rules = [{'outbound': 'any', 'server': 'google'}]
+
+    dns_servers = [
+        server for server in old_dns_servers
+        if not str(server.get('tag', '')).strip().startswith('proxy_')
+    ]
 
     route_rules = [
         rule for rule in old_route_rules
@@ -586,8 +599,14 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
             {'action': 'route', 'outbound': 'direct'},
         ]
 
+    non_proxy_outbounds = [
+        item for item in old_outbounds
+        if not str(item.get('tag', '')).strip().startswith('proxy_')
+    ]
+
     for tag, ip in ordered_items:
         dns_rules.append({'action': 'route', 'server': tag, 'source_ip_cidr': ip})
+        dns_servers.append({'address': 'tcp://8.8.8.8', 'detour': tag, 'tag': tag})
 
     direct_rule = None
     kept_route_rules = []
@@ -602,8 +621,15 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
         route_rules.append({'action': 'route', 'outbound': tag, 'source_ip_cidr': ip})
 
     route_rules.append(direct_rule or {'action': 'route', 'outbound': 'direct'})
+
+    rebuilt_outbounds = list(non_proxy_outbounds)
+    for tag, _ip in ordered_items:
+        rebuilt_outbounds.append(old_outbound_map.get(tag, {'tag': tag, 'type': 'direct'}))
+
     dns['rules'] = dns_rules
+    dns['servers'] = dns_servers
     route['rules'] = route_rules
+    data['outbounds'] = rebuilt_outbounds
     return data
 
 
