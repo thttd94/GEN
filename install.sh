@@ -5,7 +5,7 @@ APP_DIR="/opt/proxy-manager-v1"
 SERVICE_NAME="proxy-manager-v1"
 PORT="18123"
 # Đổi pass này trước khi đưa lên GitHub
-INSTALL_PASSWORD="CHANGE_ME_INSTALL_PASS"
+INSTALL_PASSWORD="123123@qq"
 
 printf 'Enter install password: '
 stty -echo
