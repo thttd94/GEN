@@ -6,7 +6,7 @@
   <title>Genrouter Proxy Manager</title>
   <style>
     body { font-family: Arial, sans-serif; background:#f3f4f6; color:#111827; margin:0; }
-    .wrap { max-width: 1680px; margin: 0 auto; padding: 18px; }
+    .wrap { max-width: 1760px; margin: 0 auto; padding: 18px; }
     .toolbar { display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
     .toolbar-left,.toolbar-right { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .btn { border:1px solid #d1d5db; background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:700; }
@@ -19,6 +19,10 @@
     .panel { background:#fff; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden; }
     .meta { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid #e5e7eb; }
     .sub { color:#6b7280; font-size:13px; }
+    .notes-summary-wrap { padding:14px 16px; border-bottom:1px solid #e5e7eb; background:#fff; }
+    .notes-summary-title { font-size:14px; font-weight:700; margin-bottom:8px; }
+    .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:110px; max-height:170px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.5; }
+    .notes-summary-empty { color:#9ca3af; }
     .grid { max-height:76vh; overflow:auto; }
     table { width:100%; border-collapse:collapse; }
     th, td { padding:12px 10px; border-bottom:1px solid #f1f5f9; font-size:14px; vertical-align:middle; }
@@ -30,8 +34,8 @@
     .offline { background:#fee2e2; color:#991b1b; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .status { font-size:13px; color:#2563eb; font-weight:600; }
-    .name-cell { min-width:180px; }
     .proxy-cell { min-width:420px; }
+    .note-cell { min-width:220px; }
     .bulkbar { display:grid; grid-template-columns: 420px auto; gap:12px; padding:14px 16px; border-bottom:1px solid #e5e7eb; background:#fcfcfd; }
     .bulk-actions { display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; }
     .check-ok { color:#15803d; font-weight:800; }
@@ -49,7 +53,7 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="title">Genrouter Proxy Manager</div>
+    <div class="title">Genrouter Proxy Manager _ By</div>
 
     <div class="toolbar">
       <div class="toolbar-left">
@@ -71,9 +75,13 @@
       <div class="meta">
         <div>
           <div><b id="sessionLabel">Session 1</b></div>
-          <div class="sub">SS1 = gencore.json · SS2 = gencore2.json</div>
         </div>
         <div class="sub" id="countLabel">0 rows</div>
+      </div>
+
+      <div class="notes-summary-wrap">
+        <div class="notes-summary-title">Notes</div>
+        <div class="notes-summary-box" id="notesSummary"></div>
       </div>
 
       <div class="bulkbar">
@@ -100,12 +108,12 @@
           <thead>
             <tr>
               <th style="width:64px;">#</th>
-              <th class="name-cell">Device Name</th>
               <th style="width:170px;">MAC</th>
               <th style="width:130px;">IP</th>
               <th style="width:100px;">Status</th>
               <th style="width:120px;">Proxy Tag</th>
               <th class="proxy-cell">Proxy</th>
+              <th class="note-cell">Note</th>
               <th style="width:190px;">
                 <div class="th-check">
                   <span>Check Proxy</span>
@@ -151,6 +159,17 @@
       return data;
     }
     function esc(v) { return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
+    function renderNotesSummary() {
+      const box = document.getElementById('notesSummary');
+      const lines = currentRows
+        .filter(r => String(r.note || '').trim())
+        .map(r => `${r.ip} | ${r.tag} | ${r.note.trim()}`);
+      if (!lines.length) {
+        box.innerHTML = '<span class="notes-summary-empty">Chưa có note</span>';
+        return;
+      }
+      box.textContent = lines.join('\n');
+    }
     function render() {
       document.getElementById('tab1').classList.toggle('active', currentSession === '1');
       document.getElementById('tab2').classList.toggle('active', currentSession === '2');
@@ -159,18 +178,20 @@
       document.getElementById('rows').innerHTML = currentRows.map((row, idx) => `
         <tr>
           <td>${idx + 1}</td>
-          <td>${esc(row.hostname || '')}</td>
           <td class="mono">${esc(row.mac || '')}</td>
           <td class="mono">${esc(row.ip)}</td>
           <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
           <td class="mono">${esc(row.tag)}</td>
-          <td><input value="${esc(row.proxy || '')}" data-ip="${esc(row.ip)}" oninput="updateProxy(this)" placeholder="server:port:user:pass"></td>
-          <td><button class="btn small ghost" onclick="checkProxy('${esc(row.ip)}')">Check</button><div id="check-${esc(row.ip)}" class="sub"></div></td>
+          <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
+          <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
+          <td><button class="btn small ghost" onclick="checkProxy('${esc(row.tag)}')">Check</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
         </tr>`).join('');
+      renderNotesSummary();
     }
-    function updateProxy(el) {
-      const row = currentRows.find(r => r.ip === el.dataset.ip);
-      if (row) row.proxy = el.value;
+    function updateField(el) {
+      const row = currentRows.find(r => r.tag === el.dataset.tag);
+      if (row) row[el.dataset.field] = el.value;
+      if (el.dataset.field === 'note') renderNotesSummary();
     }
     function assignAllProxy() {
       const value = document.getElementById('bulkProxy').value.trim();
@@ -207,9 +228,9 @@
       render();
       setStatus(`Đã gán hàng loạt ${changed} dòng theo danh sách nhập`);
     }
-    async function checkProxy(ip) {
-      const row = currentRows.find(r => r.ip === ip);
-      const box = document.getElementById(`check-${ip}`);
+    async function checkProxy(tag) {
+      const row = currentRows.find(r => r.tag === tag);
+      const box = document.getElementById(`check-${tag}`);
       if (!row || !box) return;
       box.className = 'check-wait';
       box.textContent = 'CHECK...';
@@ -224,20 +245,30 @@
     }
     async function checkAllProxy() {
       setStatus('Đang check toàn bộ proxy...');
-      await Promise.all(currentRows.map(row => checkProxy(row.ip)));
+      await Promise.all(currentRows.map(row => checkProxy(row.tag)));
       setStatus('Đã check xong session ' + currentSession);
     }
-    async function rebootRouter() { try { setStatus('Đang reboot router...'); await fetchJSON('/api/pm/reboot-router', { method:'POST', body:'{}' }); setStatus('Đã gửi lệnh reboot router'); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    async function rebootRouter() {
+      try {
+        setStatus('Đang reboot router...');
+        await fetchJSON('/api/pm/reboot-router', { method:'POST', body:'{}' });
+        setStatus('Đã gửi lệnh reboot router');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
     async function openSetupRouter() {
       try {
-        setStatus('Đang lấy cấu hình router...');
-        const data = await fetchJSON('/api/pm/router-network');
-        const payload = data.data || data || {};
-        document.getElementById('routerIp').value = payload.ip || payload.lan_ip || payload.address || '';
+        setStatus('Đang lấy IP router...');
+        const info = await fetchJSON('/api/pm/router-info');
+        const ip = info?.data?.data?.lan?.networks?.[0]?.ip || info?.data?.lan?.networks?.[0]?.ip || window.location.hostname || '';
+        document.getElementById('routerIp').value = ip;
         document.getElementById('routerModal').classList.add('show');
         setStatus('Đã mở Set up Router');
       } catch (e) {
-        setStatus('Lỗi: ' + e.message);
+        document.getElementById('routerIp').value = window.location.hostname || '';
+        document.getElementById('routerModal').classList.add('show');
+        setStatus('Đã mở Set up Router');
       }
     }
     function closeRouterModal() {
@@ -245,19 +276,53 @@
     }
     async function submitRouterSetup() {
       try {
-        const payload = { ip: document.getElementById('routerIp').value.trim() };
+        const payload = { ip_lan: document.getElementById('routerIp').value.trim() };
         setStatus('Đang lưu LAN IP router...');
         await fetchJSON('/api/pm/router-change-lan', { method:'POST', body: JSON.stringify(payload) });
         closeRouterModal();
         setStatus('Đã gửi cấu hình đổi LAN IP router');
       } catch (e) {
-        setStatus('Lỗi: ' + e.message); }
+        setStatus('Lỗi: ' + e.message);
+      }
     }
-    async function loadSession(session) { setStatus('Loading session ' + session + '...'); const data = await fetchJSON(`/api/pm/sessions/${session}`); currentSession = session; currentRows = data.rows || []; render(); setStatus('Loaded session ' + session); }
+    async function loadSession(session) {
+      setStatus('Loading session ' + session + '...');
+      const data = await fetchJSON(`/api/pm/sessions/${session}`);
+      currentSession = session;
+      currentRows = data.rows || [];
+      render();
+      setStatus('Loaded session ' + session);
+    }
     async function switchSession(session) { try { await loadSession(session); } catch (e) { setStatus('Lỗi: ' + e.message); } }
-    async function saveCurrent() { try { setStatus('Saving session ' + currentSession + '...'); await fetchJSON(`/api/pm/sessions/${currentSession}`, { method:'POST', body: JSON.stringify({ rows: currentRows }) }); setStatus('Saved session ' + currentSession); } catch (e) { setStatus('Lỗi: ' + e.message); } }
-    async function applySession(session) { try { if (currentSession === session) await saveCurrent(); setStatus('Applying session ' + session + '...'); await fetchJSON(`/api/pm/apply/${session}`, { method:'POST' }); setStatus('Đã apply session ' + session); } catch (e) { setStatus('Lỗi: ' + e.message); } }
-    async function clone1to2() { try { setStatus('Cloning SS1 -> SS2...'); await fetchJSON('/api/pm/clone/1-to-2', { method:'POST' }); if (currentSession === '2') await loadSession('2'); setStatus('Đã clone SS1 -> SS2'); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    async function saveCurrent() {
+      try {
+        setStatus('Saving session ' + currentSession + '...');
+        await fetchJSON(`/api/pm/sessions/${currentSession}`, { method:'POST', body: JSON.stringify({ rows: currentRows }) });
+        setStatus('Saved session ' + currentSession);
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+    async function applySession(session) {
+      try {
+        if (currentSession === session) await saveCurrent();
+        setStatus('Applying session ' + session + '...');
+        await fetchJSON(`/api/pm/apply/${session}`, { method:'POST' });
+        setStatus('Đã apply session ' + session);
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+    async function clone1to2() {
+      try {
+        setStatus('Cloning SS1 -> SS2...');
+        await fetchJSON('/api/pm/clone/1-to-2', { method:'POST' });
+        if (currentSession === '2') await loadSession('2');
+        setStatus('Đã clone SS1 -> SS2');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
     loadSession('1');
   </script>
 </body>

@@ -10,6 +10,7 @@ import urllib.error
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
+NOTES_FILE = BASE_DIR / 'notes.json'
 
 
 def pick_first_existing(paths):
@@ -36,11 +37,7 @@ STATIC_HOSTS_FILE = pick_first_existing([
     Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json'),
 ])
 LEASES_FILE = Path('/tmp/dhcp.leases')
-OLD_GUI_BASES = [
-    'http://127.0.0.1:9000',
-    'http://127.0.0.1:80',
-    'http://127.0.0.1',
-]
+OLD_GUI_BASE = 'http://127.0.0.1:9000'
 
 SESSION_FILES = {
     '1': CONFIG_DIR / 'gencore.json',
@@ -54,10 +51,6 @@ def proxy_tag_num(tag):
         return int(str(tag).split('_', 1)[1])
     except Exception:
         return 10**9
-
-
-def load_session_data(session_id: str):
-    return load_json(SESSION_FILES[session_id])
 
 
 def ensure_session2_exists():
@@ -78,6 +71,19 @@ def save_json(path: Path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
+def load_notes():
+    if not NOTES_FILE.exists():
+        return {}
+    try:
+        return load_json(NOTES_FILE)
+    except Exception:
+        return {}
+
+
+def save_notes(notes):
+    save_json(NOTES_FILE, notes)
+
+
 def load_device_map():
     device_map = {}
     if STATIC_HOSTS_FILE.exists():
@@ -87,7 +93,7 @@ def load_device_map():
                 ip = sec.get('ip')
                 if not ip:
                     continue
-                device_map[ip] = {'hostname': sec.get('name', ''), 'mac': sec.get('mac', ''), 'status': 'offline'}
+                device_map[ip] = {'mac': sec.get('mac', ''), 'status': 'offline'}
         except Exception:
             pass
     if LEASES_FILE.exists():
@@ -97,15 +103,13 @@ def load_device_map():
                 parts = line.split()
                 if len(parts) < 4:
                     continue
-                expiry, mac, ip, hostname = parts[:4]
+                expiry, mac, ip, _hostname = parts[:4]
                 try:
                     online = int(expiry) > now
                 except Exception:
                     online = True
                 row = device_map.setdefault(ip, {})
                 row['mac'] = mac
-                if hostname and hostname != '*':
-                    row['hostname'] = hostname
                 row['status'] = 'online' if online else 'offline'
         except Exception:
             pass
@@ -113,33 +117,25 @@ def load_device_map():
 
 
 def extract_rows(data):
-    outbounds = {item.get('tag'): item for item in data.get('outbounds', []) if item.get('tag', '').startswith('proxy_')}
+    outbounds = {item.get('tag'): item for item in data.get('outbounds', []) if str(item.get('tag', '')).startswith('proxy_')}
     devices = load_device_map()
+    notes = load_notes()
     rows = []
-
-    dns_server_map = {}
-    for rule in data.get('dns', {}).get('rules', []):
-        tag = rule.get('server')
-        ip = rule.get('source_ip_cidr')
-        if ip and str(tag).startswith('proxy_'):
-            dns_server_map.setdefault(tag, ip)
-
     for rule in data.get('route', {}).get('rules', []):
         ip = rule.get('source_ip_cidr')
         tag = rule.get('outbound')
-        if not tag or not str(tag).startswith('proxy_'):
-            continue
-        ip = ip or dns_server_map.get(tag)
-        if not ip:
+        if not ip or not tag or not str(tag).startswith('proxy_'):
             continue
         outbound = outbounds.get(tag, {})
         dev = devices.get(ip, {})
-        rows.append({'ip': ip, 'tag': tag, 'proxy': format_proxy(outbound), 'hostname': dev.get('hostname', ''), 'mac': dev.get('mac', ''), 'status': dev.get('status', 'offline')})
-
-    dedup = {}
-    for row in rows:
-        dedup[row['tag']] = row
-    rows = list(dedup.values())
+        rows.append({
+            'ip': ip,
+            'tag': tag,
+            'proxy': format_proxy(outbound),
+            'mac': dev.get('mac', ''),
+            'status': dev.get('status', 'offline'),
+            'note': notes.get(ip, ''),
+        })
     rows.sort(key=lambda x: proxy_tag_num(x['tag']))
     return rows
 
@@ -154,16 +150,17 @@ def format_proxy(outbound):
     return f"{server}:{port}:{user}:{password}"
 
 
-def apply_rows_to_data(data, rows_by_ip):
-    route_rules = data.setdefault('route', {}).setdefault('rules', [])
+def apply_rows_to_data(data, rows_by_tag):
     outbounds = data.setdefault('outbounds', [])
     outbound_idx = {item.get('tag'): i for i, item in enumerate(outbounds) if item.get('tag')}
-    for rule in route_rules:
-        ip = rule.get('source_ip_cidr')
-        tag = rule.get('outbound')
-        if ip in rows_by_ip and tag and str(tag).startswith('proxy_'):
-            proxy = rows_by_ip[ip].strip()
-            set_outbound_proxy(outbounds, outbound_idx, tag, proxy)
+    notes = load_notes()
+    for tag, row in rows_by_tag.items():
+        proxy = str(row.get('proxy', '')).strip()
+        set_outbound_proxy(outbounds, outbound_idx, tag, proxy)
+        ip = str(row.get('ip', '')).strip()
+        if ip:
+            notes[ip] = str(row.get('note', '')).strip()
+    save_notes(notes)
     return data
 
 
@@ -208,8 +205,7 @@ def try_curl(cmd):
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         return False
-    text = (result.stdout or '').strip()
-    return bool(text)
+    return bool((result.stdout or '').strip())
 
 
 def check_proxy(proxy: str):
@@ -234,20 +230,14 @@ def call_old_gui(path, method='GET', data=None):
     if data is not None:
         body = json.dumps(data).encode('utf-8')
         headers['Content-Type'] = 'application/json'
-    last_error = None
-    for base in OLD_GUI_BASES:
-        url = base + path
-        req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    url = OLD_GUI_BASE + path
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        raw = resp.read().decode('utf-8', errors='ignore')
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                raw = resp.read().decode('utf-8', errors='ignore')
-                try:
-                    return {'ok': True, 'data': json.loads(raw) if raw else {}, 'base': base}
-                except Exception:
-                    return {'ok': True, 'data': raw, 'base': base}
-        except Exception as e:
-            last_error = e
-    raise last_error if last_error else RuntimeError('Cannot reach old GUI API')
+            return {'ok': True, 'data': json.loads(raw) if raw else {}}
+        except Exception:
+            return {'ok': True, 'data': raw}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -273,11 +263,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/api/pm/sessions/1':
-            return self._send_json({'session': '1', 'rows': extract_rows(load_session_data('1'))})
+            return self._send_json({'session': '1', 'rows': extract_rows(load_json(SESSION_FILES['1']))})
         if path == '/api/pm/sessions/2':
-            return self._send_json({'session': '2', 'rows': extract_rows(load_session_data('2'))})
+            return self._send_json({'session': '2', 'rows': extract_rows(load_json(SESSION_FILES['2']))})
         if path == '/api/pm/router-network':
             return self._send_json(call_old_gui('/api/system/network'))
+        if path == '/api/pm/router-info':
+            return self._send_json(call_old_gui('/api/router/info'))
         self._send_json({'error': 'Not found'}, 404)
 
     def do_POST(self):
@@ -290,9 +282,9 @@ class Handler(BaseHTTPRequestHandler):
             if path in ('/api/pm/sessions/1', '/api/pm/sessions/2'):
                 session_id = path.rsplit('/', 1)[-1]
                 rows = payload.get('rows', [])
-                rows_by_ip = {str(row['ip']): str(row.get('proxy', '')) for row in rows if row.get('ip')}
+                rows_by_tag = {str(row['tag']): row for row in rows if row.get('tag')}
                 data = load_json(SESSION_FILES[session_id])
-                save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_ip))
+                save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag))
                 return self._send_json({'ok': True, 'session': session_id})
             if path in ('/api/pm/apply/1', '/api/pm/apply/2'):
                 session_id = path.rsplit('/', 1)[-1]
@@ -305,10 +297,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(check_proxy(str(payload.get('proxy', ''))))
             if path == '/api/pm/reboot-router':
                 return self._send_json(call_old_gui('/api/system/reboot'))
-            if path == '/api/pm/setup-router':
-                return self._send_json(call_old_gui('/api/system/network'))
             if path == '/api/pm/router-change-lan':
-                return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data=payload))
+                ip_lan = str(payload.get('ip_lan', '')).strip()
+                return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data={'ip_lan': ip_lan}))
             return self._send_json({'error': 'Not found'}, 404)
         except urllib.error.HTTPError as e:
             return self._send_json({'ok': False, 'error': f'HTTP {e.code}'}, 400)
