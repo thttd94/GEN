@@ -251,7 +251,7 @@
 
     function renderNotesSummary() {
       const box = document.getElementById('notesSummary');
-      const lines = currentRows.filter(r => r.configured && String(r.note || '').trim()).map(r => `${r.ip} | ${r.tag} | ${r.note.trim()}`);
+      const lines = getVisibleRows().filter(r => String(r.note || '').trim()).map(r => `${r.ip} | ${r.tag || '-'} | ${r.note.trim()}`);
       if (!lines.length) {
         box.innerHTML = '<span class="notes-summary-empty">Chưa có note</span>';
         return;
@@ -375,7 +375,7 @@
         changed++;
       }
       render();
-      setStatus(`Đã gán hàng loạt ${changed} dòng cho session ${currentSession}`);
+      setStatus(`Đã gán hàng loạt ${changed} dòng cho ` + sessionNameOf(currentSession));
     }
 
     function closeIpMacModal() {
@@ -443,8 +443,9 @@
 
     async function checkAllProxy() {
       setStatus('Đang check toàn bộ proxy...');
-      await Promise.all(currentRows.map(row => checkProxy(row.tag)));
-      setStatus('Đã check xong session ' + currentSession);
+      const rows = getVisibleRows().filter(row => row.tag);
+      await Promise.all(rows.map(row => checkProxy(row.tag)));
+      setStatus('Đã check xong ' + sessionNameOf(currentSession));
     }
 
     async function rebootRouter() {

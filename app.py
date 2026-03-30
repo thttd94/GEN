@@ -327,13 +327,15 @@ def extract_rows(data, session='1'):
     }
     devices = load_device_map()
     session_meta = get_session_meta(session)
-    tag_ip_map = build_tag_to_ip(data)
+    saved_text = get_saved_ip_identity_text(session)
+    configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     configured_ips = set()
     rows = []
 
-    for tag, ip in sorted(tag_ip_map.items(), key=lambda kv: proxy_tag_num(kv[0])):
-        ip = str(ip).strip()
-        if not ip:
+    for item in configured_rows:
+        tag = str(item.get('tag', '')).strip()
+        ip = str(item.get('ip', '')).strip()
+        if not tag or not ip:
             continue
         configured_ips.add(ip)
         dev = devices.get(ip, {})
