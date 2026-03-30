@@ -166,7 +166,7 @@
         <button class="btn small" onclick="closeIpMacModal()">Đóng</button>
       </div>
       <div class="modal-body">
-        <div class="sub">Mỗi dòng: <b>proxy_x|ip</b> — ví dụ: <span class="mono">proxy_1|192.15.4.1</span></div>
+        <div class="sub">Mỗi dòng: <b>proxy_x|ip</b> — ví dụ: <span class="mono">proxy_1|192.15.4.1</span> · tối đa 1000 dòng · sẽ ép gencore.json match đúng proxy tag và IP đã nhập</div>
         <textarea id="ipMacText" class="cfg-text" spellcheck="false"></textarea>
         <div class="checkline">
           <label><input type="checkbox" id="cfgApplyRuntime" checked> Apply runtime ngay</label>
@@ -343,11 +343,10 @@
 
     function loadDefaultIpMacMap() {
       const lines = [];
-      for (let i = 1; i <= 312; i++) {
-        let ip = '';
-        if (i <= 250) ip = `192.15.4.${i}`;
-        else ip = `192.15.5.${i - 250}`;
-        lines.push(`proxy_${i}|${ip}`);
+      for (let i = 1; i <= 1000; i++) {
+        const subnet = 4 + Math.floor((i - 1) / 250);
+        const host = ((i - 1) % 250) + 1;
+        lines.push(`proxy_${i}|192.15.${subnet}.${host}`);
       }
       document.getElementById('ipMacText').value = lines.join('\n');
       setStatus('Đã nạp mẫu định danh proxy|ip');

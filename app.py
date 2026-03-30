@@ -42,6 +42,9 @@ SESSION_FILES = {
     '2': CONFIG_DIR / 'gencore2.json',
 }
 RUNTIME_FILE = RUNTIME_DIR / 'gencore.json'
+MAX_PROXY_TAG = 1000
+TAGS_PER_SUBNET = 250
+BASE_SUBNET_OCTET = 4
 
 
 def proxy_tag_num(tag):
@@ -53,11 +56,12 @@ def proxy_tag_num(tag):
 
 def tag_to_ip(tag):
     num = proxy_tag_num(tag)
-    if num < 1 or num > 312:
+    if num < 1 or num > MAX_PROXY_TAG:
         return ''
-    if num <= 250:
-        return f'192.15.4.{num}'
-    return f'192.15.5.{num - 250}'
+    subnet_offset = (num - 1) // TAGS_PER_SUBNET
+    host_octet = ((num - 1) % TAGS_PER_SUBNET) + 1
+    subnet_octet = BASE_SUBNET_OCTET + subnet_offset
+    return f'192.15.{subnet_octet}.{host_octet}'
 
 
 def ensure_session2_exists():
@@ -282,7 +286,7 @@ def extract_rows(data, session='1'):
     session_meta = get_session_meta(session)
     rows = []
 
-    for i in range(1, 313):
+    for i in range(1, MAX_PROXY_TAG + 1):
         tag = f'proxy_{i}'
         ip = tag_to_ip(tag)
         dev = devices.get(ip, {})
@@ -356,7 +360,7 @@ def clear_session_proxies(data):
 
 def remap_ip_by_tag(data):
     mapping = {}
-    for i in range(1, 313):
+    for i in range(1, MAX_PROXY_TAG + 1):
         mapping[f'proxy_{i}'] = tag_to_ip(f'proxy_{i}')
     rebuild_gencore_rules(data, mapping)
     return data
@@ -375,7 +379,7 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
         {'action': 'hijack-dns', 'protocol': 'dns'},
     ]
 
-    for i in range(1, 313):
+    for i in range(1, MAX_PROXY_TAG + 1):
         tag = f'proxy_{i}'
         ip = str(tag_to_ip_map.get(tag, '')).strip() or tag_to_ip(tag)
         dns_rules.append({'action': 'route', 'server': tag, 'source_ip_cidr': ip})
@@ -389,7 +393,7 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
 
 def build_ip_identity_text(data, session='1'):
     items = []
-    for i in range(1, 313):
+    for i in range(1, MAX_PROXY_TAG + 1):
         tag = f'proxy_{i}'
         ip = tag_to_ip(tag)
         items.append((i, f"{tag}|{ip}"))
@@ -438,17 +442,12 @@ def parse_ip_identity_text(text):
     if dup_ips:
         errs.append('IP bị trùng: ' + ', '.join(sorted(dup_ips)))
 
-    expected_tags = {f'proxy_{i}' for i in range(1, 313)}
+    expected_tags = {f'proxy_{i}' for i in range(1, MAX_PROXY_TAG + 1)}
     got_tags = {row['tag'] for row in rows}
     missing_tags = sorted(expected_tags - got_tags, key=proxy_tag_num)
     extra_tags = sorted(got_tags - expected_tags, key=proxy_tag_num)
-    if len(rows) != 312:
-        errs.append(f'Cần đủ 312 dòng, hiện có {len(rows)} dòng')
-    if missing_tags:
-        preview = ', '.join(missing_tags[:12])
-        if len(missing_tags) > 12:
-            preview += ', ...'
-        errs.append('Thiếu proxy: ' + preview)
+    if len(rows) > MAX_PROXY_TAG:
+        errs.append(f'Tối đa {MAX_PROXY_TAG} dòng, hiện có {len(rows)} dòng')
     if extra_tags:
         errs.append('Proxy ngoài phạm vi: ' + ', '.join(extra_tags))
     if errs:
