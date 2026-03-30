@@ -63,6 +63,7 @@
         <button class="btn tab active" id="tab1" onclick="switchSession('1')">Session 1</button>
         <button class="btn tab" id="tab2" onclick="switchSession('2')">Session 2</button>
         <button class="btn" onclick="saveCurrent()">Save</button>
+        <button class="btn" onclick="mapIpCurrent()">Map IP</button>
         <button class="btn apply" onclick="applySession('1')">Apply SS1</button>
         <button class="btn apply" onclick="applySession('2')">Apply SS2</button>
         <button class="btn" onclick="clone1to2()">Clone SS1 → SS2</button>
@@ -240,6 +241,17 @@
       }
       render();
       setStatus(`Đã gán hàng loạt ${changed} dòng theo danh sách nhập`);
+    }
+
+    async function mapIpCurrent() {
+      try {
+        setStatus('Đang map lại IP theo proxy tag...');
+        await fetchJSON(`/api/pm/map-ip/${currentSession}`, { method:'POST', body:'{}' });
+        await loadSession(currentSession);
+        setStatus('Đã map lại IP theo proxy tag cho session ' + currentSession);
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
     }
 
     async function checkProxy(tag) {

@@ -49,6 +49,15 @@ def proxy_tag_num(tag):
         return 10**9
 
 
+def tag_to_ip(tag):
+    num = proxy_tag_num(tag)
+    if num < 1 or num > 312:
+        return ''
+    if num <= 250:
+        return f'192.15.4.{num}'
+    return f'192.15.5.{num - 250}'
+
+
 def ensure_session2_exists():
     s2 = SESSION_FILES['2']
     if s2.exists():
@@ -237,6 +246,33 @@ def clear_session_proxies(data):
             item.update({'tag': tag, 'type': 'direct'})
 
 
+def remap_ip_by_tag(data):
+    dns_rules = (data.get('dns') or {}).get('rules', [])
+    route_rules = (data.get('route') or {}).get('rules', [])
+
+    for rule in dns_rules:
+        if str(rule.get('action', '')).strip() != 'route':
+            continue
+        tag = str(rule.get('server', '')).strip()
+        if not tag.startswith('proxy_'):
+            continue
+        ip = tag_to_ip(tag)
+        if ip:
+            rule['source_ip_cidr'] = ip
+
+    for rule in route_rules:
+        if str(rule.get('action', '')).strip() != 'route':
+            continue
+        tag = str(rule.get('outbound', '')).strip()
+        if not tag.startswith('proxy_'):
+            continue
+        ip = tag_to_ip(tag)
+        if ip:
+            rule['source_ip_cidr'] = ip
+
+    return data
+
+
 def run_apply(session: str):
     source = SESSION_FILES[session]
     shutil.copy2(source, RUNTIME_FILE)
@@ -384,6 +420,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/clone/1-to-2':
                 save_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
                 return self._send_json({'ok': True})
+            if path in ('/api/pm/map-ip/1', '/api/pm/map-ip/2'):
+                session_id = path.rsplit('/', 1)[-1]
+                data = load_json(SESSION_FILES[session_id])
+                save_json(SESSION_FILES[session_id], remap_ip_by_tag(data))
+                return self._send_json({'ok': True, 'session': session_id})
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', ''))))
             if path == '/api/pm/reboot-router':
