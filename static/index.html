@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Genrouter Proxy Manager</title>
+  <title>Genrouter Proxy Manager _ By Hồng Thái</title>
   <style>
     body { font-family: Arial, sans-serif; background:#f3f4f6; color:#111827; margin:0; }
     .wrap { max-width: 1760px; margin: 0 auto; padding: 18px; }
@@ -53,7 +53,7 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="title">Genrouter Proxy Manager _ By</div>
+    <div class="title">Genrouter Proxy Manager _ By Hồng Thái</div>
 
     <div class="toolbar">
       <div class="toolbar-left">
@@ -99,6 +99,7 @@
         <div class="bulk-actions">
           <button class="btn ghost" onclick="assignAllProxy()">Gán tất cả</button>
           <button class="btn ghost" onclick="clearAllProxy()">Xóa tất cả proxy</button>
+          <button class="btn ghost" onclick="clearAllNotes()">Clear Notes</button>
           <button class="btn ghost" onclick="applyBulkMap()">Gán hàng loạt</button>
         </div>
       </div>
@@ -161,9 +162,7 @@
     function esc(v) { return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
     function renderNotesSummary() {
       const box = document.getElementById('notesSummary');
-      const lines = currentRows
-        .filter(r => String(r.note || '').trim())
-        .map(r => `${r.ip} | ${r.tag} | ${r.note.trim()}`);
+      const lines = currentRows.filter(r => String(r.note || '').trim()).map(r => `${r.ip} | ${r.tag} | ${r.note.trim()}`);
       if (!lines.length) {
         box.innerHTML = '<span class="notes-summary-empty">Chưa có note</span>';
         return;
@@ -203,6 +202,11 @@
       currentRows.forEach(r => r.proxy = '');
       render();
       setStatus('Đã xóa toàn bộ proxy của session ' + currentSession);
+    }
+    function clearAllNotes() {
+      currentRows.forEach(r => r.note = '');
+      render();
+      setStatus('Đã xóa toàn bộ note của session ' + currentSession);
     }
     function parseBulkLine(line) {
       let m = line.match(/^\s*(\d+)\s*[|;]\s*(.+)\s*$/);
