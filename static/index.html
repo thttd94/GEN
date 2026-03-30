@@ -22,7 +22,7 @@
     .btn.apply { background:#16a34a; color:#fff; border-color:#16a34a; }
     .btn.warn { background:#f59e0b; color:#fff; border-color:#f59e0b; }
     .btn.small { padding:6px 10px; font-size:12px; }
-    .status { font-size:13px; color:#2563eb; font-weight:700; margin-left:6px; }
+    .status { display:inline-flex; align-items:center; min-height:20px; padding:10px 14px; border-radius:999px; background:linear-gradient(135deg,#dbeafe 0%,#eff6ff 100%); border:1px solid #93c5fd; color:#1d4ed8; font-size:14px; font-weight:900; margin-left:6px; box-shadow:0 6px 18px rgba(37,99,235,.16), inset 0 1px 0 rgba(255,255,255,.85); }
     .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
     .meta { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
     .session-meta { display:flex; align-items:center; gap:8px; }
@@ -79,7 +79,6 @@
         <button class="btn tab" id="tab2" onclick="switchSession('2')">Session 2</button>
         <button class="btn" onclick="saveCurrent()">Save</button>
         <button class="btn apply" onclick="applyCurrentSession()">Apply Session đang mở</button>
-        <button class="btn" onclick="clone1to2()">Clone SS1 → SS2</button>
         <span class="status" id="status">Ready</span>
       </div>
       <div class="toolbar-right">
@@ -464,14 +463,13 @@
     }
 
     async function loadSession(session) {
-      setStatus('Loading session ' + session + '...');
+      setStatus('Bạn đang ở ' + sessionNameOf(session));
       const data = await fetchJSON(`/api/pm/sessions/${session}`);
       currentSession = session;
       currentRows = data.rows || [];
       if (data.name) sessionNames[String(session)] = data.name;
       render();
-      await refreshConnectionStatus(true);
-      setStatus('Loaded session ' + session);
+      setStatus('Bạn đang ở ' + sessionNameOf(currentSession));
     }
 
     async function switchSession(session) {
@@ -515,17 +513,6 @@
       }
     }
 
-    async function clone1to2() {
-      try {
-        setStatus('Cloning SS1 -> SS2...');
-        await fetchJSON('/api/pm/clone/1-to-2', { method:'POST' });
-        if (currentSession === '2') await loadSession('2');
-        setStatus('Đã clone SS1 -> SS2');
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
-
     async function bootstrap() {
       try {
         const meta = await fetchJSON('/api/pm/meta');
@@ -533,6 +520,7 @@
       } catch {}
       renderAppTitle();
       setConnectionBadge(false);
+      setStatus('Bạn đang ở ' + sessionNameOf(currentSession));
       refreshConnectionStatus(true);
       if (networkPollTimer) clearInterval(networkPollTimer);
       networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
