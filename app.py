@@ -216,8 +216,6 @@ def update_session_rows_meta(session_id, rows):
         if not tag:
             continue
         item = sess.setdefault(tag, {})
-        if 'mac' in row:
-            item['mac'] = normalize_mac(row.get('mac', ''))
         if 'note' in row:
             item['note'] = str(row.get('note', '')).strip()
     save_session_state(state)
@@ -398,6 +396,11 @@ def extract_rows(data, session='1'):
         for item in data.get('outbounds', [])
         if str(item.get('tag', '')).startswith('proxy_')
     }
+    static_mac_by_ip = {
+        str(row.get('ip', '')).strip(): normalize_mac(row.get('mac', ''))
+        for row in load_static_hosts_raw()
+        if str(row.get('ip', '')).strip()
+    }
     devices = load_device_map()
     route_by_ip = {str(ip).strip(): normalize_tag(tag) for ip, tag in build_route_ip_to_tag(data).items() if str(ip).strip()}
     session_meta = get_session_meta(session)
@@ -425,7 +428,7 @@ def extract_rows(data, session='1'):
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
-            'mac': normalize_mac(meta.get('mac', '') or dev.get('mac', '')),
+            'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
             'note': str(meta.get('note', '')).strip(),
             'configured': True,
@@ -442,7 +445,7 @@ def extract_rows(data, session='1'):
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
-            'mac': normalize_mac(dev.get('mac', '')),
+            'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
             'note': str(meta.get('note', '')).strip(),
             'configured': False,
