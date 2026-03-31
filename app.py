@@ -292,7 +292,8 @@ def load_device_map():
                 except Exception:
                     online = True
                 row = device_map.setdefault(ip, {})
-                row['mac'] = normalize_mac(mac)
+                if not row.get('mac'):
+                    row['mac'] = normalize_mac(mac)
                 row['status'] = 'online' if online else 'offline'
         except Exception:
             pass
