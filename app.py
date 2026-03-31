@@ -453,31 +453,6 @@ def extract_rows(data, session='1'):
 
     return rows
 
-def build_rows_by_tag_for_session(rows, session_id, data=None):
-    session_id = str(session_id)
-    data = data if isinstance(data, dict) else load_json(SESSION_FILES[session_id])
-    saved_text = get_saved_ip_identity_text(session_id)
-    configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
-    ip_to_tag = {
-        str(item.get('ip', '')).strip(): normalize_tag(item.get('tag', ''))
-        for item in configured_rows
-        if str(item.get('ip', '')).strip()
-    }
-    route_by_ip = {str(ip).strip(): normalize_tag(tag) for ip, tag in build_route_ip_to_tag(data).items() if str(ip).strip()}
-
-    rows_by_tag = {}
-    for row in rows or []:
-        if not isinstance(row, dict):
-            continue
-        ip = str(row.get('ip', '')).strip()
-        tag = normalize_tag(row.get('tag', '')) or ip_to_tag.get(ip, '') or route_by_ip.get(ip, '')
-        if not tag:
-            continue
-        normalized = dict(row)
-        normalized['tag'] = tag
-        rows_by_tag[tag] = normalized
-    return rows_by_tag
-
 def apply_rows_to_data(data, rows_by_tag, session='1'):
     outbounds = data.setdefault('outbounds', [])
     outbound_idx = {str(item.get('tag')): i for i, item in enumerate(outbounds) if item.get('tag')}
@@ -1003,8 +978,8 @@ class Handler(BaseHTTPRequestHandler):
             if path in ('/api/pm/sessions/1', '/api/pm/sessions/2'):
                 session_id = path.rsplit('/', 1)[-1]
                 rows = payload.get('rows', [])
+                rows_by_tag = {str(row['tag']).strip(): row for row in rows if row.get('tag')}
                 data = load_json(SESSION_FILES[session_id])
-                rows_by_tag = build_rows_by_tag_for_session(rows, session_id, data=data)
                 save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag, session=session_id))
                 name = payload.get('name')
                 if name is not None:
