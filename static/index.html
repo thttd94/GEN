@@ -14,6 +14,7 @@
     .titlebar-right { display:flex; align-items:center; gap:8px; }
     .toolbar { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px; }
     .toolbar-left,.toolbar-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .toolbar-right { justify-content:flex-end; }
     .conn-badge { display:inline-flex; align-items:center; justify-content:center; min-width:110px; padding:9px 14px; border-radius:10px; font-weight:800; font-size:13px; border:1px solid transparent; }
     .conn-badge.connected { background:#dcfce7; color:#166534; border-color:#86efac; }
     .conn-badge.disconnected { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
@@ -88,8 +89,9 @@
       </div>
       <div class="toolbar-right">
         <button class="btn warn" onclick="openIpMacConfig()">ĐỊNH DANH IP</button>
-        <button class="btn warn" onclick="rebootRouter()">Reboot Router</button>
-        <button class="btn warn" onclick="openSetupRouter()">Set up Router</button>
+        <button class="btn warn" onclick="openMacAssignPage()">GÁN MAC</button>
+        <button class="btn warn" onclick="openSetupRouter()">SETUP ROUTER</button>
+        <button class="btn warn" onclick="rebootRouter()">REBOOT ROUTER</button>
       </div>
     </div>
 
@@ -326,7 +328,7 @@
     function switchViewMode(mode) {
       viewMode = mode === 'unconfigured' ? 'unconfigured' : 'configured';
       render();
-      setStatus(viewMode === 'configured' ? ('Đang xem đã cấu hình của ' + sessionNameOf(currentSession)) : ('Đang xem chưa cấu hình của ' + sessionNameOf(currentSession)));
+      setStatus(viewMode === 'configured' ? ('Đang xem ĐÃ CẤU HÌNH của ' + sessionNameOf(currentSession)) : ('Đang xem CHƯA CẤU HÌNH của ' + sessionNameOf(currentSession)));
     }
 
     function render() {
@@ -338,7 +340,8 @@
       document.getElementById('viewUnconfiguredBtn').classList.toggle('active', viewMode === 'unconfigured');
       renderAppTitle();
       document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
-      document.querySelector('.btn.apply').textContent = 'Apply ' + sessionNameOf(currentSession);
+      document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionNameOf(currentSession).toUpperCase();
+      updateCloneButton();
       const visibleRows = getVisibleRows();
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
       document.getElementById('rows').innerHTML = visibleRows.map((row, idx) => `
@@ -360,6 +363,34 @@
       if (row) row[el.dataset.field] = el.value;
       persistDraft(currentSession);
       if (el.dataset.field === 'note') renderNotesSummary();
+    }
+
+    function cloneButtonLabel() {
+      return currentSession === '1' ? 'CLONE SS1 > SS2' : 'CLONE SS2 > SS1';
+    }
+    function updateCloneButton() {
+      const el = document.getElementById('cloneBtn');
+      if (el) el.textContent = cloneButtonLabel();
+    }
+    async function cloneCurrentSession() {
+      const from = currentSession;
+      const to = currentSession === '1' ? '2' : '1';
+      try {
+        setStatus(`Đang clone ${sessionNameOf(from)} > ${sessionNameOf(to)}...`);
+        const data = currentRows;
+        await fetchJSON(`/api/pm/sessions/${to}`, { method:'POST', body: JSON.stringify({ rows: data, name: sessionNameOf(to) }) });
+        sessionNames[to] = sessionNameOf(from);
+        persistDraft(to);
+        setStatus(`Đã clone ${sessionNameOf(from)} > ${sessionNameOf(to)}`);
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+    function openMacAssignPage() {
+      const host = window.location.hostname || '192.168.1.1';
+      const url = `http://${host}:19123`;
+      window.open(url, '_blank');
+      setStatus('Đã mở GÁN MAC');
     }
 
     async function editSessionName() {
