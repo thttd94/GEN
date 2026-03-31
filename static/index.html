@@ -381,15 +381,18 @@
           <td class="mono">${esc(row.ip)}</td>
           <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
           <td class="mono">${esc(row.tag)}</td>
-          <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
-          <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
+          <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
+          <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">Check</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
         </tr>`).join('');
       renderNotesSummary();
     }
 
     function updateField(el) {
-      const row = currentRows.find(r => r.tag === el.dataset.tag);
+      const row = currentRows.find(r => {
+        if ((el.dataset.tag || '') && r.tag === el.dataset.tag) return true;
+        return !(el.dataset.tag || '') && String(r.ip || '') === String(el.dataset.ip || '');
+      });
       if (row) row[el.dataset.field] = el.value;
       persistDraft(currentSession);
       if (el.dataset.field === 'note') renderNotesSummary();
