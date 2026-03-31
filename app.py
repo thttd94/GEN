@@ -398,72 +398,31 @@ def extract_rows(data, session='1'):
         if str(item.get('tag', '')).startswith('proxy_')
     }
     devices = load_device_map()
-    route_by_ip = build_route_ip_to_tag(data)
+    route_by_ip = {str(ip).strip(): normalize_tag(tag) for ip, tag in build_route_ip_to_tag(data).items() if str(ip).strip()}
     session_meta = get_session_meta(session)
-
-    # Freeze SS1 behavior; only special-case SS2.
-    if str(session) == '2':
-        configured_ips = set()
-        rows = []
-        static_rows = sorted(load_static_hosts_raw(), key=lambda x: str(x.get('ip', '')).strip())
-        saved_text = get_saved_ip_identity_text('2')
-        saved_rows = parse_ip_identity_text(saved_text) if saved_text else []
-        saved_ip_to_tag = {str(item.get('ip', '')).strip(): normalize_tag(item.get('tag', '')) for item in saved_rows if str(item.get('ip', '')).strip()}
-
-        for item in static_rows:
-            ip = str(item.get('ip', '')).strip()
-            if not ip:
-                continue
-            configured_ips.add(ip)
-            tag = saved_ip_to_tag.get(ip) or normalize_tag(route_by_ip.get(ip, ''))
-            dev = devices.get(ip, {})
-            meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
-            outbound = outbounds.get(tag, {}) if tag else {}
-            rows.append({
-                'ip': ip,
-                'tag': tag,
-                'proxy': format_proxy(outbound),
-                'mac': normalize_mac(item.get('mac', '') or meta.get('mac', '') or dev.get('mac', '')),
-                'status': str(dev.get('status', 'offline')).strip() or 'offline',
-                'note': str(meta.get('note', '')).strip(),
-                'configured': True,
-            })
-
-        for ip, dev in sorted(devices.items(), key=lambda kv: kv[0]):
-            ip = str(ip).strip()
-            if not ip or ip in configured_ips:
-                continue
-            tag = saved_ip_to_tag.get(ip) or normalize_tag(route_by_ip.get(ip, ''))
-            meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
-            outbound = outbounds.get(tag, {}) if tag else {}
-            rows.append({
-                'ip': ip,
-                'tag': tag,
-                'proxy': format_proxy(outbound),
-                'mac': normalize_mac(dev.get('mac', '')),
-                'status': str(dev.get('status', 'offline')).strip() or 'offline',
-                'note': str(meta.get('note', '')).strip(),
-                'configured': False,
-            })
-        return rows
-
     saved_text = get_saved_ip_identity_text(session)
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
-    configured_ips = set()
+    saved_ip_to_tag = {
+        str(item.get('ip', '')).strip(): normalize_tag(item.get('tag', ''))
+        for item in configured_rows
+        if str(item.get('ip', '')).strip()
+    }
+
     rows = []
+    configured_ips = set()
 
     for item in configured_rows:
-        tag = normalize_tag(item.get('tag', ''))
         ip = str(item.get('ip', '')).strip()
-        if not tag or not ip:
+        tag = normalize_tag(item.get('tag', '')) or route_by_ip.get(ip, '')
+        if not ip:
             continue
         configured_ips.add(ip)
         dev = devices.get(ip, {})
-        meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) else {}
-        outbound = outbounds.get(tag, {})
+        meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
+        outbound = outbounds.get(tag, {}) if tag else {}
         rows.append({
             'ip': ip,
-            'tag': tag or normalize_tag(route_by_ip.get(ip, '')),
+            'tag': tag,
             'proxy': format_proxy(outbound),
             'mac': normalize_mac(meta.get('mac', '') or dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
@@ -475,7 +434,7 @@ def extract_rows(data, session='1'):
         ip = str(ip).strip()
         if not ip or ip in configured_ips:
             continue
-        tag = normalize_tag(route_by_ip.get(ip, ''))
+        tag = saved_ip_to_tag.get(ip) or route_by_ip.get(ip, '')
         meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
         outbound = outbounds.get(tag, {}) if tag else {}
         rows.append({
