@@ -438,9 +438,9 @@ def extract_rows(data, session='1'):
         ip = str(ip).strip()
         if not ip or ip in configured_ips:
             continue
-        tag = saved_ip_to_tag.get(ip) or route_by_ip.get(ip, '')
-        meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
-        outbound = outbounds.get(tag, {}) if tag else {}
+        tag = ''
+        meta = {}
+        outbound = {}
         rows.append({
             'ip': ip,
             'tag': tag,
