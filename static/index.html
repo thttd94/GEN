@@ -125,9 +125,12 @@
       </div>
 
       <div class="notes-wrap" style="padding-top:10px;padding-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-        <div class="view-tabs">
-          <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
-          <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div class="view-tabs">
+            <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
+            <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
+          </div>
+          <button class="btn" id="cloneBtn" onclick="cloneCurrentSession()">CLONE SS1 > SS2</button>
         </div>
         <button class="btn save-strong" onclick="saveCurrent()">SAVE</button>
       </div>
