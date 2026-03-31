@@ -207,6 +207,7 @@
     let currentRows = [];
     let viewMode = 'configured';
     let sessionNames = { '1': 'Session 1', '2': 'Session 2' };
+    const sessionCache = { '1': null, '2': null };
     let networkPollTimer = null;
     let appTitlePrefix = 'Genrouter';
 
@@ -304,6 +305,27 @@
       });
     }
 
+    function cloneRows(rows) {
+      return JSON.parse(JSON.stringify(Array.isArray(rows) ? rows : []));
+    }
+    async function fetchSessionData(session, force=false) {
+      const key = String(session);
+      if (!force && sessionCache[key]) return cloneRows(sessionCache[key].rows || []), sessionCache[key];
+      const data = await fetchJSON(`/api/pm/sessions/${key}`);
+      sessionCache[key] = { ...data, rows: cloneRows(data.rows || []) };
+      if (data.name) sessionNames[key] = data.name;
+      return sessionCache[key];
+    }
+    function updateSessionCache(session, rows, extra={}) {
+      const key = String(session);
+      sessionCache[key] = {
+        ...(sessionCache[key] || {}),
+        ...extra,
+        rows: cloneRows(rows || []),
+      };
+      if (sessionCache[key]?.name) sessionNames[key] = sessionCache[key].name;
+    }
+
     async function editAppTitlePrefix() {
       const current = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
       const name = prompt('Sửa phần tên đầu tiêu đề', current);
@@ -385,9 +407,10 @@
       const to = currentSession === '1' ? '2' : '1';
       try {
         setStatus(`Đang clone ${sessionNameOf(from)} > ${sessionNameOf(to)}...`);
-        const data = currentRows;
+        const data = cloneRows(currentRows);
         await fetchJSON(`/api/pm/sessions/${to}`, { method:'POST', body: JSON.stringify({ rows: data, name: sessionNameOf(to) }) });
         sessionNames[to] = sessionNameOf(from);
+        updateSessionCache(to, data, { name: sessionNameOf(from) });
         persistDraft(to);
         setStatus(`Đã clone ${sessionNameOf(from)} > ${sessionNameOf(to)}`);
       } catch (e) {
@@ -505,7 +528,8 @@
         };
         const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`, { method:'POST', body: JSON.stringify(payload) });
         closeIpMacModal();
-        await loadSession(currentSession);
+        sessionCache[String(currentSession)] = null;
+        await loadSession(currentSession, true);
         setStatus(`Đã khóa định danh IP (${data.count || 0} dòng)`);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
@@ -576,13 +600,12 @@
       }
     }
 
-    async function loadSession(session) {
+    async function loadSession(session, force=false) {
       viewMode = 'configured';
       setStatus('Bạn đang ở ' + sessionNameOf(session));
-      const data = await fetchJSON(`/api/pm/sessions/${session}`);
-      currentSession = session;
-      currentRows = applyDraftToRows(data.rows || [], session);
-      if (data.name) sessionNames[String(session)] = data.name;
+      const data = await fetchSessionData(session, force);
+      currentSession = String(session);
+      currentRows = applyDraftToRows(cloneRows(data.rows || []), session);
       render();
       setStatus('Bạn đang ở ' + sessionNameOf(currentSession));
     }
@@ -595,7 +618,7 @@
       const rows = Array.isArray(rowsOverride) ? rowsOverride : currentRows;
       setStatus('Đang lưu ' + sessionNameOf(session) + '...');
       const resp = await fetchJSON(`/api/pm/sessions/${session}`, { method:'POST', body: JSON.stringify({ rows, name: sessionNameOf(session) }) });
-      if (resp.name) sessionNames[String(session)] = resp.name;
+      updateSessionCache(session, rows, { name: resp.name || sessionNameOf(session) });
       setStatus('Đã lưu ' + sessionNameOf(session));
     }
 
@@ -643,7 +666,7 @@
       refreshConnectionStatus(true);
       if (networkPollTimer) clearInterval(networkPollTimer);
       networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
-      loadSession('1');
+      loadSession('1', true);
     }
 
     bootstrap();
