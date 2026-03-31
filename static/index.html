@@ -274,7 +274,6 @@
         ip: String(r.ip || ''),
         proxy: String(r.proxy || ''),
         note: String(r.note || ''),
-        mac: String(r.mac || ''),
       }));
     }
     function persistDraft(session) {
@@ -282,7 +281,13 @@
     }
     function loadDraft(session) {
       try {
-        return JSON.parse(sessionStorage.getItem(draftKey(session)) || '[]');
+        const draft = JSON.parse(sessionStorage.getItem(draftKey(session)) || '[]');
+        if (!Array.isArray(draft)) return [];
+        return draft.map(item => ({
+          ...item,
+          proxy: String(item?.proxy || ''),
+          note: String(item?.note || ''),
+        }));
       } catch {
         return [];
       }
@@ -295,7 +300,7 @@
         const key = String(row.tag || row.ip || '');
         const saved = byKey.get(key);
         if (!saved) return row;
-        return { ...row, proxy: saved.proxy || '', note: saved.note || '', mac: saved.mac || row.mac || '' };
+        return { ...row, proxy: saved.proxy || '', note: saved.note || '' };
       });
     }
 
