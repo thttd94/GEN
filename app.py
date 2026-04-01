@@ -42,6 +42,7 @@ SESSION_FILES = {
     '2': CONFIG_DIR / 'gencore2.json',
 }
 RUNTIME_FILE = RUNTIME_DIR / 'gencore.json'
+RUNTIME_SOURCE_FILE = CONFIG_DIR / 'gencore.json'
 MAX_PROXY_TAG = 1000
 TAGS_PER_SUBNET = 250
 BASE_SUBNET_OCTET = 4
@@ -694,16 +695,35 @@ def build_old_gui_update_proxy_payload_from_rows(rows):
 
 
 def run_apply(session: str, rows_override=None):
-    source = SESSION_FILES[session]
+    preset_source = SESSION_FILES[session]
     results = []
-    rows = rows_override if isinstance(rows_override, list) else extract_rows(load_json(source), session=session)
+
+    preset_data = load_json(preset_source)
+    if str(preset_source) != str(RUNTIME_SOURCE_FILE):
+        save_json(RUNTIME_SOURCE_FILE, preset_data)
+        results.append({
+            'cmd': 'copy preset to runtime source',
+            'ok': True,
+            'source': str(preset_source),
+            'target': str(RUNTIME_SOURCE_FILE),
+        })
+    else:
+        results.append({
+            'cmd': 'copy preset to runtime source',
+            'ok': True,
+            'source': str(preset_source),
+            'target': str(RUNTIME_SOURCE_FILE),
+            'skipped': True,
+        })
+
+    rows = rows_override if isinstance(rows_override, list) else extract_rows(load_json(RUNTIME_SOURCE_FILE), session=session)
     payload = build_old_gui_update_proxy_payload_from_rows(rows)
     try:
         resp = call_old_gui('/api/update_proxy', method='POST', data=payload)
         results.append({
             'cmd': 'POST /api/update_proxy',
             'ok': True,
-            'source': str(source),
+            'source': str(RUNTIME_SOURCE_FILE),
             'count': len(payload),
             'response': resp.get('data'),
         })
@@ -711,7 +731,7 @@ def run_apply(session: str, rows_override=None):
         results.append({
             'cmd': 'POST /api/update_proxy',
             'ok': False,
-            'source': str(source),
+            'source': str(RUNTIME_SOURCE_FILE),
             'count': len(payload),
             'error': str(e),
         })
