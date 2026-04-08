@@ -854,7 +854,12 @@ def check_proxy(proxy: str, session='1'):
         ok, _probe_host, _probe_port = socks5_probe_multi(server, port, user, password)
         if not ok:
             return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
-        return {'ok': True, 'status': 'live', 'message': 'LIVE'}
+        public_ip = ''
+        try:
+            public_ip = get_proxy_public_ip(server, port, user, password)
+        except Exception:
+            public_ip = ''
+        return {'ok': True, 'status': 'live', 'message': 'LIVE', 'ip': public_ip, 'public_ip': public_ip}
     except Exception:
         return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
 

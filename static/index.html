@@ -148,7 +148,7 @@
               <th style="width:190px;">
                 <div class="th-check">
                   <span>Kiểm tra Proxy</span>
-                  <button class="btn small warn" onclick="checkAllProxy()">Kiểm tra tất cả</button>
+                  <button class="btn small warn" onclick="checkAllProxy()">CHECK ALL</button>
                 </div>
               </th>
             </tr>
@@ -422,6 +422,15 @@
         box.className = 'check-bad';
         box.textContent = 'DEAD';
       }
+    }
+
+    async function checkAllProxy() {
+      setStatus('Đang CHECK ALL...');
+      const rows = getVisibleRows().filter(r => r.tag && String(r.proxy || '').trim());
+      for (const row of rows) {
+        await checkProxy(row.tag);
+      }
+      setStatus('Đã CHECK ALL xong');
     }
 
     async function rebootRouter() {
