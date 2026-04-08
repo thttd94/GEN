@@ -454,8 +454,32 @@
     async function checkAllProxy() {
       setStatus('Đang CHECK ALL...');
       const rows = getVisibleRows().filter(r => r.tag && String(r.proxy || "").trim());
-      await Promise.all(rows.map(row => checkProxy(row.tag)));
-      setStatus('Đã CHECK ALL xong');
+      const payload = { session: currentSession, items: rows.map(r => ({ tag: r.tag, proxy: r.proxy || '' })) };
+      try {
+        const data = await fetchJSON('/api/pm/check-proxy-batch', { method:'POST', body: JSON.stringify(payload) });
+        const results = data?.results || {};
+        for (const row of rows) {
+          const box = document.getElementById(`check-${row.tag}`);
+          const item = results[row.tag] || {};
+          if (!box) continue;
+          box.className = item.ok ? 'check-ok' : 'check-bad';
+          if (item.ok) {
+            const ip = String(item.ip || item.public_ip || item.result?.ip || '').trim();
+            const duplicates = Array.isArray(item.duplicates) ? item.duplicates : [];
+            let html = ip ? `LIVE | ${ip}` : 'LIVE';
+            if (duplicates.length) {
+              window['__dup_' + row.tag] = duplicates;
+              html += ` <button class="btn small" onclick="showDuplicates(window['__dup_${row.tag}'])">Trùng</button>`;
+            }
+            box.innerHTML = html;
+          } else {
+            box.textContent = 'DEAD';
+          }
+        }
+        setStatus('Đã CHECK ALL xong');
+      } catch {
+        setStatus('Lỗi CHECK ALL');
+      }
     }
 
     async function rebootRouter() {
