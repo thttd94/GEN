@@ -37,9 +37,10 @@ else:
     RUNTIME_DIR = DEV_RUNTIME_DIR
     GENRUNNER = DEV_GENRUNNER
 
+PRESET_DIR = BASE_DIR / 'presets'
 SESSION_FILES = {
-    '1': CONFIG_DIR / 'gencore.json',
-    '2': CONFIG_DIR / 'gencore2.json',
+    '1': PRESET_DIR / 'session1.json',
+    '2': PRESET_DIR / 'session2.json',
 }
 RUNTIME_FILE = RUNTIME_DIR / 'gencore.json'
 RUNTIME_SOURCE_FILE = CONFIG_DIR / 'gencore.json'
@@ -75,17 +76,25 @@ def tag_to_ip(tag):
 
 
 def ensure_session2_exists():
+    PRESET_DIR.mkdir(parents=True, exist_ok=True)
+    s1 = SESSION_FILES['1']
     s2 = SESSION_FILES['2']
+    if not s1.exists():
+        save_json(s1, load_json(RUNTIME_SOURCE_FILE))
     if not s2.exists():
-        data = load_json(SESSION_FILES['1'])
+        data = load_json(s1)
         clear_session_proxies(data)
         save_json(s2, data)
+    if not get_saved_ip_identity_text('1') and s1.exists():
+        data1 = load_json(s1)
+        rows1 = build_ip_identity_rows_from_data(data1)
+        if rows1 and len(rows1) < MAX_PROXY_TAG:
+            set_saved_ip_identity_text('1', '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows1))
     if not get_saved_ip_identity_text('2') and s2.exists():
         data2 = load_json(s2)
-        rows = build_ip_identity_rows_from_data(data2)
-        if rows and len(rows) < MAX_PROXY_TAG:
-            set_saved_ip_identity_text('2', '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
-
+        rows2 = build_ip_identity_rows_from_data(data2)
+        if rows2 and len(rows2) < MAX_PROXY_TAG:
+            set_saved_ip_identity_text('2', '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows2))
 
 def load_json(path: Path):
     return json.loads(path.read_text(encoding='utf-8'))
