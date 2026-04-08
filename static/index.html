@@ -72,7 +72,7 @@
   <div class="wrap">
     <div class="titlebar">
       <div class="titlebar-left">
-        <div class="title" id="appTitle">Genrouter Proxy Manager _ By Hồng Thái</div>
+        <div class="title" id="appTitle">Genrouter Nguồn lưu cấu hình riêng _ By Hồng Thái</div>
         <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
       </div>
       <div class="titlebar-right">
@@ -80,11 +80,12 @@
       </div>
     </div>
 
-    <div class="toolbar">
+        <div class="sub" style="padding:0 16px 8px 16px;color:#94a3b8;">GUI này chỉ lưu nguồn cấu hình riêng. Chỉ khi bấm APPLY mới nạp proxy vào gencore.json rồi apply cho devices.</div>
+<div class="toolbar">
       <div class="toolbar-left">
-        <button class="btn tab active" id="tab1" onclick="switchSession('1')">Session 1</button>
-        <button class="btn tab" id="tab2" onclick="switchSession('2')">Session 2</button>
-        <button class="btn apply" onclick="applyCurrentSession()">Apply Session đang mở</button>
+        <button class="btn tab active" id="tab1" onclick="switchSession('1')">CẤU HÌNH 1</button>
+        <button class="btn tab" id="tab2" onclick="switchSession('2')">CẤU HÌNH 2</button>
+        <button class="btn apply" onclick="applyCurrentSession()">NẠP & APPLY CẤU HÌNH ĐANG MỞ</button>
         <span class="status" id="status">Ready</span>
       </div>
       <div class="toolbar-right">
@@ -95,7 +96,7 @@
 
     <div class="panel">
       <div class="meta">
-        <div class="session-meta"><b id="sessionLabel">Session 1</b><button class="icon-btn" onclick="editSessionName()" title="Đổi tên session">✏️</button></div>
+        <div class="session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Đổi tên session">✏️</button></div>
         <div class="sub" id="countLabel">0 rows</div>
       </div>
 
@@ -203,7 +204,7 @@
     let currentSession = '1';
     let currentRows = [];
     let viewMode = 'configured';
-    let sessionNames = { '1': 'Session 1', '2': 'Session 2' };
+    let sessionNames = { '1': 'CẤU HÌNH 1', '2': 'CẤU HÌNH 2' };
     const sessionCache = { '1': null, '2': null };
     let networkPollTimer = null;
     let appTitlePrefix = 'Genrouter';
@@ -211,7 +212,7 @@
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function renderAppTitle() {
       const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
-      const full = `${prefix} Proxy Manager _ By Hồng Thái`;
+      const full = `${prefix} Nguồn lưu cấu hình riêng _ By Hồng Thái`;
       const titleEl = document.getElementById('appTitle');
       if (titleEl) titleEl.textContent = full;
       document.title = prefix;
@@ -496,7 +497,7 @@
       try {
         const text = document.getElementById('ipMacText').value;
         if (!text.trim()) return setStatus('Chưa có dữ liệu IP/MAC');
-        setStatus('Đang khóa định danh IP...');
+        setStatus('Đang lưu định danh IP vào nguồn cấu hình...');
         const payload = {
           text,
           sync_router: true,
@@ -507,7 +508,7 @@
         closeIpMacModal();
         sessionCache[String(currentSession)] = null;
         await loadSession(currentSession, true);
-        setStatus(`Đã khóa định danh IP (${data.count || 0} dòng)`);
+        setStatus(`Đã lưu định danh IP vào nguồn cấu hình (${data.count || 0} dòng)`);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
@@ -516,12 +517,12 @@
 
     async function loadSession(session, force=false) {
       viewMode = 'configured';
-      setStatus('Bạn đang ở ' + sessionNameOf(session));
+      setStatus('Đang mở ' + sessionNameOf(session));
       const data = await fetchSessionData(session, force);
       currentSession = String(session);
       currentRows = applyDraftToRows(cloneRows(data.rows || []), session);
       render();
-      setStatus('Bạn đang ở ' + sessionNameOf(currentSession));
+      setStatus('Đang mở ' + sessionNameOf(currentSession));
     }
 
     async function switchSession(session) {
@@ -530,16 +531,16 @@
 
     async function saveSession(session, rowsOverride=null) {
       const rows = Array.isArray(rowsOverride) ? rowsOverride : currentRows;
-      setStatus('Đang lưu ' + sessionNameOf(session) + '...');
+      setStatus('Đang lưu nguồn cấu hình ' + sessionNameOf(session) + '...');
       const resp = await fetchJSON(`/api/pm/sessions/${session}`, { method:'POST', body: JSON.stringify({ rows, name: sessionNameOf(session) }) });
       updateSessionCache(session, rows, { name: resp.name || sessionNameOf(session) });
-      setStatus('Đã lưu ' + sessionNameOf(session));
+      setStatus('Đã lưu nguồn cấu hình ' + sessionNameOf(session));
     }
 
     async function saveCurrent() {
       try {
         persistDraft(currentSession);
-        setStatus('Đã lưu tạm ' + sessionNameOf(currentSession) + ' (chưa apply)');
+        setStatus('Đã lưu nguồn cấu hình nguồn cấu hình ' + sessionNameOf(currentSession) + ' (chưa apply)');
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
@@ -556,14 +557,14 @@
         const mergedRows = applyDraftToRows(currentRows, session);
         currentRows = mergedRows;
         await saveSession(session, mergedRows);
-        setStatus('Applying ' + sessionNameOf(session) + '...');
+        setStatus('Đang nạp và apply ' + sessionNameOf(session) + '...');
         const data = await fetchJSON(`/api/pm/apply/${session}`, { method:'POST', body: JSON.stringify({ rows: mergedRows }) });
         const bad = Array.isArray(data.results) ? data.results.find(x => x && (x.error || x.ok === false || (typeof x.code === 'number' && x.code !== 0))) : null;
         if (bad) {
           setStatus('Apply ' + sessionNameOf(session) + ' lỗi: ' + (bad.cmd || '') + ' ' + (bad.stderr || bad.error || ('code ' + bad.code)));
           return;
         }
-        setStatus('Đã apply ' + sessionNameOf(session));
+        setStatus('Đã nạp & apply ' + sessionNameOf(session));
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
@@ -576,7 +577,7 @@
       } catch {}
       renderAppTitle();
       setConnectionBadge(false);
-      setStatus('Bạn đang ở ' + sessionNameOf(currentSession));
+      setStatus('Đang mở ' + sessionNameOf(currentSession));
       refreshConnectionStatus(true);
       if (networkPollTimer) clearInterval(networkPollTimer);
       networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
