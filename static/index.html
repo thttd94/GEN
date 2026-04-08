@@ -201,19 +201,6 @@
     </div>
   </div>
 
-
-  <div class="modal" id="dupModal">
-    <div class="modal-card" style="max-width:680px;">
-      <div class="modal-head">
-        <b>IP TRÙNG</b>
-        <button class="btn small" onclick="closeDupModal()">Đóng</button>
-      </div>
-      <div class="modal-body">
-        <textarea id="dupText" class="cfg-text" spellcheck="false" readonly></textarea>
-      </div>
-    </div>
-  </div>
-
   <script>
     let currentSession = '1';
     let currentRows = [];
@@ -416,16 +403,6 @@
       setStatus('Đã mở GÁN MAC');
     }
 
-    function showDuplicates(items) {
-      const lines = (items || []).map(x => `${x.ip || ''} | ${x.tag || ''}`);
-      document.getElementById('dupText').value = lines.join('
-');
-      document.getElementById('dupModal').classList.add('show');
-    }
-    function closeDupModal() {
-      document.getElementById('dupModal').classList.remove('show');
-    }
-
     async function checkProxy(tag) {
       const row = currentRows.find(r => r.tag === tag);
       const box = document.getElementById(`check-${tag}`);
@@ -437,9 +414,7 @@
         box.className = data.ok ? 'check-ok' : 'check-bad';
         if (data.ok) {
           const ip = String(data.ip || data.public_ip || data.result?.ip || '').trim();
-          const duplicates = Array.isArray(data.duplicates) ? data.duplicates : [];
-          const btn = duplicates.length ? ` <button class="btn small" style="margin-top:4px" onclick='showDuplicates(${JSON.stringify(duplicates).replace(/'/g, '&apos;')})'>IP TRÙNG</button>` : '';
-          box.innerHTML = (ip ? `LIVE | ${ip}` : 'LIVE') + btn;
+          box.textContent = ip ? `LIVE | ${ip}` : 'LIVE';
         } else {
           box.textContent = 'DEAD';
         }
