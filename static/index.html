@@ -90,8 +90,6 @@
       <div class="toolbar-right">
         <button class="btn warn" onclick="openIpMacConfig()">ĐỊNH DANH IP</button>
         <button class="btn warn" onclick="openMacAssignPage()">GÁN MAC</button>
-        <button class="btn warn" onclick="openSetupRouter()">SETUP ROUTER</button>
-        <button class="btn warn" onclick="rebootRouter()">REBOOT ROUTER</button>
       </div>
     </div>
 
@@ -130,8 +128,7 @@
             <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
             <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
           </div>
-          <button class="btn" id="cloneBtn" onclick="cloneCurrentSession()">CLONE SS1 > SS2</button>
-        </div>
+                  </div>
         <button class="btn save-strong" onclick="saveCurrent()">SAVE</button>
       </div>
 
@@ -371,7 +368,6 @@
       renderAppTitle();
       document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
       document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionNameOf(currentSession).toUpperCase();
-      updateCloneButton();
       const visibleRows = getVisibleRows();
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
       document.getElementById('rows').innerHTML = visibleRows.map((row, idx) => `
@@ -383,7 +379,7 @@
           <td class="mono">${esc(row.tag)}</td>
           <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
-          <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">Check</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
+          <td><div id="check-${esc(row.tag)}" class="sub"></div></td>
         </tr>`).join('');
       renderNotesSummary();
     }
@@ -398,28 +394,6 @@
       if (el.dataset.field === 'note') renderNotesSummary();
     }
 
-    function cloneButtonLabel() {
-      return currentSession === '1' ? 'CLONE SS1 > SS2' : 'CLONE SS2 > SS1';
-    }
-    function updateCloneButton() {
-      const el = document.getElementById('cloneBtn');
-      if (el) el.textContent = cloneButtonLabel();
-    }
-    async function cloneCurrentSession() {
-      const from = currentSession;
-      const to = currentSession === '1' ? '2' : '1';
-      try {
-        setStatus(`Đang clone ${sessionNameOf(from)} > ${sessionNameOf(to)}...`);
-        const data = cloneRows(currentRows);
-        await fetchJSON(`/api/pm/sessions/${to}`, { method:'POST', body: JSON.stringify({ rows: data, name: sessionNameOf(to) }) });
-        sessionNames[to] = sessionNameOf(from);
-        updateSessionCache(to, data, { name: sessionNameOf(from) });
-        persistDraft(to);
-        setStatus(`Đã clone ${sessionNameOf(from)} > ${sessionNameOf(to)}`);
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
     function openMacAssignPage() {
       const host = window.location.hostname || '192.168.1.1';
       const url = `http://${host}:19123`;
@@ -539,69 +513,6 @@
       }
     }
 
-    async function checkProxy(tag) {
-      const row = currentRows.find(r => r.tag === tag);
-      const box = document.getElementById(`check-${tag}`);
-      if (!row || !box) return;
-      box.className = 'check-wait';
-      box.textContent = 'CHECK...';
-      try {
-        const data = await fetchJSON('/api/pm/check-proxy', { method:'POST', body: JSON.stringify({ proxy: row.proxy || '', session: currentSession }) });
-        box.className = data.ok ? 'check-ok' : 'check-bad';
-        box.textContent = data.ok ? 'LIVE' : 'DEAD';
-      } catch {
-        box.className = 'check-bad';
-        box.textContent = 'DEAD';
-      }
-    }
-
-    async function checkAllProxy() {
-      setStatus('Đang check toàn bộ proxy...');
-      const rows = getVisibleRows().filter(row => row.tag);
-      await Promise.all(rows.map(row => checkProxy(row.tag)));
-      setStatus('Đã check xong ' + sessionNameOf(currentSession));
-    }
-
-    async function rebootRouter() {
-      try {
-        setStatus('Đang reboot router...');
-        await fetchJSON('/api/pm/reboot-router', { method:'POST', body:'{}' });
-        setStatus('Đã gửi lệnh reboot router');
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
-
-    async function openSetupRouter() {
-      try {
-        setStatus('Đang lấy IP router...');
-        const info = await fetchJSON('/api/pm/router-info');
-        const ip = info?.data?.data?.lan?.networks?.[0]?.ip || info?.data?.lan?.networks?.[0]?.ip || window.location.hostname || '';
-        document.getElementById('routerIp').value = ip;
-        document.getElementById('routerModal').classList.add('show');
-        setStatus('Đã mở Set up Router');
-      } catch {
-        document.getElementById('routerIp').value = window.location.hostname || '';
-        document.getElementById('routerModal').classList.add('show');
-        setStatus('Đã mở Set up Router');
-      }
-    }
-
-    function closeRouterModal() {
-      document.getElementById('routerModal').classList.remove('show');
-    }
-
-    async function submitRouterSetup() {
-      try {
-        const payload = { ip_lan: document.getElementById('routerIp').value.trim() };
-        setStatus('Đang lưu LAN IP router...');
-        await fetchJSON('/api/pm/router-change-lan', { method:'POST', body: JSON.stringify(payload) });
-        closeRouterModal();
-        setStatus('Đã gửi cấu hình đổi LAN IP router');
-      } catch (e) {
-        setStatus('Lỗi: ' + e.message);
-      }
-    }
 
     async function loadSession(session, force=false) {
       viewMode = 'configured';
