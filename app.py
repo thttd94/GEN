@@ -1,5 +1,6 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, urlencode
 import json
 import shutil
@@ -867,6 +868,30 @@ def check_proxy(proxy: str, session='1'):
         return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
 
 
+def check_proxy_batch(items, session='1', max_workers=64):
+    jobs = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        tag = str(item.get('tag', '')).strip()
+        proxy = str(item.get('proxy', '')).strip()
+        if tag and proxy:
+            jobs.append((tag, proxy))
+    results = {}
+    if not jobs:
+        return results
+    workers = max(1, min(len(jobs), int(max_workers or 64), 128))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(check_proxy, proxy, session): tag for tag, proxy in jobs}
+        for fut in as_completed(futs):
+            tag = futs[fut]
+            try:
+                results[tag] = fut.result()
+            except Exception as e:
+                results[tag] = {'ok': False, 'status': 'dead', 'message': 'DEAD', 'error': str(e)}
+    return results
+
+
 def call_old_gui(path, method='GET', data=None):
     body = None
     headers = {}
@@ -1043,6 +1068,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({'ok': True, 'session': session_id, 'count': len(rows), 'text': normalized_text, 'apply_results': locals().get('apply_results', [])})
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', '')), session=str(payload.get('session', '1'))))
+            if path == '/api/pm/check-proxy-batch':
+                return self._send_json({'ok': True, 'results': check_proxy_batch(payload.get('items', []), session=str(payload.get('session', '1')) )})
             if path == '/api/pm/reboot-router':
                 return self._send_json(call_old_gui('/api/system/reboot', method='GET'))
             if path == '/api/pm/router-change-lan':
