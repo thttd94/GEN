@@ -91,6 +91,8 @@
       <div class="toolbar-right">
         <button class="btn warn" onclick="openIpMacConfig()">ĐỊNH DANH IP</button>
         <button class="btn warn" onclick="openMacAssignPage()">GÁN MAC</button>
+        <button class="btn warn" onclick="openSetupRouter()">SETUP ROUTER</button>
+        <button class="btn warn" onclick="rebootRouter()">REBOOT ROUTER</button>
       </div>
     </div>
 
@@ -400,6 +402,47 @@
       const url = `http://${host}:19123`;
       window.open(url, '_blank');
       setStatus('Đã mở GÁN MAC');
+    }
+
+    async function rebootRouter() {
+      try {
+        setStatus('Đang reboot router...');
+        await fetchJSON('/api/pm/reboot-router', { method:'POST', body:'{}' });
+        setStatus('Đã gửi lệnh reboot router');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+    async function openSetupRouter() {
+      try {
+        setStatus('Đang lấy IP router...');
+        const info = await fetchJSON('/api/pm/router-info');
+        const ip = info?.data?.data?.lan?.networks?.[0]?.ip || info?.data?.lan?.networks?.[0]?.ip || window.location.hostname || '';
+        document.getElementById('routerIp').value = ip;
+        document.getElementById('routerModal').classList.add('show');
+        setStatus('Đã mở SETUP ROUTER');
+      } catch {
+        document.getElementById('routerIp').value = window.location.hostname || '';
+        document.getElementById('routerModal').classList.add('show');
+        setStatus('Đã mở SETUP ROUTER');
+      }
+    }
+
+    function closeRouterModal() {
+      document.getElementById('routerModal').classList.remove('show');
+    }
+
+    async function submitRouterSetup() {
+      try {
+        const payload = { ip_lan: document.getElementById('routerIp').value.trim() };
+        setStatus('Đang lưu LAN IP router...');
+        await fetchJSON('/api/pm/router-change-lan', { method:'POST', body: JSON.stringify(payload) });
+        closeRouterModal();
+        setStatus('Đã gửi cấu hình đổi LAN IP router');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
     }
 
     async function editSessionName() {
