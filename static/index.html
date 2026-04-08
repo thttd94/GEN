@@ -148,7 +148,7 @@
               <th style="width:190px;">
                 <div class="th-check">
                   <span>Kiểm tra Proxy</span>
-                  <button class="btn small warn" onclick="checkAllProxy()">CHECK ALL</button>
+                  <button class="btn small warn" onclick="checkAllProxy()">Kiểm tra tất cả</button>
                 </div>
               </th>
             </tr>
@@ -197,19 +197,6 @@
         <button class="btn" onclick="loadDefaultIpMacMap()">Nạp mặc định theo proxy</button>
         <button class="btn" onclick="closeIpMacModal()">Hủy</button>
         <button class="btn apply" onclick="submitIpMacConfig()">Apply</button>
-      </div>
-    </div>
-  </div>
-
-
-  <div class="modal" id="dupModal">
-    <div class="modal-card" style="max-width:680px;">
-      <div class="modal-head">
-        <b>TRÙNG IP</b>
-        <button class="btn small" onclick="closeDupModal()">Đóng</button>
-      </div>
-      <div class="modal-body">
-        <textarea id="dupText" class="cfg-text" spellcheck="false" readonly></textarea>
       </div>
     </div>
   </div>
@@ -416,16 +403,6 @@
       setStatus('Đã mở GÁN MAC');
     }
 
-    function showDuplicates(items) {
-      const lines = (items || []).map(x => `${x.ip || ''} | ${x.tag || ''}`);
-      document.getElementById('dupText').value = lines.join('
-');
-      document.getElementById('dupModal').classList.add('show');
-    }
-    function closeDupModal() {
-      document.getElementById('dupModal').classList.remove('show');
-    }
-
     async function checkProxy(tag) {
       const row = currentRows.find(r => r.tag === tag);
       const box = document.getElementById(`check-${tag}`);
@@ -437,13 +414,7 @@
         box.className = data.ok ? 'check-ok' : 'check-bad';
         if (data.ok) {
           const ip = String(data.ip || data.public_ip || data.result?.ip || '').trim();
-          const duplicates = Array.isArray(data.duplicates) ? data.duplicates : [];
-          let html = ip ? `LIVE | ${ip}` : 'LIVE';
-          if (duplicates.length) {
-            window['__dup_' + tag] = duplicates;
-            html += ` <button class="btn small" onclick="showDuplicates(window['__dup_${tag}'])">Trùng</button>`;
-          }
-          box.innerHTML = html;
+          box.textContent = ip ? `LIVE | ${ip}` : 'LIVE';
         } else {
           box.textContent = 'DEAD';
         }
@@ -453,14 +424,6 @@
       }
     }
 
-    async function checkAllProxy() {
-      setStatus('Đang CHECK ALL...');
-      const rows = getVisibleRows().filter(r => r.tag && String(r.proxy || '').trim());
-      for (const row of rows) {
-        await checkProxy(row.tag);
-      }
-      setStatus('Đã CHECK ALL xong');
-    }
     async function rebootRouter() {
       try {
         setStatus('Đang reboot router...');
