@@ -381,7 +381,7 @@
           <td class="mono">${esc(row.tag)}</td>
           <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
-          <td><div id="check-${esc(row.tag)}" class="sub"></div></td>
+          <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
         </tr>`).join('');
       renderNotesSummary();
     }
@@ -401,6 +401,27 @@
       const url = `http://${host}:19123`;
       window.open(url, '_blank');
       setStatus('Đã mở GÁN MAC');
+    }
+
+    async function checkProxy(tag) {
+      const row = currentRows.find(r => r.tag === tag);
+      const box = document.getElementById(`check-${tag}`);
+      if (!row || !box) return;
+      box.className = 'check-wait';
+      box.textContent = 'CHECK...';
+      try {
+        const data = await fetchJSON('/api/pm/check-proxy', { method:'POST', body: JSON.stringify({ proxy: row.proxy || '', session: currentSession }) });
+        box.className = data.ok ? 'check-ok' : 'check-bad';
+        if (data.ok) {
+          const ip = String(data.ip || data.public_ip || data.result?.ip || '').trim();
+          box.textContent = ip ? `LIVE | ${ip}` : 'LIVE';
+        } else {
+          box.textContent = 'DEAD';
+        }
+      } catch {
+        box.className = 'check-bad';
+        box.textContent = 'DEAD';
+      }
     }
 
     async function rebootRouter() {
