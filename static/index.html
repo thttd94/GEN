@@ -72,7 +72,7 @@
   <div class="wrap">
     <div class="titlebar">
       <div class="titlebar-left">
-        <div class="title" id="appTitle">Genrouter Nguồn lưu cấu hình riêng _ By Hồng Thái</div>
+        <div class="title" id="appTitle">Genrouter PROXY MANAGER - HGTHAI</div>
         <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
       </div>
       <div class="titlebar-right">
@@ -208,12 +208,12 @@
     let sessionNames = { '1': 'CẤU HÌNH 1', '2': 'CẤU HÌNH 2' };
     const sessionCache = { '1': null, '2': null };
     let networkPollTimer = null;
-    let appTitlePrefix = 'Genrouter';
+    let appTitlePrefix = 'PROXY MANAGER - HGTHAI';
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function renderAppTitle() {
       const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
-      const full = `${prefix} Nguồn lưu cấu hình riêng _ By Hồng Thái`;
+      const full = `${prefix} PROXY MANAGER - HGTHAI`;
       const titleEl = document.getElementById('appTitle');
       if (titleEl) titleEl.textContent = full;
       document.title = prefix;
