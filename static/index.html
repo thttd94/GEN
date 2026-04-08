@@ -454,9 +454,7 @@
     async function checkAllProxy() {
       setStatus('Đang CHECK ALL...');
       const rows = getVisibleRows().filter(r => r.tag && String(r.proxy || "").trim());
-      for (const row of rows) {
-        await checkProxy(row.tag);
-      }
+      await Promise.all(rows.map(row => checkProxy(row.tag)));
       setStatus('Đã CHECK ALL xong');
     }
 
