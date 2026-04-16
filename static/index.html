@@ -1055,7 +1055,7 @@
         if (av > bv) return 1 * admInfoSortDir;
         return 0;
       });
-      body.innerHTML = rows.map(r => `<tr><td>${r.index||''}</td><td>${esc(r.model||'')}</td><td>${esc(r.ios||'')}</td><td>${esc(r.capacity_label||'')}</td><td>${esc(r.free_label||'')}</td><td>${esc(r.ip||'')}</td><td><span class="badge ${r.status==='online'?'online':'offline'}">${r.status||''}</span></td></tr>`).join('');
+      body.innerHTML = rows.map(r => `<tr><td>${r.index||''}</td><td>${esc(r.model||'')}</td><td>${esc(r.ios||'')}</td><td>${esc(r.capacity_label||'')}</td><td>${esc(r.free_label||'')}</td><td>${esc(r.ip||'')}</td><td><span class="badge ${(r.status==='online'?'online':(r.status==='waiting'?'warn':'offline'))}">${r.status||''}</span></td></tr>`).join('');
       const countEl = document.getElementById('admCountLabel');
       if (countEl) countEl.textContent = `${admInfoRows.length} máy`;
     }
@@ -1151,15 +1151,18 @@
         admInfoRows = data.rows || [];
         admRenderInfo();
         const onlineRows = admInfoRows.filter(r => r.status === 'online');
-        const offlineRows = admInfoRows.filter(r => r.status !== 'online');
+        const waitingRows = admInfoRows.filter(r => r.status === 'waiting');
+        const offlineRows = admInfoRows.filter(r => !['online','waiting'].includes(r.status));
         const onlineText = onlineRows.map(r => `${r.index} → ${r.ip}`).join(', ') || 'không có';
+        const waitingText = waitingRows.map(r => `${r.index} → ${r.ip} (${String(r.error || 'đang scan').trim()})`).join(', ') || 'không có';
         const offlineText = offlineRows.map(r => {
           const reason = String(r.error || '').trim();
           return reason ? `${r.index} → ${r.ip} (${reason})` : `${r.index} → ${r.ip}`;
         }).join(', ') || 'không có';
         admLog(`Online: ${onlineText}`);
+        if (waitingRows.length) admLog(`Đang scan: ${waitingText}`);
         admLog(`Offline: ${offlineText}`);
-        admSetStatus(`Online ${onlineRows.length} / Offline ${offlineRows.length}`);
+        admSetStatus(`Online ${onlineRows.length} / Waiting ${waitingRows.length} / Offline ${offlineRows.length}`);
       } catch (e) {
         admInfoRows = [];
         admRenderInfo();

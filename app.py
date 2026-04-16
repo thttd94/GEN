@@ -13,6 +13,7 @@ import socket
 import struct
 import plistlib
 import re
+import threading
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
@@ -63,6 +64,9 @@ RUNTIME_SOURCE_FILE = CONFIG_DIR / 'gencore.json'
 MAX_PROXY_TAG = 1000
 TAGS_PER_SUBNET = 250
 BASE_SUBNET_OCTET = 4
+
+XXTOUCH_SCAN_LOCK = threading.Lock()
+XXTOUCH_SCAN_INFLIGHT = set()
 
 
 def proxy_tag_num(tag):
@@ -557,6 +561,34 @@ def xxtouch_post_json(ip, port, path, payload=None, timeout=20):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read().decode('utf-8', errors='ignore')
     return json.loads(raw)
+
+
+def xxtouch_post_form(ip, port, path, body='', timeout=20, headers=None):
+    raw_body = body.encode('utf-8') if isinstance(body, str) else (body or b'')
+    req = urllib.request.Request(f'http://{ip}:{port}{path}', data=raw_body, method='POST', headers=headers or {})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read().decode('utf-8', errors='ignore')
+    try:
+        return json.loads(raw) if raw else {}
+    except Exception:
+        return {'raw': raw}
+
+
+def xxtouch_device_info(ip, port, timeout=8):
+    return xxtouch_post_form(ip, port, '/deviceinfo', '', timeout=timeout)
+
+
+def xxtouch_try_claim_scan(machine_key: str) -> bool:
+    with XXTOUCH_SCAN_LOCK:
+        if machine_key in XXTOUCH_SCAN_INFLIGHT:
+            return False
+        XXTOUCH_SCAN_INFLIGHT.add(machine_key)
+        return True
+
+
+def xxtouch_release_scan(machine_key: str):
+    with XXTOUCH_SCAN_LOCK:
+        XXTOUCH_SCAN_INFLIGHT.discard(machine_key)
 
 
 def xxtouch_df_info(ip, port):
@@ -1656,8 +1688,23 @@ class Handler(BaseHTTPRequestHandler):
                 machines = xxtouch_get_selected_machines(cfg, state)
 
                 def scan_one(m):
+                    machine_key = f"{m['router']}|{m['index']}|{m['ip']}"
+                    if not xxtouch_try_claim_scan(machine_key):
+                        return {
+                            'router': m['router'],
+                            'index': m['index'],
+                            'machine': m['label'],
+                            'ip': m['ip'],
+                            'status': 'waiting',
+                            'model': '',
+                            'ios': '',
+                            'error': 'đang scan, chờ lượt hiện tại xong',
+                            'capacity_label': '',
+                            'free_label': '',
+                            'free_percent': 0,
+                        }
                     try:
-                        info = xxtouch_post_json(m['ip'], port, '/deviceinfo', {}, timeout=8)
+                        info = xxtouch_device_info(m['ip'], port, timeout=8)
                         data = info.get('data') or {}
                         df = xxtouch_df_info(m['ip'], port)
                         return {
@@ -1685,6 +1732,8 @@ class Handler(BaseHTTPRequestHandler):
                             'free_label': '',
                             'free_percent': 0,
                         }
+                    finally:
+                        xxtouch_release_scan(machine_key)
 
                 rows = []
                 if len(machines) <= 1:
@@ -1698,10 +1747,12 @@ class Handler(BaseHTTPRequestHandler):
                     rows.sort(key=lambda x: (str(x.get('router') or ''), int(x.get('index') or 0)))
 
                 online_rows = [r for r in rows if r.get('status') == 'online']
-                offline_rows = [r for r in rows if r.get('status') != 'online']
+                waiting_rows = [r for r in rows if r.get('status') == 'waiting']
+                offline_rows = [r for r in rows if r.get('status') not in ('online', 'waiting')]
                 online = [str(r.get('index')) for r in online_rows]
                 offline = [str(r.get('index')) for r in offline_rows]
-                return self._send_json({'ok': True, 'rows': rows, 'online': online, 'offline': offline, 'online_count': len(online_rows), 'offline_count': len(offline_rows)})
+                waiting = [str(r.get('index')) for r in waiting_rows]
+                return self._send_json({'ok': True, 'rows': rows, 'online': online, 'offline': offline, 'waiting': waiting, 'online_count': len(online_rows), 'offline_count': len(offline_rows), 'waiting_count': len(waiting_rows)})
             if path == '/api/xxtouch/action':
                 cfg = load_admanager_config()
                 state = payload if isinstance(payload, dict) else {}
