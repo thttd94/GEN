@@ -35,8 +35,11 @@
     .notes-wrap { padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
     .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:105px; max-height:165px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
     .notes-summary-empty { color:#9ca3af; }
-    .bulkbar { display:grid; grid-template-columns: 370px 1fr auto; gap:10px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
-    .bulk-actions { display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; }
+    .bulkbar { display:grid; grid-template-columns: minmax(320px, 420px) minmax(420px, 1fr); gap:12px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
+    .bulk-card { display:grid; gap:8px; align-content:start; }
+    .bulk-card-title { font-size:13px; font-weight:800; color:#111827; }
+    .bulk-actions-inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .bulk-actions { display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; justify-content:flex-end; }
     .view-tabs { display:flex; gap:0; align-items:center; margin-top:10px; }
     .view-tab { border:1px solid #7c2d12; background:#7c2d12; color:#fde68a; padding:10px 16px; cursor:pointer; font-weight:900; opacity:.55; transition:.18s ease; }
     .view-tab:first-child { border-radius:10px 0 0 10px; }
@@ -91,7 +94,7 @@
         <button class="btn apply" onclick="applyCurrentSession()">NẠP & APPLY CẤU HÌNH ĐANG MỞ</button>
       </div>
       <div class="toolbar-right">
-        <button class="btn warn" onclick="openIpMacConfig()">ĐỊNH DANH IP DÙNG CHUNG</button>
+        <button class="btn warn" onclick="openIpMacConfig()">GÁN IP</button>
         <button class="btn warn" onclick="openMacAssignPage()">GÁN MAC</button>
         <button class="btn warn" onclick="openSetupRouter()">SETUP ROUTER</button>
         <button class="btn warn" onclick="rebootRouter()">REBOOT ROUTER</button>
@@ -100,7 +103,7 @@
 
     <div class="panel">
       <div class="meta">
-        <div class="meta-left session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Đổi tên session">✏️</button><button class="icon-btn" onclick="openSessionManager()" title="Quản lý cấu hình" id="manageSessionBtn">⚙️</button></div>
+        <div class="meta-left session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Sửa tên hiển thị cấu hình">✏️</button><button class="icon-btn" onclick="openSessionManager()" title="Quản lý cấu hình" id="manageSessionBtn">⚙️</button></div>
         <div class="meta-center"><span class="status" id="status">Ready</span></div>
         <div class="meta-right"><div class="sub" id="countLabel">0 rows</div></div>
       </div>
@@ -110,21 +113,24 @@
       </div>
 
       <div class="bulkbar">
-        <div>
-          <input id="bulkProxy" placeholder="1 proxy cho tất cả: server:port:user:pass">
-          <div class="sub">Gán toàn bộ thiết bị của session đang mở</div>
+        <div class="bulk-card">
+          <div class="bulk-card-title">GÁN 1 PROXY CHO TOÀN BỘ CẤU HÌNH ĐANG MỞ</div>
+          <input id="bulkProxy" placeholder="server:port:user:pass">
+          <div class="bulk-actions-inline">
+            <button class="btn" onclick="assignAllProxy()">GÁN 1 ALL</button>
+            <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
+            <button class="btn" onclick="clearAllNotes()">Clear Notes</button>
+          </div>
         </div>
-        <div>
+        <div class="bulk-card">
+          <div class="bulk-card-title">GÁN PROXY HÀNG LOẠT THEO TAG</div>
           <textarea id="bulkMap" placeholder="225|1.2.3.4:1080:user:pass
 225;1.2.3.4:1080:user:pass
 225 1.2.3.4:1080:user:pass"></textarea>
-          <div class="sub">x = số tag. Ví dụ 225 = proxy_225. Chỉ đổi các dòng có trong danh sách nhập.</div>
-        </div>
-        <div class="bulk-actions">
-          <button class="btn" onclick="assignAllProxy()">1 Proxy All</button>
-          <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
-          <button class="btn" onclick="clearAllNotes()">Clear Notes</button>
-          <button class="btn" onclick="applyBulkMap()">Gán hàng loạt</button>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+            <div class="sub">x = số tag. Ví dụ 225 = proxy_225. Chỉ đổi các dòng có trong danh sách nhập.</div>
+            <div class="bulk-actions"><button class="btn" onclick="applyBulkMap()">Gán hàng loạt</button></div>
+          </div>
         </div>
       </div>
 
@@ -298,9 +304,12 @@
       box.textContent = lines.join('\n');
     }
 
+    function sessionTabLabel(session) {
+      return `CẤU HÌNH ${String(session)}`;
+    }
     function sessionNameOf(session) {
       const key = String(session);
-      return sessionNames[key] || `CẤU HÌNH ${key}`;
+      return sessionNames[key] || sessionTabLabel(key);
     }
     function renderSessionTabs() {
       const host = document.getElementById('sessionTabs');
@@ -313,7 +322,7 @@
         const btn = document.createElement('button');
         btn.className = 'btn tab' + (currentSession === session ? ' active' : '');
         btn.id = `tab${session}`;
-        btn.textContent = sessionNameOf(session);
+        btn.textContent = sessionTabLabel(session);
         btn.onclick = () => switchSession(session);
         wrap.appendChild(btn);
         host.insertBefore(wrap, addBtn);
@@ -436,7 +445,7 @@
       document.getElementById('viewUnconfiguredBtn').classList.toggle('active', viewMode === 'unconfigured');
       renderAppTitle();
       document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
-      document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionNameOf(currentSession).toUpperCase();
+      document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionTabLabel(currentSession).toUpperCase();
       const visibleRows = getVisibleRows();
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
       document.getElementById('rows').innerHTML = visibleRows.map((row, idx) => `
@@ -581,9 +590,9 @@
 
     async function editSessionName() {
       const current = sessionNameOf(currentSession);
-      const name = prompt(`Đổi tên Session ${currentSession}`, current);
+      const name = prompt(`Sửa tên hiển thị dưới của ${sessionTabLabel(currentSession)}`, current);
       if (name === null) return;
-      const clean = String(name || '').trim() || `Session ${currentSession}`;
+      const clean = String(name || '').trim() || sessionTabLabel(currentSession);
       try {
         await fetchJSON(`/api/pm/sessions/${currentSession}`, { method:'POST', body: JSON.stringify({ rows: currentRows, name: clean }) });
         sessionNames[currentSession] = clean;
@@ -653,7 +662,7 @@
         const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`);
         document.getElementById('ipMacText').value = data.text || '';
         document.getElementById('ipMacModal').classList.add('show');
-        setStatus('Đã nạp định danh IP dùng chung');
+        setStatus('Đã nạp GÁN IP dùng chung');
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
@@ -674,7 +683,7 @@
       try {
         const text = document.getElementById('ipMacText').value;
         if (!text.trim()) return setStatus('Chưa có dữ liệu IP/MAC');
-        setStatus('Đang lưu định danh IP dùng chung...');
+        setStatus('Đang lưu GÁN IP dùng chung...');
         const payload = {
           text,
           sync_router: true,
@@ -685,7 +694,7 @@
         closeIpMacModal();
         sessionCache[String(currentSession)] = null;
         await loadSession(currentSession, true);
-        setStatus(`Đã lưu định danh IP dùng chung cho tất cả cấu hình (${data.count || 0} dòng)`);
+        setStatus(`Đã lưu GÁN IP dùng chung cho tất cả cấu hình (${data.count || 0} dòng)`);
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }
