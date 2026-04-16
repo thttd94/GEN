@@ -1188,9 +1188,18 @@
     }
     async function admRunSimpleAction(action){
       admSetStatus(`Đang chạy: ${action}`);
-      const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action})});
-      (data.logs||[]).forEach(line => admLog(line));
-      admSetStatus(data.message || 'Xong');
+      try {
+        const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action})});
+        (data.logs||[]).forEach(line => admLog(line));
+        const msg = String(data.message || 'Xong');
+        admSetStatus(msg);
+        if (/xong 0\//i.test(msg)) {
+          admLog(`[WARN] ${action} chưa chạy được trên máy đã chọn`);
+        }
+      } catch (e) {
+        admLog(`[ERR] ${action}: ${e.message}`);
+        admSetStatus(`Lỗi ${action}`);
+      }
     }
     async function admOpenRemote(){
       const machine = String(document.getElementById('admRemoteMachine').value || '').trim();
@@ -1198,11 +1207,18 @@
         admSetStatus('Phải nhập số máy để remote');
         return;
       }
-      const data = await fetchJSON('/api/xxtouch/remote-link', {method:'POST', body: JSON.stringify({...admState(), machine})});
-      if (data.url) {
-        window.open(data.url, '_blank');
-        admLog('Mở remote: ' + data.url);
-        admSetStatus('Đã mở remote');
+      try {
+        const data = await fetchJSON('/api/xxtouch/remote-link', {method:'POST', body: JSON.stringify({...admState(), machine})});
+        if (data.url) {
+          window.open(data.url, '_blank');
+          admLog('Mở remote: ' + data.url);
+          admSetStatus('Đã mở remote');
+        } else {
+          admSetStatus('Không lấy được link remote');
+        }
+      } catch (e) {
+        admLog(`[ERR] remote: ${e.message}`);
+        admSetStatus('Lỗi remote');
       }
     }
 
