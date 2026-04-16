@@ -718,17 +718,92 @@ def xxtouch_run_action_on_machine(machine, port, action):
         install_script = r'''lua - <<'LUA'
 local app = require("app")
 local sys = require("sys")
+local screen = require("screen")
+local touch = require("touch")
+screen.init(0)
+
+local RES_DIR = "/var/mobile/Media/1ferver/lua/scripts/img/"
 local TIKTOK_URL = "https://apps.apple.com/jp/app/tiktok-%E3%83%86%E3%82%A3%E3%83%83%E3%82%AF%E3%83%88%E3%83%83%E3%82%AF/id1235601864"
-local TIKTOK_BUNDLE = "com.ss.iphone.ugc.Ame"
-app.close("com.apple.AppStore")
-sys.msleep(1500)
-app.open_url(TIKTOK_URL)
-sys.msleep(6000)
-app.run(TIKTOK_BUNDLE)
-sys.msleep(10000)
-print("INSTALL_TIKTOK_OK")
+local CHECK_TAI_1 = RES_DIR .. "/CheckTai1.png"
+local CHECK_TAI_2 = RES_DIR .. "/CheckTai2.png"
+local CHECK_TAI_3 = RES_DIR .. "/CheckTai3.png"
+local CLOUD_IMG = RES_DIR .. "/cloud.png"
+local OPEN_IMG = RES_DIR .. "/open.png"
+
+local function wait_ms(ms)
+  sys.msleep(ms)
+end
+
+local function openStoreTikTok()
+  app.close("com.apple.AppStore")
+  wait_ms(1500)
+  app.open_url(TIKTOK_URL)
+  wait_ms(6000)
+end
+
+local function hasAnyCheckTai()
+  if findImage(CHECK_TAI_1, 82, 0, 0, 750, 1334) then return true end
+  if findImage(CHECK_TAI_2, 82, 0, 0, 750, 1334) then return true end
+  if findImage(CHECK_TAI_3, 82, 0, 0, 750, 1334) then return true end
+  return false
+end
+
+local function hasOpen()
+  local ok = findImage(OPEN_IMG, 82, 0, 0, 750, 1334)
+  return ok == true
+end
+
+local function hasCloud()
+  local ok = findImage(CLOUD_IMG, 82, 250, 500, 430, 700)
+  return ok == true
+end
+
+local function tapCloudOnce()
+  local ok, x, y = findImage(CLOUD_IMG, 82, 250, 500, 430, 700)
+  if ok then
+    touch.tap(x + 20, y + 20)
+    wait_ms(1000)
+    return true
+  end
+  return false
+end
+
+openStoreTikTok()
+local start_at = os.time()
+local last_cloud_tap_at = 0
+local cloud_tap_cooldown = 12
+local download_started = false
+while os.time() - start_at < 600 do
+  if hasOpen() then
+    app.run("com.ss.iphone.ugc.Ame")
+    wait_ms(10000)
+    print("INSTALL_TIKTOK_OK")
+    return
+  end
+
+  local ready_for_cloud = hasAnyCheckTai()
+  if (not download_started) and ready_for_cloud then
+    if hasCloud() and (os.time() - last_cloud_tap_at >= cloud_tap_cooldown) then
+      if tapCloudOnce() then
+        last_cloud_tap_at = os.time()
+        download_started = true
+        wait_ms(8000)
+      end
+    end
+  elseif download_started then
+    wait_ms(1000)
+  else
+    if (os.time() - start_at) % 20 == 0 then
+      openStoreTikTok()
+    else
+      wait_ms(1000)
+    end
+  end
+  wait_ms(1000)
+end
+error("INSTALL_TIKTOK_TIMEOUT")
 LUA'''
-        xxtouch_spawn_checked(ip, port, install_script, timeout=30)
+        xxtouch_spawn_checked(ip, port, install_script, timeout=660)
         logs.append(f'[{label}] install tiktok ok')
         return True, logs
     if action == 'clear_app':
