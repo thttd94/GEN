@@ -610,6 +610,19 @@ def xxtouch_http_probe(ip, port, timeout=5):
     raise RuntimeError(str(last_error or 'http probe fail'))
 
 
+def xxtouch_ping_probe(ip, timeout=2):
+    try:
+        proc = subprocess.run(
+            ['ping', '-c', '1', '-W', str(int(timeout)), str(ip)],
+            capture_output=True,
+            text=True,
+            timeout=max(3, int(timeout) + 1),
+        )
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
 def xxtouch_try_claim_scan(machine_key: str) -> bool:
     with XXTOUCH_SCAN_LOCK:
         if machine_key in XXTOUCH_SCAN_INFLIGHT:
@@ -1765,6 +1778,21 @@ class Handler(BaseHTTPRequestHandler):
                             **df,
                         }
                     except Exception as e:
+                        ping_ok = xxtouch_ping_probe(m['ip'], timeout=2)
+                        if ping_ok:
+                            return {
+                                'router': m['router'],
+                                'index': m['index'],
+                                'machine': m['label'],
+                                'ip': m['ip'],
+                                'status': 'online',
+                                'model': '',
+                                'ios': '',
+                                'error': f'HTTP bị chặn từ router nhưng ping ok: {e}',
+                                'capacity_label': '',
+                                'free_label': '',
+                                'free_percent': 0,
+                            }
                         return {
                             'router': m['router'],
                             'index': m['index'],
