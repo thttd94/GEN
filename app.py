@@ -1486,11 +1486,17 @@ def sync_static_to_router(rows, clear_first=False):
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _send_no_cache_headers(self):
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+
     def _send_json(self, obj, code=200):
         data = json.dumps(obj, ensure_ascii=False).encode('utf-8')
         self.send_response(code)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(data)))
+        self._send_no_cache_headers()
         self.end_headers()
         self.wfile.write(data)
 
@@ -1499,6 +1505,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(data)))
+        self._send_no_cache_headers()
         self.end_headers()
         self.wfile.write(data)
 
@@ -1520,6 +1527,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', ctype)
         self.send_header('Content-Length', str(len(data)))
+        self._send_no_cache_headers()
         self.end_headers()
         self.wfile.write(data)
 
