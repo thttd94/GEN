@@ -394,10 +394,23 @@ def admanager_get_machine_ip_pairs(router_obj=None):
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     idx_ip = []
     seen = set()
+    allowed_tags = None
+    if isinstance(router_obj, dict):
+        entries = router_obj.get('entries') or []
+        tags = set()
+        for line in entries:
+            parts = str(line).split('|', 1)
+            tag = normalize_tag(parts[0]) if parts else ''
+            if tag.startswith('proxy_'):
+                tags.add(tag)
+        if tags:
+            allowed_tags = tags
     for item in configured_rows:
         tag = normalize_tag(item.get('tag', ''))
         ip = str(item.get('ip', '')).strip()
         if not tag.startswith('proxy_') or not ip:
+            continue
+        if allowed_tags is not None and tag not in allowed_tags:
             continue
         try:
             idx = int(tag.split('_', 1)[1])
