@@ -81,9 +81,10 @@
     </div>
 
     <div class="toolbar">
-      <div class="toolbar-left">
+      <div class="toolbar-left" id="sessionTabs">
         <button class="btn tab active" id="tab1" onclick="switchSession('1')">CẤU HÌNH 1</button>
         <button class="btn tab" id="tab2" onclick="switchSession('2')">CẤU HÌNH 2</button>
+        <button class="btn" id="addSessionBtn" onclick="addSession()">+ THÊM CẤU HÌNH</button>
         <button class="btn apply" onclick="applyCurrentSession()">NẠP & APPLY CẤU HÌNH ĐANG MỞ</button>
         <span class="status" id="status">Ready</span>
       </div>
@@ -217,6 +218,7 @@
     let currentSession = '1';
     let currentRows = [];
     let viewMode = 'configured';
+    let availableSessions = ['1', '2'];
     let sessionNames = { '1': 'CẤU HÌNH 1', '2': 'CẤU HÌNH 2' };
     const sessionCache = { '1': null, '2': null };
     let networkPollTimer = null;
@@ -278,6 +280,21 @@
     }
 
     function sessionNameOf(session) { return sessionNames[String(session)] || `Session ${session}`; }
+    function renderSessionTabs() {
+      const host = document.getElementById('sessionTabs');
+      if (!host) return;
+      const addBtn = document.getElementById('addSessionBtn');
+      host.querySelectorAll('.btn.tab').forEach(el => el.remove());
+      for (const session of availableSessions) {
+        const btn = document.createElement('button');
+        btn.className = 'btn tab' + (currentSession === session ? ' active' : '');
+        btn.id = `tab${session}`;
+        btn.textContent = sessionNameOf(session);
+        btn.onclick = () => switchSession(session);
+        host.insertBefore(btn, addBtn);
+      }
+      if (addBtn) addBtn.style.display = availableSessions.length >= 5 ? 'none' : '';
+    }
     function draftKey(session) { return `pm_draft_${session}`; }
     function exportDraftRows(rows) {
       return (rows || []).filter(r => r && (r.tag || r.ip)).map(r => ({
@@ -318,6 +335,18 @@
 
     function cloneRows(rows) {
       return JSON.parse(JSON.stringify(Array.isArray(rows) ? rows : []));
+    }
+    async function fetchSessionsList() {
+      const data = await fetchJSON('/api/pm/sessions');
+      availableSessions = (data.sessions || []).map(x => String(x.session)).sort((a,b) => Number(a)-Number(b));
+      for (const item of (data.sessions || [])) {
+        if (item && item.session) {
+          sessionNames[String(item.session)] = item.name || sessionNameOf(item.session);
+          if (!(String(item.session) in sessionCache)) sessionCache[String(item.session)] = null;
+        }
+      }
+      renderSessionTabs();
+      return data;
     }
     async function fetchSessionData(session, force=false) {
       const key = String(session);
@@ -373,10 +402,7 @@
     }
 
     function render() {
-      document.getElementById('tab1').classList.toggle('active', currentSession === '1');
-      document.getElementById('tab2').classList.toggle('active', currentSession === '2');
-      document.getElementById('tab1').textContent = sessionNameOf('1');
-      document.getElementById('tab2').textContent = sessionNameOf('2');
+      renderSessionTabs();
       document.getElementById('viewConfiguredBtn').classList.toggle('active', viewMode === 'configured');
       document.getElementById('viewUnconfiguredBtn').classList.toggle('active', viewMode === 'unconfigured');
       renderAppTitle();
@@ -637,6 +663,25 @@
     }
 
 
+    async function addSession() {
+      try {
+        if (availableSessions.length >= 5) return setStatus('Đã đủ 5 cấu hình');
+        const next = String(Math.max(...availableSessions.map(x => Number(x))) + 1);
+        setStatus('Đang tạo cấu hình mới...');
+        const data = await fetchJSON('/api/pm/sessions/create', {
+          method:'POST',
+          body: JSON.stringify({ session: next, source_session: currentSession, current_session: currentSession })
+        });
+        sessionNames[next] = data.name || `CẤU HÌNH ${next}`;
+        sessionCache[next] = null;
+        await fetchSessionsList();
+        await loadSession(next, true);
+        setStatus('Đã tạo ' + sessionNameOf(next));
+      } catch (e) {
+        setStatus('Lỗi tạo cấu hình: ' + e.message);
+      }
+    }
+
     async function loadSession(session, force=false) {
       viewMode = 'configured';
       setStatus('Đang mở ' + sessionNameOf(session));
@@ -703,6 +748,7 @@
       refreshConnectionStatus(true);
       if (networkPollTimer) clearInterval(networkPollTimer);
       networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
+      await fetchSessionsList();
       loadSession('1', true);
     }
 

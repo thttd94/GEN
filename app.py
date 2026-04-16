@@ -39,9 +39,10 @@ else:
     GENRUNNER = DEV_GENRUNNER
 
 PRESET_DIR = BASE_DIR / 'presets'
+MAX_SESSION_COUNT = 5
 SESSION_FILES = {
-    '1': PRESET_DIR / 'session1.json',
-    '2': PRESET_DIR / 'session2.json',
+    str(i): PRESET_DIR / f'session{i}.json'
+    for i in range(1, MAX_SESSION_COUNT + 1)
 }
 RUNTIME_FILE = RUNTIME_DIR / 'gencore.json'
 RUNTIME_SOURCE_FILE = CONFIG_DIR / 'gencore.json'
@@ -76,26 +77,71 @@ def tag_to_ip(tag):
     return f'192.15.{subnet_octet}.{host_octet}'
 
 
-def ensure_session2_exists():
+def ensure_sessions_exist():
     PRESET_DIR.mkdir(parents=True, exist_ok=True)
-    s1 = SESSION_FILES['1']
-    s2 = SESSION_FILES['2']
-    if not s1.exists():
-        save_json(s1, load_json(RUNTIME_SOURCE_FILE))
-    if not s2.exists():
-        data = load_json(s1)
-        clear_session_proxies(data)
-        save_json(s2, data)
-    if not get_saved_ip_identity_text('1') and s1.exists():
-        data1 = load_json(s1)
-        rows1 = build_ip_identity_rows_from_data(data1)
-        if rows1 and len(rows1) < MAX_PROXY_TAG:
-            set_saved_ip_identity_text('1', '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows1))
-    if not get_saved_ip_identity_text('2') and s2.exists():
-        data2 = load_json(s2)
-        rows2 = build_ip_identity_rows_from_data(data2)
-        if rows2 and len(rows2) < MAX_PROXY_TAG:
-            set_saved_ip_identity_text('2', '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows2))
+    base_file = SESSION_FILES['1']
+    if not base_file.exists():
+        save_json(base_file, load_json(RUNTIME_SOURCE_FILE))
+
+    for session_id, path in SESSION_FILES.items():
+        if session_id == '1':
+            continue
+        if not path.exists() and session_id == '2':
+            data = load_json(base_file)
+            clear_session_proxies(data)
+            save_json(path, data)
+        if not get_saved_ip_identity_text(session_id) and path.exists():
+            data = load_json(path)
+            rows = build_ip_identity_rows_from_data(data)
+            if rows and len(rows) < MAX_PROXY_TAG:
+                set_saved_ip_identity_text(session_id, '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
+
+
+def create_session(session_id, source_session='1'):
+    session_id = str(session_id)
+    source_session = str(source_session or '1')
+    if session_id not in SESSION_FILES:
+        raise ValueError('Session không hợp lệ')
+    ensure_sessions_exist()
+    source_file = SESSION_FILES.get(source_session, SESSION_FILES['1'])
+    if not source_file.exists():
+        source_file = SESSION_FILES['1']
+    save_json(SESSION_FILES[session_id], load_json(source_file))
+
+    state = load_session_state()
+    source_state = state.get(source_session, {}) if isinstance(state.get(source_session), dict) else {}
+    state[session_id] = json.loads(json.dumps(source_state))
+    state, meta = get_meta_section(state)
+    names = meta.setdefault('session_names', {}) if isinstance(meta, dict) else {}
+    if isinstance(names, dict):
+        source_name = str(names.get(source_session, get_session_display_name(source_session))).strip() or f'Session {source_session}'
+        names[session_id] = f'{source_name} copy'
+    ip_text = meta.setdefault('ip_identity_text', {}) if isinstance(meta, dict) else {}
+    if isinstance(ip_text, dict):
+        source_text = str(ip_text.get(source_session, '')).strip()
+        if source_text:
+            ip_text[session_id] = source_text
+    save_session_state(state)
+    return {
+        'session': session_id,
+        'name': get_session_display_name(session_id),
+        'source': str(SESSION_FILES[session_id]),
+    }
+
+
+def get_available_sessions():
+    ensure_sessions_exist()
+    items = []
+    for session_id, path in SESSION_FILES.items():
+        if path.exists():
+            items.append({
+                'session': session_id,
+                'name': get_session_display_name(session_id),
+                'source': str(path),
+                'exists': True,
+            })
+    items.sort(key=lambda x: int(x['session']))
+    return items
 
 def load_json(path: Path):
     return json.loads(path.read_text(encoding='utf-8'))
@@ -979,55 +1025,64 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        ensure_session2_exists()
+        ensure_sessions_exist()
         path = urlparse(self.path).path
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
-        if path == '/api/pm/sessions/1':
-            return self._send_json({'session': '1', 'name': get_session_display_name('1'), 'source': str(SESSION_FILES['1']), 'rows': extract_rows(load_json(SESSION_FILES['1']), session='1')})
-        if path == '/api/pm/sessions/2':
-            return self._send_json({'session': '2', 'name': get_session_display_name('2'), 'source': str(SESSION_FILES['2']), 'rows': extract_rows(load_json(SESSION_FILES['2']), session='2')})
+        if path == '/api/pm/sessions':
+            return self._send_json({'ok': True, 'sessions': get_available_sessions(), 'max_sessions': MAX_SESSION_COUNT})
+        if path.startswith('/api/pm/sessions/'):
+            session_id = path.rsplit('/', 1)[-1]
+            if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
+                return self._send_json({'session': session_id, 'name': get_session_display_name(session_id), 'source': str(SESSION_FILES[session_id]), 'rows': extract_rows(load_json(SESSION_FILES[session_id]), session=session_id)})
         if path == '/api/pm/router-network':
             return self._send_json(call_old_gui('/api/system/network'))
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix()})
-        if path in ('/api/pm/ip-mac-config/1', '/api/pm/ip-mac-config/2'):
+        if path.startswith('/api/pm/ip-mac-config/'):
             session_id = path.rsplit('/', 1)[-1]
-            data = load_json(SESSION_FILES[session_id])
-            saved_text = get_saved_ip_identity_text(session_id)
-            if not saved_text:
-                rows = build_ip_identity_rows_from_data(data)
-                if rows and len(rows) < MAX_PROXY_TAG:
-                    saved_text = set_saved_ip_identity_text(session_id, '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
-            return self._send_json({'ok': True, 'session': session_id, 'text': saved_text or build_ip_identity_text(data, session=session_id)})
+            if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
+                data = load_json(SESSION_FILES[session_id])
+                saved_text = get_saved_ip_identity_text(session_id)
+                if not saved_text:
+                    rows = build_ip_identity_rows_from_data(data)
+                    if rows and len(rows) < MAX_PROXY_TAG:
+                        saved_text = set_saved_ip_identity_text(session_id, '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
+                return self._send_json({'ok': True, 'session': session_id, 'text': saved_text or build_ip_identity_text(data, session=session_id)})
         self._send_json({'error': 'Not found'}, 404)
 
     def do_POST(self):
-        ensure_session2_exists()
+        ensure_sessions_exist()
         path = urlparse(self.path).path
         length = int(self.headers.get('Content-Length', '0') or '0')
         body = self.rfile.read(length) if length else b'{}'
         payload = json.loads(body.decode('utf-8') or '{}')
         try:
-            if path in ('/api/pm/sessions/1', '/api/pm/sessions/2'):
+            if path == '/api/pm/sessions/create':
+                session_id = str(payload.get('session', '')).strip()
+                source_session = str(payload.get('source_session', current if (current := payload.get('current_session')) else '1')).strip() or '1'
+                return self._send_json({'ok': True, **create_session(session_id, source_session=source_session)})
+            if path.startswith('/api/pm/sessions/'):
                 session_id = path.rsplit('/', 1)[-1]
-                rows = payload.get('rows', [])
-                rows_by_tag = {str(row['tag']).strip(): row for row in rows if row.get('tag')}
-                data = load_json(SESSION_FILES[session_id])
-                save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag, session=session_id))
-                name = payload.get('name')
-                if name is not None:
-                    name = set_session_display_name(session_id, name)
-                else:
-                    name = get_session_display_name(session_id)
-                return self._send_json({'ok': True, 'session': session_id, 'name': name})
-            if path in ('/api/pm/apply/1', '/api/pm/apply/2'):
+                if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
+                    rows = payload.get('rows', [])
+                    rows_by_tag = {str(row['tag']).strip(): row for row in rows if row.get('tag')}
+                    data = load_json(SESSION_FILES[session_id])
+                    save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag, session=session_id))
+                    name = payload.get('name')
+                    if name is not None:
+                        name = set_session_display_name(session_id, name)
+                    else:
+                        name = get_session_display_name(session_id)
+                    return self._send_json({'ok': True, 'session': session_id, 'name': name})
+            if path.startswith('/api/pm/apply/'):
                 session_id = path.rsplit('/', 1)[-1]
-                rows_override = payload.get('rows') if isinstance(payload, dict) else None
-                results = run_apply(session_id, rows_override=rows_override)
-                return self._send_json({'ok': True, 'applied': session_id, 'results': results})
+                if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
+                    rows_override = payload.get('rows') if isinstance(payload, dict) else None
+                    results = run_apply(session_id, rows_override=rows_override)
+                    return self._send_json({'ok': True, 'applied': session_id, 'results': results})
             if path == '/api/pm/clone/1-to-2':
                 save_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
                 state = load_session_state()
@@ -1045,27 +1100,29 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/meta':
                 prefix = set_app_title_prefix(payload.get('app_title_prefix', 'Genrouter'))
                 return self._send_json({'ok': True, 'app_title_prefix': prefix})
-            if path in ('/api/pm/map-ip/1', '/api/pm/map-ip/2'):
+            if path.startswith('/api/pm/map-ip/'):
                 session_id = path.rsplit('/', 1)[-1]
-                data = load_json(SESSION_FILES[session_id])
-                save_json(SESSION_FILES[session_id], remap_ip_by_tag(data))
-                return self._send_json({'ok': True, 'session': session_id})
-            if path in ('/api/pm/ip-mac-config/1', '/api/pm/ip-mac-config/2'):
+                if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
+                    data = load_json(SESSION_FILES[session_id])
+                    save_json(SESSION_FILES[session_id], remap_ip_by_tag(data))
+                    return self._send_json({'ok': True, 'session': session_id})
+            if path.startswith('/api/pm/ip-mac-config/'):
                 session_id = path.rsplit('/', 1)[-1]
-                text = str(payload.get('text', ''))
-                sync_router = bool(payload.get('sync_router', True))
-                data = load_json(SESSION_FILES[session_id])
-                rows = parse_ip_identity_text(text)
-                normalized_text = set_saved_ip_identity_text(session_id, text)
-                data = apply_ip_identity_config(data, normalized_text, session=session_id)
-                save_json(SESSION_FILES[session_id], data)
-                if sync_router:
-                    sync_static_to_router(rows, clear_first=True)
-                if payload.get('apply_runtime'):
-                    apply_results = run_apply(session_id)
-                if payload.get('reboot_router'):
-                    call_old_gui('/api/system/reboot', method='GET')
-                return self._send_json({'ok': True, 'session': session_id, 'count': len(rows), 'text': normalized_text, 'apply_results': locals().get('apply_results', [])})
+                if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
+                    text = str(payload.get('text', ''))
+                    sync_router = bool(payload.get('sync_router', True))
+                    data = load_json(SESSION_FILES[session_id])
+                    rows = parse_ip_identity_text(text)
+                    normalized_text = set_saved_ip_identity_text(session_id, text)
+                    data = apply_ip_identity_config(data, normalized_text, session=session_id)
+                    save_json(SESSION_FILES[session_id], data)
+                    if sync_router:
+                        sync_static_to_router(rows, clear_first=True)
+                    if payload.get('apply_runtime'):
+                        apply_results = run_apply(session_id)
+                    if payload.get('reboot_router'):
+                        call_old_gui('/api/system/reboot', method='GET')
+                    return self._send_json({'ok': True, 'session': session_id, 'count': len(rows), 'text': normalized_text, 'apply_results': locals().get('apply_results', [])})
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', '')), session=str(payload.get('session', '1'))))
             if path == '/api/pm/check-proxy-batch':
@@ -1083,5 +1140,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    ensure_session2_exists()
+    ensure_sessions_exist()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()
