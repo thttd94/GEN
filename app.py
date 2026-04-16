@@ -1864,14 +1864,37 @@ class Handler(BaseHTTPRequestHandler):
                 machines = xxtouch_get_selected_machines(cfg, state)
                 logs = []
                 ok_count = 0
-                for m in machines:
-                    try:
-                        ok, lines = xxtouch_run_action_on_machine(m, port, action)
-                        logs.extend(lines)
-                        if ok:
+                if len(machines) <= 1:
+                    for m in machines:
+                        try:
+                            ok, lines = xxtouch_run_action_on_machine(m, port, action)
+                            logs.extend(lines)
+                            if ok:
+                                ok_count += 1
+                        except Exception as e:
+                            logs.append(f"[{m['label']}] lỗi: {e}")
+                else:
+                    max_workers = min(16, len(machines))
+                    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                        future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action): m for m in machines}
+                        ordered_results = []
+                        for future in as_completed(future_map):
+                            m = future_map[future]
+                            try:
+                                ok, lines = future.result()
+                            except Exception as e:
+                                ok, lines = False, [f"[{m['label']}] lỗi: {e}"]
+                            ordered_results.append({
+                                'index': int(m.get('index') or 0),
+                                'label': str(m.get('label') or ''),
+                                'ok': ok,
+                                'lines': lines,
+                            })
+                    ordered_results.sort(key=lambda item: (item['index'], item['label']))
+                    for item in ordered_results:
+                        logs.extend(item['lines'])
+                        if item['ok']:
                             ok_count += 1
-                    except Exception as e:
-                        logs.append(f"[{m['label']}] lỗi: {e}")
                 return self._send_json({'ok': True, 'logs': logs, 'message': f'{action}: xong {ok_count}/{len(machines)} máy'})
             if path == '/api/xxtouch/remote-link':
                 cfg = load_admanager_config()
