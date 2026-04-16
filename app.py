@@ -379,18 +379,29 @@ def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range,
                 continue
             idx_ip.append((idx, parts[1].strip()))
     idx_ip.sort(key=lambda x: x[0])
+
+    mode = str(machine_mode or 'all').strip().lower()
     chosen_idx = set()
-    if machine_mode == 'all':
+    if mode == 'all':
         chosen_idx = {i for i, _ in idx_ip}
-    elif machine_mode == 'range':
-        try:
-            a, b = str(machine_range or '').split('-', 1)
-            lo, hi = int(a), int(b)
-            chosen_idx = {i for i, _ in idx_ip if lo <= i <= hi}
-        except Exception:
-            chosen_idx = set()
+    elif mode in ('range', 'group'):
+        for tok in re.split(r'\s*,\s*', str(machine_range or '').strip()):
+            tok = tok.strip()
+            if not tok:
+                continue
+            if '-' in tok:
+                try:
+                    a, b = tok.split('-', 1)
+                    lo, hi = int(a), int(b)
+                    if lo > hi:
+                        lo, hi = hi, lo
+                    chosen_idx.update(i for i, _ in idx_ip if lo <= i <= hi)
+                except Exception:
+                    continue
+            elif tok.isdigit():
+                chosen_idx.add(int(tok))
     else:
-        for tok in str(machine_list or '').split(','):
+        for tok in re.split(r'\s*,\s*', str(machine_list or '').strip()):
             tok = tok.strip()
             if tok.isdigit():
                 chosen_idx.add(int(tok))
@@ -509,23 +520,11 @@ def xxtouch_get_selected_machines(cfg: dict, state: dict):
     mode = str((state or {}).get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all').strip().lower()
     group_text = str((state or {}).get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '')
     list_text = str((state or {}).get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
-    picked = xxtouch_parse_machine_spec(group_text, list_text, mode)
     routers = admanager_routers_to_scan(cfg, router_key)
     out = []
     for rk, router in routers:
-        prefix = router.get('machinePrefix') or (rk + '-may')
-        entries = router.get('entries') or []
-        for line in entries:
-            parts = str(line).split('|', 1)
-            if len(parts) != 2 or not parts[0].startswith('proxy_'):
-                continue
-            try:
-                idx = int(parts[0].split('_', 1)[1])
-            except Exception:
-                continue
-            if picked is not None and idx not in picked:
-                continue
-            out.append({'router': rk, 'index': idx, 'ip': parts[1].strip(), 'label': f'{prefix}{idx:02d}'})
+        for machine in admanager_iter_machines(rk, router, mode, group_text, list_text):
+            out.append({'router': rk, 'index': machine['index'], 'ip': machine['ip'], 'label': machine['label']})
     out.sort(key=lambda x: (x['router'], x['index']))
     return out
 

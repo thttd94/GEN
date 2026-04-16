@@ -27,6 +27,7 @@
     .btn.save-strong { background:#7c3aed; color:#fff; border-color:#7c3aed; padding:11px 18px; font-size:14px; box-shadow:0 10px 22px rgba(124,58,237,.28); }
     .btn.small { padding:6px 10px; font-size:12px; }
     .status { display:inline-flex; align-items:center; min-height:20px; padding:10px 14px; border-radius:999px; background:linear-gradient(135deg,#dbeafe 0%,#eff6ff 100%); border:1px solid #93c5fd; color:#1d4ed8; font-size:14px; font-weight:900; margin-left:6px; box-shadow:0 6px 18px rgba(37,99,235,.16), inset 0 1px 0 rgba(255,255,255,.85); }
+    .adm-log { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 12px; font-size:13px; line-height:1.45; min-height:170px; max-height:260px; overflow:auto; resize:vertical; background:#f9fafb; white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
     .meta { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; gap:10px; }
     .meta-left { display:flex; align-items:center; gap:8px; justify-self:start; min-width:0; }
@@ -239,7 +240,7 @@
           </div>
         </div>
         <div style="padding:12px 14px; border-top:1px solid #e5e7eb; background:#fff;">
-          <textarea id="admLog" readonly style="min-height:150px;"></textarea>
+          <div id="admLog" class="adm-log"></div>
         </div>
       </div>
     </div>
@@ -972,7 +973,7 @@
     }
 
     function admSetStatus(msg){ const el=document.getElementById('admStatus'); if(el) el.textContent = msg; }
-    function admLog(msg){ const el=document.getElementById('admLog'); if(!el) return; el.value += (el.value ? '\\n' : '') + msg; el.scrollTop = el.scrollHeight; }
+    function admLog(msg){ const el=document.getElementById('admLog'); if(!el) return; const line = document.createElement('div'); line.textContent = String(msg || ''); el.appendChild(line); el.scrollTop = el.scrollHeight; }
     function toggleAdmMachineInputs(){
       const mode = document.getElementById('admMachineMode').value;
       const group = document.getElementById('admMachineGroup');
@@ -1072,6 +1073,7 @@
       admRenderInfo();
       const online = (data.online||[]).join(', ') || 'không có';
       const offline = (data.offline||[]).join(', ') || 'không có';
+      admLog('Scan xong');
       admLog(`Online: ${data.online_count||0} máy - ${online}`);
       admLog(`Offline: ${data.offline_count||0} máy - ${offline}`);
       admSetStatus(`Scan xong: online ${data.online_count||0} / offline ${data.offline_count||0}`);
