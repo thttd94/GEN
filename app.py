@@ -1650,15 +1650,13 @@ class Handler(BaseHTTPRequestHandler):
                 ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
                 port = str(state.get('port') or ui.get('port') or '46952').strip()
                 machines = xxtouch_get_selected_machines(cfg, state)
-                rows = []
-                online = []
-                offline = []
-                for m in machines:
+
+                def scan_one(m):
                     try:
-                        info = xxtouch_post_json(m['ip'], port, '/deviceinfo', {}, timeout=15)
+                        info = xxtouch_post_json(m['ip'], port, '/deviceinfo', {}, timeout=8)
                         data = info.get('data') or {}
                         df = xxtouch_df_info(m['ip'], port)
-                        row = {
+                        return {
                             'router': m['router'],
                             'index': m['index'],
                             'machine': m['label'],
@@ -1668,12 +1666,36 @@ class Handler(BaseHTTPRequestHandler):
                             'ios': data.get('sysversion') or '',
                             **df,
                         }
-                        rows.append(row)
-                        online.append(str(m['index']))
                     except Exception:
-                        rows.append({'router': m['router'], 'index': m['index'], 'machine': m['label'], 'ip': m['ip'], 'status': 'offline', 'model': '', 'ios': '', 'capacity_label': '', 'free_label': '', 'free_percent': 0})
-                        offline.append(str(m['index']))
-                return self._send_json({'ok': True, 'rows': rows, 'online': online, 'offline': offline, 'online_count': len(online), 'offline_count': len(offline)})
+                        return {
+                            'router': m['router'],
+                            'index': m['index'],
+                            'machine': m['label'],
+                            'ip': m['ip'],
+                            'status': 'offline',
+                            'model': '',
+                            'ios': '',
+                            'capacity_label': '',
+                            'free_label': '',
+                            'free_percent': 0,
+                        }
+
+                rows = []
+                if len(machines) <= 1:
+                    rows = [scan_one(m) for m in machines]
+                else:
+                    max_workers = min(8, len(machines))
+                    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                        future_map = {ex.submit(scan_one, m): m for m in machines}
+                        for future in as_completed(future_map):
+                            rows.append(future.result())
+                    rows.sort(key=lambda x: (str(x.get('router') or ''), int(x.get('index') or 0)))
+
+                online_rows = [r for r in rows if r.get('status') == 'online']
+                offline_rows = [r for r in rows if r.get('status') != 'online']
+                online = [str(r.get('index')) for r in online_rows]
+                offline = [str(r.get('index')) for r in offline_rows]
+                return self._send_json({'ok': True, 'rows': rows, 'online': online, 'offline': offline, 'online_count': len(online_rows), 'offline_count': len(offline_rows)})
             if path == '/api/xxtouch/action':
                 cfg = load_admanager_config()
                 state = payload if isinstance(payload, dict) else {}
