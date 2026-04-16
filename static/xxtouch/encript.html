@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="edge">
+    <meta name="renderer" content="webkit">
+    <title>XXTouch</title>
+    <link rel="apple-touch-icon" href="/xxtouch.png">
+    <script type="text/javascript" src="js/jquery.min.js"></script>
+    <script type="text/javascript" src="mdui/js/mdui.min.js"></script>
+    <script type="text/javascript" src="js/xxtouch_web.js"></script>
+    <script type="text/javascript" src="encript.js"></script>
+    <link rel="stylesheet" href="mdui/css/mdui.min.css">
+    <link rel="stylesheet" href="css/xxtouch_web.css">
+    <link rel="icon" href="/xxtouch.png" type="image/png">
+</head>
+
+<body class="mdui-drawer-body-left mdui-appbar-with-toolbar mdui-theme-primary-blue mdui-theme-accent-deep-orange">
+    <div class="mdui-drawer" id="main-drawer"></div>
+    <header class="mdui-appbar mdui-appbar-fixed">
+        <div class="mdui-toolbar mdui-xxtouch-color"><span class="mdui-btn mdui-btn-icon mdui-ripple mdui-ripple-white"
+                mdui-drawer="{target: '#main-drawer'}"><i class="mdui-icon material-icons">&#xe5d2;</i></span> <a
+                href="./index.html" class="mdui-typo-headline mdui-hidden-xs">XXTouch</a> <a href=""
+                class="mdui-typo-title">Mã hóa cục bộ</a>
+            <div class="mdui-toolbar-spacer"></div>
+        </div>
+    </header>
+    <div class="mdui-container-fluid"><br>
+        <div class="mdui-row">
+            <div class="mdui-col-lg-8 mdui-col-md-9 mdui-col-sm-10 mdui-col-offset-sm-1 mdui-col-md-5"><br>
+                <div class="mdui-typo-headline">Mã hóa cục bộ</div><br>
+                <div class="mdui-divider"></div><br>
+                <div id="display-message" style="display:none">
+                    <div class="mdui-progress">
+                        <div class="mdui-progress-indeterminate"></div>
+                    </div><br>
+                    <div id="message">Đang mã hóa script, vui lòng không thao tác cho đến khi hoàn tất!</div>
+                </div>
+                <div class="mdui-row" id="bform">
+                    <li class="mdui-list-item mdui-ripple">
+                        <div class="mdui-list-item-content">
+                            <div class="mdui-list-item-title">Giữ thông tin gỡ lỗi</div>
+                            <div class="mdui-list-item-text mdui-list-item-one-line xxtouch-tip">
+                                Cho phép hiển thị lỗi có kèm số dòng và tên khi script đã mã hóa gặp lỗi lúc chạy</div>
+                            <div class="mdui-list-item-text mdui-list-item-two-line xxtouch-tip">
+                                Lưu ý: bật tùy chọn này có thể làm tăng nguy cơ script đã mã hóa bị dịch ngược</div>
+                        </div><label class="mdui-switch"><input id="no_strip" type="checkbox"> <i
+                                class="mdui-switch-icon"></i></label>
+                    </li>
+                    <div class="mdui-col-md-11 mdui-col-offset-md-1"><br>
+                        <div id="dropbox" class="mdui-valign dropbox">
+                            <p class="mdui-center">Kéo tệp vào đây<br>hoặc<br><button id="choose_file_upgrade"
+                                    class="mdui-btn mdui-xxtouch-button mdui-ripple">Chọn tệp</button></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><br>
+        <p class="mdui-typo-caption mdui-text-center">Copyright © xxtou.ch</p>
+    </div>
+</body>
+
+</html>

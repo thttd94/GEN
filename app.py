@@ -40,7 +40,7 @@ else:
     GENRUNNER = DEV_GENRUNNER
 
 PRESET_DIR = BASE_DIR / 'presets'
-XXTOUCH_WEB_DIR = Path('/mnt/e/OpenClaw/XXTouch_jobs/upload/web')
+XXTOUCH_WEB_DIR = STATIC_DIR / 'xxtouch'
 MAX_SESSION_COUNT = 5
 SESSION_FILES = {
     str(i): PRESET_DIR / f'session{i}.json'
