@@ -532,7 +532,14 @@ def xxtouch_spawn_checked(ip, port, cmd, timeout=20, retries=3, retry_delay=2.0)
     last_err = None
     max_attempts = max(1, int(retries) + 1)
     for attempt in range(max_attempts):
-        obj = admanager_command_spawn(ip, port, cmd, timeout=timeout)
+        try:
+            obj = admanager_command_spawn(ip, port, cmd, timeout=timeout)
+        except Exception as e:
+            last_err = str(e)
+            if attempt < max_attempts - 1:
+                time.sleep(retry_delay)
+                continue
+            raise RuntimeError(last_err)
         last_obj = obj if isinstance(obj, dict) else {'raw': obj}
         result = last_obj.get('result') if isinstance(last_obj.get('result'), dict) else {}
         status = result.get('status')
@@ -551,6 +558,9 @@ def xxtouch_spawn_checked(ip, port, cmd, timeout=20, retries=3, retry_delay=2.0)
                 xxtouch_post_json(ip, port, '/recycle', {}, timeout=15)
             except Exception:
                 pass
+            time.sleep(retry_delay)
+            continue
+        if attempt < max_attempts - 1:
             time.sleep(retry_delay)
             continue
         break
