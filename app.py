@@ -129,16 +129,78 @@ def create_session(session_id, source_session='1'):
     }
 
 
-def get_available_sessions():
+def get_session_hidden_map(state=None):
+    state = state if isinstance(state, dict) else load_session_state()
+    _state, meta = get_meta_section(state)
+    hidden = meta.get('hidden_sessions', {}) if isinstance(meta, dict) else {}
+    return hidden if isinstance(hidden, dict) else {}
+
+
+def is_session_hidden(session_id, state=None):
+    hidden = get_session_hidden_map(state)
+    return bool(hidden.get(str(session_id), False))
+
+
+def set_session_hidden(session_id, hidden=True):
+    session_id = str(session_id)
+    if session_id == '1':
+        raise ValueError('Không thể ẩn cấu hình 1')
+    state = load_session_state()
+    state, meta = get_meta_section(state)
+    hidden_map = meta.setdefault('hidden_sessions', {}) if isinstance(meta, dict) else {}
+    if not isinstance(hidden_map, dict):
+        hidden_map = {}
+        meta['hidden_sessions'] = hidden_map
+    hidden_map[session_id] = bool(hidden)
+    save_session_state(state)
+    return bool(hidden)
+
+
+def delete_session(session_id):
+    session_id = str(session_id)
+    if session_id in ('1', '2'):
+        raise ValueError('Không thể xóa cấu hình mặc định')
+    path = SESSION_FILES.get(session_id)
+    if not path or not path.exists():
+        raise ValueError('Cấu hình không tồn tại')
+    try:
+        path.unlink()
+    except Exception as e:
+        raise ValueError(f'Không xóa được file cấu hình: {e}')
+    state = load_session_state()
+    if isinstance(state, dict):
+        state.pop(session_id, None)
+        state, meta = get_meta_section(state)
+        names = meta.get('session_names', {}) if isinstance(meta, dict) else {}
+        if isinstance(names, dict):
+            names.pop(session_id, None)
+        hidden_map = meta.get('hidden_sessions', {}) if isinstance(meta, dict) else {}
+        if isinstance(hidden_map, dict):
+            hidden_map.pop(session_id, None)
+        ip_text = meta.get('ip_identity_text', {}) if isinstance(meta, dict) else {}
+        if isinstance(ip_text, dict):
+            ip_text.pop(session_id, None)
+        save_session_state(state)
+    return True
+
+
+def get_available_sessions(include_hidden=True):
     ensure_sessions_exist()
+    state = load_session_state()
     items = []
     for session_id, path in SESSION_FILES.items():
         if path.exists():
+            hidden = is_session_hidden(session_id, state)
+            if hidden and not include_hidden:
+                continue
             items.append({
                 'session': session_id,
                 'name': get_session_display_name(session_id),
                 'source': str(path),
                 'exists': True,
+                'hidden': hidden,
+                'can_hide': session_id != '1',
+                'can_delete': session_id not in ('1', '2'),
             })
     items.sort(key=lambda x: int(x['session']))
     return items
@@ -1038,7 +1100,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/api/pm/sessions':
-            return self._send_json({'ok': True, 'sessions': get_available_sessions(), 'max_sessions': MAX_SESSION_COUNT})
+            include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
+            return self._send_json({'ok': True, 'sessions': get_available_sessions(include_hidden=include_hidden), 'max_sessions': MAX_SESSION_COUNT})
         if path.startswith('/api/pm/sessions/'):
             session_id = path.rsplit('/', 1)[-1]
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
@@ -1072,6 +1135,14 @@ class Handler(BaseHTTPRequestHandler):
                 session_id = str(payload.get('session', '')).strip()
                 source_session = str(payload.get('source_session', current if (current := payload.get('current_session')) else '1')).strip() or '1'
                 return self._send_json({'ok': True, **create_session(session_id, source_session=source_session)})
+            if path == '/api/pm/sessions/hide':
+                session_id = str(payload.get('session', '')).strip()
+                hidden = bool(payload.get('hidden', True))
+                return self._send_json({'ok': True, 'session': session_id, 'hidden': set_session_hidden(session_id, hidden)})
+            if path == '/api/pm/sessions/delete':
+                session_id = str(payload.get('session', '')).strip()
+                delete_session(session_id)
+                return self._send_json({'ok': True, 'session': session_id})
             if path.startswith('/api/pm/sessions/'):
                 session_id = path.rsplit('/', 1)[-1]
                 if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():

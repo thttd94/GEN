@@ -26,8 +26,9 @@
     .btn.small { padding:6px 10px; font-size:12px; }
     .status { display:inline-flex; align-items:center; min-height:20px; padding:10px 14px; border-radius:999px; background:linear-gradient(135deg,#dbeafe 0%,#eff6ff 100%); border:1px solid #93c5fd; color:#1d4ed8; font-size:14px; font-weight:900; margin-left:6px; box-shadow:0 6px 18px rgba(37,99,235,.16), inset 0 1px 0 rgba(255,255,255,.85); }
     .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
-    .meta { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
-    .session-meta { display:flex; align-items:center; gap:8px; }
+    .meta { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; gap:10px; flex-wrap:wrap; }
+    .meta-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .session-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .icon-btn { border:1px solid #d1d5db; background:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
     .notes-wrap { padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
     .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:105px; max-height:165px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
@@ -86,7 +87,6 @@
         <button class="btn tab" id="tab2" onclick="switchSession('2')">CẤU HÌNH 2</button>
         <button class="btn" id="addSessionBtn" onclick="addSession()">+ THÊM CẤU HÌNH</button>
         <button class="btn apply" onclick="applyCurrentSession()">NẠP & APPLY CẤU HÌNH ĐANG MỞ</button>
-        <span class="status" id="status">Ready</span>
       </div>
       <div class="toolbar-right">
         <button class="btn warn" onclick="openIpMacConfig()">ĐỊNH DANH IP DÙNG CHUNG</button>
@@ -98,8 +98,8 @@
 
     <div class="panel">
       <div class="meta">
-        <div class="session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Đổi tên session">✏️</button></div>
-        <div class="sub" id="countLabel">0 rows</div>
+        <div class="session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Đổi tên session">✏️</button><button class="icon-btn" onclick="toggleCurrentSessionHidden()" title="Ẩn/hiện cấu hình" id="toggleHiddenBtn">🙈</button><button class="icon-btn" onclick="deleteCurrentSession()" title="Xóa cấu hình" id="deleteSessionBtn">🗑️</button></div>
+        <div class="meta-right"><div class="sub" id="countLabel">0 rows</div><span class="status" id="status">Ready</span></div>
       </div>
 
       <div class="notes-wrap">
@@ -220,6 +220,7 @@
     let currentRows = [];
     let viewMode = 'configured';
     let availableSessions = ['1', '2'];
+    let sessionMeta = {};
     let sessionNames = { '1': 'CẤU HÌNH 1', '2': 'CẤU HÌNH 2' };
     const sessionCache = { '1': null, '2': null };
     let networkPollTimer = null;
@@ -285,14 +286,37 @@
       const host = document.getElementById('sessionTabs');
       if (!host) return;
       const addBtn = document.getElementById('addSessionBtn');
-      host.querySelectorAll('.btn.tab').forEach(el => el.remove());
+      host.querySelectorAll('.session-tab-wrap').forEach(el => el.remove());
       for (const session of availableSessions) {
+        const meta = sessionMeta[String(session)] || {};
+        const wrap = document.createElement('div');
+        wrap.className = 'session-tab-wrap';
+        wrap.style.display = 'inline-flex';
+        wrap.style.alignItems = 'center';
+        wrap.style.gap = '4px';
+
         const btn = document.createElement('button');
         btn.className = 'btn tab' + (currentSession === session ? ' active' : '');
         btn.id = `tab${session}`;
         btn.textContent = sessionNameOf(session);
         btn.onclick = () => switchSession(session);
-        host.insertBefore(btn, addBtn);
+        wrap.appendChild(btn);
+
+        if (meta.can_hide) {
+          const hideBtn = document.createElement('button');
+          hideBtn.className = 'btn small';
+          hideBtn.textContent = meta.hidden ? 'HIỆN' : 'ẨN';
+          hideBtn.onclick = (e) => { e.stopPropagation(); toggleSessionHidden(session, !meta.hidden); };
+          wrap.appendChild(hideBtn);
+        }
+        if (meta.can_delete) {
+          const delBtn = document.createElement('button');
+          delBtn.className = 'btn small warn';
+          delBtn.textContent = 'XÓA';
+          delBtn.onclick = (e) => { e.stopPropagation(); deleteSessionById(session); };
+          wrap.appendChild(delBtn);
+        }
+        host.insertBefore(wrap, addBtn);
       }
       if (addBtn) addBtn.style.display = availableSessions.length >= 5 ? 'none' : '';
     }
@@ -337,12 +361,14 @@
     function cloneRows(rows) {
       return JSON.parse(JSON.stringify(Array.isArray(rows) ? rows : []));
     }
-    async function fetchSessionsList() {
-      const data = await fetchJSON('/api/pm/sessions');
+    async function fetchSessionsList(includeHidden=false) {
+      const data = await fetchJSON('/api/pm/sessions' + (includeHidden ? '?include_hidden=1' : ''));
       availableSessions = (data.sessions || []).map(x => String(x.session)).sort((a,b) => Number(a)-Number(b));
+      sessionMeta = {};
       for (const item of (data.sessions || [])) {
         if (item && item.session) {
           sessionNames[String(item.session)] = item.name || sessionNameOf(item.session);
+          sessionMeta[String(item.session)] = item;
           if (!(String(item.session) in sessionCache)) sessionCache[String(item.session)] = null;
         }
       }
@@ -408,6 +434,15 @@
       document.getElementById('viewUnconfiguredBtn').classList.toggle('active', viewMode === 'unconfigured');
       renderAppTitle();
       document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
+      const currentMeta = sessionMeta[String(currentSession)] || {};
+      const hideBtn = document.getElementById('toggleHiddenBtn');
+      const delBtn = document.getElementById('deleteSessionBtn');
+      if (hideBtn) {
+        hideBtn.style.display = currentMeta.can_hide ? '' : 'none';
+        hideBtn.textContent = currentMeta.hidden ? '👁️' : '🙈';
+        hideBtn.title = currentMeta.hidden ? 'Hiện cấu hình' : 'Ẩn cấu hình';
+      }
+      if (delBtn) delBtn.style.display = currentMeta.can_delete ? '' : 'none';
       document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionNameOf(currentSession).toUpperCase();
       const visibleRows = getVisibleRows();
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
@@ -664,6 +699,53 @@
     }
 
 
+    async function toggleSessionHidden(session, hidden) {
+      try {
+        await fetchJSON('/api/pm/sessions/hide', { method:'POST', body: JSON.stringify({ session, hidden }) });
+        await fetchSessionsList(true);
+        if (hidden && currentSession === String(session)) {
+          const fallback = availableSessions.find(x => x !== String(session)) || '1';
+          await loadSession(fallback, true);
+        } else {
+          render();
+        }
+        setStatus((hidden ? 'Đã ẩn ' : 'Đã hiện ') + sessionNameOf(session));
+      } catch (e) {
+        setStatus('Lỗi ẩn/hiện cấu hình: ' + e.message);
+      }
+    }
+
+    async function toggleCurrentSessionHidden() {
+      const meta = sessionMeta[String(currentSession)] || {};
+      if (!meta.can_hide) return;
+      return toggleSessionHidden(currentSession, !meta.hidden);
+    }
+
+    async function deleteSessionById(session) {
+      try {
+        const meta = sessionMeta[String(session)] || {};
+        if (!meta.can_delete) return setStatus('Không thể xóa cấu hình này');
+        if (!confirm('Xóa hẳn ' + sessionNameOf(session) + '?')) return;
+        await fetchJSON('/api/pm/sessions/delete', { method:'POST', body: JSON.stringify({ session }) });
+        delete sessionCache[String(session)];
+        delete sessionNames[String(session)];
+        delete sessionMeta[String(session)];
+        await fetchSessionsList(true);
+        if (currentSession === String(session)) {
+          await loadSession('1', true);
+        } else {
+          render();
+        }
+        setStatus('Đã xóa cấu hình ' + session);
+      } catch (e) {
+        setStatus('Lỗi xóa cấu hình: ' + e.message);
+      }
+    }
+
+    async function deleteCurrentSession() {
+      return deleteSessionById(currentSession);
+    }
+
     async function addSession() {
       try {
         if (availableSessions.length >= 5) return setStatus('Đã đủ 5 cấu hình');
@@ -675,7 +757,7 @@
         });
         sessionNames[next] = data.name || `CẤU HÌNH ${next}`;
         sessionCache[next] = null;
-        await fetchSessionsList();
+        await fetchSessionsList(true);
         await loadSession(next, true);
         setStatus('Đã tạo ' + sessionNameOf(next));
       } catch (e) {
@@ -749,7 +831,7 @@
       refreshConnectionStatus(true);
       if (networkPollTimer) clearInterval(networkPollTimer);
       networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
-      await fetchSessionsList();
+      await fetchSessionsList(true);
       loadSession('1', true);
     }
 
