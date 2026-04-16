@@ -38,11 +38,10 @@ cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
 set -eu
 LAN_IP="${LAN_IP}"
 LAN_CIDR="${LAN_CIDR}"
-RULE_SPEC="-s \\$LAN_CIDR -d \\$LAN_IP/32 -p tcp -j RETURN"
-if iptables -t mangle -C GENROUTER \\$RULE_SPEC 2>/dev/null; then
+if iptables -t mangle -C GENROUTER -s "$LAN_CIDR" -d "$LAN_IP/32" -p tcp -j RETURN 2>/dev/null; then
   exit 0
 fi
-iptables -t mangle -I GENROUTER 1 \\$RULE_SPEC
+iptables -t mangle -I GENROUTER 1 -s "$LAN_CIDR" -d "$LAN_IP/32" -p tcp -j RETURN
 EOF
 chmod 755 "$APP_DIR/apply_xxtouch_bypass.sh"
 "$APP_DIR/apply_xxtouch_bypass.sh" || true
