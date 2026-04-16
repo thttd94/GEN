@@ -714,9 +714,14 @@
         if (meta.can_delete) {
           actions.push(`<button class="btn small warn" onclick="deleteSessionById('${session}')">XÓA</button>`);
         }
-        return `<div style="display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;">
-          <div><b>${esc(sessionNameOf(session))}${meta.is_default ? ' (mặc định)' : ''}</b></div>
-          <div class="sub" style="margin:0;">Session ${session}${meta.hidden ? ' • đang ẩn' : ''}</div>
+        const primary = sessionTabLabel(session);
+        const secondary = sessionNameOf(session);
+        const subParts = [];
+        if (secondary && secondary !== primary) subParts.push(secondary);
+        subParts.push(`Session ${session}${meta.hidden ? ' • đang ẩn' : ''}`);
+        return `<div style="display:grid;grid-template-columns:180px 1fr auto;gap:10px;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;">
+          <div><b>${esc(primary)}</b>${secondary && secondary !== primary ? ` <span class="sub" style="display:inline;margin:0;">(${esc(secondary)})</span>` : ''}</div>
+          <div class="sub" style="margin:0;">${subParts.join(' • ')}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">${actions.join('')}</div>
         </div>`;
       });
