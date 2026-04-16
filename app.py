@@ -41,6 +41,10 @@ else:
 
 PRESET_DIR = BASE_DIR / 'presets'
 XXTOUCH_WEB_DIR = STATIC_DIR / 'xxtouch'
+XXTOUCH_WORK_DIR = BASE_DIR / 'xxtouch_jobs'
+XXTOUCH_DATA_DIR = XXTOUCH_WORK_DIR / 'data'
+XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
+XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
 MAX_SESSION_COUNT = 5
 SESSION_FILES = {
     str(i): PRESET_DIR / f'session{i}.json'
@@ -98,6 +102,11 @@ def ensure_sessions_exist():
             rows = build_ip_identity_rows_from_data(data)
             if rows and len(rows) < MAX_PROXY_TAG:
                 set_saved_ip_identity_text(session_id, '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
+
+
+def ensure_xxtouch_workspace():
+    for path in (XXTOUCH_WORK_DIR, XXTOUCH_DATA_DIR, XXTOUCH_LOG_DIR, XXTOUCH_TMP_DIR):
+        path.mkdir(parents=True, exist_ok=True)
 
 
 def create_session(session_id, source_session='1'):
@@ -1135,6 +1144,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _serve_xxtouch(self, request_path: str):
+        ensure_xxtouch_workspace()
         if not XXTOUCH_WEB_DIR.exists():
             return self._send_json({'error': 'XXTouch web not found'}, 404)
         raw = request_path[len('/xxtouch'):].lstrip('/') if request_path.startswith('/xxtouch') else ''
@@ -1168,6 +1178,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix()})
+        if path == '/api/pm/xxtouch/workspace':
+            ensure_xxtouch_workspace()
+            return self._send_json({
+                'ok': True,
+                'work_dir': str(XXTOUCH_WORK_DIR),
+                'data_dir': str(XXTOUCH_DATA_DIR),
+                'log_dir': str(XXTOUCH_LOG_DIR),
+                'tmp_dir': str(XXTOUCH_TMP_DIR),
+            })
         if path.startswith('/api/pm/ip-mac-config/'):
             session_id = path.rsplit('/', 1)[-1]
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
@@ -1280,4 +1299,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     ensure_sessions_exist()
+    ensure_xxtouch_workspace()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()
