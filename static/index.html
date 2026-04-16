@@ -75,6 +75,8 @@
     .cfg-text { min-height:360px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .checkline { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
     .checkline label { display:flex; gap:8px; align-items:center; font-size:14px; }
+    .embedded-app { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; min-height:78vh; }
+    .embedded-frame { width:100%; height:78vh; border:0; display:block; background:#fff; }
   </style>
 </head>
 <body>
@@ -82,8 +84,8 @@
     <div class="titlebar">
       <div class="titlebar-left">
         <div class="project-tabs">
-          <button class="btn tab active" id="projectTabProxy">TIKTOK 03 PROXY MANAGER - HGTHAI</button>
-          <button class="btn tab" id="projectTabXXTouch" onclick="openXXTouchTab()">XXTOUCH JOBS</button>
+          <button class="btn tab active" id="projectTabProxy" onclick="switchProjectTab('proxy')">TIKTOK 03 PROXY MANAGER - HGTHAI</button>
+          <button class="btn tab" id="projectTabXXTouch" onclick="switchProjectTab('xxtouch')">XXTOUCH JOBS</button>
         </div>
         <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
       </div>
@@ -105,7 +107,7 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel" id="proxyPanel">
       <div class="meta">
         <div class="meta-left session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Sửa tên hiển thị cấu hình">✏️</button><button class="icon-btn" onclick="openSessionManager()" title="Quản lý cấu hình" id="manageSessionBtn">⚙️</button></div>
         <div class="meta-center"><span class="status" id="status">Ready</span></div>
@@ -170,6 +172,10 @@
           <tbody id="rows"></tbody>
         </table>
       </div>
+    </div>
+
+    <div class="embedded-app" id="xxtouchPanel" style="display:none;">
+      <iframe id="xxtouchFrame" class="embedded-frame" src="/xxtouch/"></iframe>
     </div>
   </div>
 
@@ -252,6 +258,7 @@
     const sessionCache = {};
     let networkPollTimer = null;
     let appTitlePrefix = 'Genrouter';
+    let currentProjectTab = 'proxy';
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function renderAppTitle() {
@@ -267,9 +274,22 @@
       el.className = 'conn-badge ' + (isConnected ? 'connected' : 'disconnected');
       el.textContent = isConnected ? 'Connected' : 'Disconnected';
     }
-    function openXXTouchTab() {
-      window.open('/xxtouch/', '_blank');
-      setStatus('Đã mở XXTOUCH JOBS');
+    function switchProjectTab(tab) {
+      currentProjectTab = tab === 'xxtouch' ? 'xxtouch' : 'proxy';
+      document.getElementById('projectTabProxy').classList.toggle('active', currentProjectTab === 'proxy');
+      document.getElementById('projectTabXXTouch').classList.toggle('active', currentProjectTab === 'xxtouch');
+      document.getElementById('proxyPanel').style.display = currentProjectTab === 'proxy' ? '' : 'none';
+      document.getElementById('xxtouchPanel').style.display = currentProjectTab === 'xxtouch' ? '' : 'none';
+      if (currentProjectTab === 'xxtouch') {
+        const frame = document.getElementById('xxtouchFrame');
+        if (frame && !frame.dataset.loaded) {
+          frame.src = '/xxtouch/';
+          frame.dataset.loaded = '1';
+        }
+        setStatus('Đang xem XXTOUCH JOBS');
+      } else {
+        setStatus('Đang xem ' + sessionNameOf(currentSession));
+      }
     }
 
     function extractNetworkConnected(data) {
@@ -457,6 +477,7 @@
       document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionTabLabel(currentSession).toUpperCase();
       const visibleRows = getVisibleRows();
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
+      if (currentProjectTab !== 'proxy') return;
       document.getElementById('rows').innerHTML = visibleRows.map((row, idx) => `
         <tr>
           <td>${idx + 1}</td>
