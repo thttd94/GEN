@@ -165,7 +165,7 @@
               <th style="width:170px;">MAC</th>
               <th style="width:135px;">IP</th>
               <th style="width:95px;">Status</th>
-              <th style="width:120px;">Proxy Tag</th>
+              <th style="width:90px;">MÁY</th>
               <th class="proxy-cell">Proxy</th>
               <th class="note-cell">Note</th>
               <th style="width:190px;">
@@ -296,7 +296,7 @@
         <button class="btn small" onclick="closeIpMacModal()">Đóng</button>
       </div>
       <div class="modal-body">
-        <div class="sub">Mỗi dòng: <b>proxy_x|ip</b> — ví dụ: <span class="mono">proxy_1|192.15.4.1</span> · tối đa 1000 dòng · sẽ ép gencore.json match đúng proxy tag và IP đã nhập</div>
+        <div class="sub">Mỗi dòng: <b>số_máy|proxy_x|ip</b> — ví dụ: <span class="mono">101|proxy_1|192.15.4.1</span> · vẫn nhận format cũ <span class="mono">proxy_1|192.15.4.1</span> · tối đa 1000 dòng · sẽ ép gencore.json match đúng proxy tag và IP đã nhập</div>
         <div class="sub" style="color:#2563eb;font-weight:700;">Cấu hình này dùng chung cho tất cả cấu hình/session. GÁN MAC cũng là dữ liệu dùng chung của router.</div>
         <textarea id="ipMacText" class="cfg-text" spellcheck="false"></textarea>
         <div class="checkline">
@@ -545,6 +545,11 @@
     function getVisibleRows() {
       const rows = currentRows.filter(r => viewMode === 'configured' ? !!r.configured : !r.configured);
       return rows.slice().sort((a, b) => {
+        const ma = Number(String(a.machine || '').trim());
+        const mb = Number(String(b.machine || '').trim());
+        const validMa = Number.isFinite(ma) ? ma : Number.MAX_SAFE_INTEGER;
+        const validMb = Number.isFinite(mb) ? mb : Number.MAX_SAFE_INTEGER;
+        if (validMa !== validMb) return validMa - validMb;
         const ta = tagNum(a.tag);
         const tb = tagNum(b.tag);
         if (ta !== tb) return ta - tb;
@@ -574,7 +579,7 @@
           <td class="mono">${esc(row.mac || '')}</td>
           <td class="mono">${esc(row.ip)}</td>
           <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
-          <td class="mono">${esc(row.tag)}</td>
+          <td class="mono">${esc(row.machine || '')}</td>
           <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
@@ -793,10 +798,10 @@
       for (let i = 1; i <= 1000; i++) {
         const subnet = 4 + Math.floor((i - 1) / 250);
         const host = ((i - 1) % 250) + 1;
-        lines.push(`proxy_${i}|192.15.${subnet}.${host}`);
+        lines.push(`${i}|proxy_${i}|192.15.${subnet}.${host}`);
       }
       document.getElementById('ipMacText').value = lines.join('\n');
-      setStatus('Đã nạp mẫu định danh proxy|ip');
+      setStatus('Đã nạp mẫu định danh máy|proxy|ip');
     }
 
     async function submitIpMacConfig() {

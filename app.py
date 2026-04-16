@@ -76,6 +76,44 @@ def proxy_tag_num(tag):
         return 10**9
 
 
+def machine_num(value):
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return 10**9
+
+
+def normalize_machine(value):
+    value = str(value or '').strip()
+    if not value:
+        return ''
+    try:
+        return str(int(value))
+    except Exception:
+        return value
+
+
+def normalize_ip_identity_row(row):
+    tag = normalize_tag((row or {}).get('tag', ''))
+    ip = str((row or {}).get('ip', '')).strip()
+    machine = normalize_machine((row or {}).get('machine', ''))
+    if not machine and tag.startswith('proxy_'):
+        num = proxy_tag_num(tag)
+        if 1 <= num <= MAX_PROXY_TAG:
+            machine = str(num)
+    return {'machine': machine, 'tag': tag, 'ip': ip}
+
+
+def format_ip_identity_row(row, include_machine=False):
+    norm = normalize_ip_identity_row(row)
+    machine = norm.get('machine', '')
+    tag = norm.get('tag', '')
+    ip = norm.get('ip', '')
+    if include_machine and machine:
+        return f"{machine}|{tag}|{ip}"
+    return f"{tag}|{ip}"
+
+
 def normalize_tag(tag):
     tag = str(tag or '').strip()
     if not tag:
@@ -113,7 +151,7 @@ def ensure_sessions_exist():
             data = load_json(path)
             rows = build_ip_identity_rows_from_data(data)
             if rows and len(rows) < MAX_PROXY_TAG:
-                set_saved_ip_identity_text(session_id, '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
+                set_saved_ip_identity_text(session_id, '\n'.join(format_ip_identity_row(row, include_machine=True) for row in rows))
 
 
 def ensure_xxtouch_workspace():
@@ -448,12 +486,13 @@ def admanager_get_machine_ip_pairs(router_obj=None, router_key=''):
     for item in configured_rows:
         tag = normalize_tag(item.get('tag', ''))
         ip = str(item.get('ip', '')).strip()
+        machine = normalize_machine(item.get('machine', ''))
         if not tag.startswith('proxy_') or not ip:
             continue
         if allowed_tags is not None and tag not in allowed_tags:
             continue
         try:
-            idx = int(tag.split('_', 1)[1])
+            idx = int(machine or proxy_tag_num(tag))
         except Exception:
             continue
         if idx in seen:
@@ -1167,11 +1206,13 @@ def build_tag_to_ip(data):
 
 def build_ip_identity_rows_from_data(data):
     mapping = build_tag_to_ip(data)
-    rows = [
-        {'tag': str(tag).strip(), 'ip': str(ip).strip()}
-        for tag, ip in sorted(mapping.items(), key=lambda kv: proxy_tag_num(kv[0]))
-        if str(tag).strip().startswith('proxy_') and str(ip).strip()
-    ]
+    rows = []
+    for tag, ip in sorted(mapping.items(), key=lambda kv: proxy_tag_num(kv[0])):
+        tag = str(tag).strip()
+        ip = str(ip).strip()
+        if not tag.startswith('proxy_') or not ip:
+            continue
+        rows.append({'machine': str(proxy_tag_num(tag)), 'tag': tag, 'ip': ip})
     return rows
 
 
@@ -1228,6 +1269,7 @@ def extract_rows(data, session='1'):
     for item in configured_rows:
         ip = str(item.get('ip', '')).strip()
         tag = normalize_tag(item.get('tag', '')) or route_by_ip.get(ip, '')
+        machine = normalize_machine(item.get('machine', '')) or (str(proxy_tag_num(tag)) if tag else '')
         if not ip:
             continue
         configured_ips.add(ip)
@@ -1235,6 +1277,7 @@ def extract_rows(data, session='1'):
         meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
         outbound = outbounds.get(tag, {}) if tag else {}
         rows.append({
+            'machine': machine,
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
@@ -1249,9 +1292,11 @@ def extract_rows(data, session='1'):
         if not ip or ip in configured_ips:
             continue
         tag = ''
+        machine = ''
         meta = {}
         outbound = {}
         rows.append({
+            'machine': machine,
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
@@ -1407,21 +1452,14 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
 
 
 def build_ip_identity_text(data, session='1'):
-    mapping = build_tag_to_ip(data)
-    items = []
-    for tag, ip in mapping.items():
-        tag = str(tag).strip()
-        ip = str(ip).strip()
-        if not tag.startswith('proxy_') or not ip:
-            continue
-        items.append((proxy_tag_num(tag), f"{tag}|{ip}"))
-    items.sort(key=lambda x: x[0])
-    return '\n'.join(line for _num, line in items)
+    rows = build_ip_identity_rows_from_data(data)
+    rows.sort(key=lambda x: machine_num(x.get('machine', '')))
+    return '\n'.join(format_ip_identity_row(row, include_machine=True) for row in rows)
 
 
 def normalize_ip_identity_text(text):
     text = str(text or '').replace('\r\n', '\n').replace('\r', '\n')
-    text = __import__('re').sub(r'(?<!\n)(proxy_\d+\|)', r'\n\1', text)
+    text = __import__('re').sub(r'(?<![\n|])(?=proxy_\d+\|)', '\n', text)
     return text.strip()
 
 
@@ -1430,21 +1468,33 @@ def parse_ip_identity_text(text):
     rows = []
     seen_tags = set()
     seen_ips = set()
+    seen_machines = set()
     dup_tags = set()
     dup_ips = set()
+    dup_machines = set()
 
     for raw in str(text or '').splitlines():
         line = raw.strip()
         if not line:
             continue
         parts = [p.strip() for p in line.split('|')]
-        if len(parts) != 2:
+        if len(parts) == 2:
+            machine = ''
+            tag, ip = parts
+        elif len(parts) == 3:
+            machine, tag, ip = parts
+        else:
             raise ValueError(f'Dòng không hợp lệ: {line}')
-        tag, ip = parts
+        tag = normalize_tag(tag)
+        machine = normalize_machine(machine)
         if not tag.startswith('proxy_'):
             raise ValueError(f'Tag không hợp lệ: {tag}')
         if not ip:
             raise ValueError(f'IP trống ở dòng: {line}')
+        if not machine:
+            num = proxy_tag_num(tag)
+            if 1 <= num <= MAX_PROXY_TAG:
+                machine = str(num)
         if tag in seen_tags:
             dup_tags.add(tag)
         else:
@@ -1453,13 +1503,20 @@ def parse_ip_identity_text(text):
             dup_ips.add(ip)
         else:
             seen_ips.add(ip)
-        rows.append({'tag': tag, 'ip': ip})
+        if machine:
+            if machine in seen_machines:
+                dup_machines.add(machine)
+            else:
+                seen_machines.add(machine)
+        rows.append({'machine': machine, 'tag': tag, 'ip': ip})
 
     errs = []
     if dup_tags:
         errs.append('Proxy bị trùng: ' + ', '.join(sorted(dup_tags, key=proxy_tag_num)))
     if dup_ips:
         errs.append('IP bị trùng: ' + ', '.join(sorted(dup_ips)))
+    if dup_machines:
+        errs.append('Số máy bị trùng: ' + ', '.join(sorted(dup_machines, key=machine_num)))
 
     got_tags = {row['tag'] for row in rows}
     extra_tags = sorted([tag for tag in got_tags if proxy_tag_num(tag) > MAX_PROXY_TAG or proxy_tag_num(tag) < 1], key=proxy_tag_num)
@@ -1470,7 +1527,7 @@ def parse_ip_identity_text(text):
     if errs:
         raise ValueError(' | '.join(errs))
 
-    rows.sort(key=lambda x: (proxy_tag_num(x['tag']), x['ip']))
+    rows.sort(key=lambda x: (machine_num(x.get('machine', '')), proxy_tag_num(x['tag']), x['ip']))
     return rows
 
 
@@ -1886,7 +1943,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not saved_text:
                     rows = build_ip_identity_rows_from_data(data)
                     if rows and len(rows) < MAX_PROXY_TAG:
-                        saved_text = set_saved_ip_identity_text(session_id, '\n'.join(f"{row['tag']}|{row['ip']}" for row in rows))
+                        saved_text = set_saved_ip_identity_text(session_id, '\n'.join(format_ip_identity_row(row, include_machine=True) for row in rows))
                 return self._send_json({'ok': True, 'session': session_id, 'shared': True, 'text': saved_text or build_ip_identity_text(data, session='1')})
         self._send_json({'error': 'Not found'}, 404)
 
