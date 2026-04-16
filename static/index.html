@@ -32,6 +32,7 @@
     .adm-log-line { margin:0 0 6px 0; }
     .adm-log-line:last-child { margin-bottom:0; }
     .adm-log-muted { color:#6b7280; font-size:12px; }
+    .adm-router-lock { min-width:120px; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; background:#fff; font-weight:700; color:#111827; }
     .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
     .meta { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; gap:10px; }
     .meta-left { display:flex; align-items:center; gap:8px; justify-self:start; min-width:0; }
@@ -192,7 +193,8 @@
           <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
             <div style="font-weight:800; min-width:82px;">ROUTER</div>
             <div id="admRouterWrap" style="display:flex; align-items:center; gap:8px;">
-              <select id="admRouter" style="max-width:180px;"></select>
+              <div id="admRouterLocked" class="adm-router-lock">Đang lấy theo router hiện tại</div>
+              <select id="admRouter" style="display:none; max-width:180px;"></select>
             </div>
             <div class="adm-log-muted" id="admRouterHint" style="min-width:220px;"></div>
             <button class="btn apply" id="admScanBtn" onclick="admScanDevices()">SCAN</button>
@@ -1082,14 +1084,16 @@
       const routers = ['All', ...routerKeys];
       document.getElementById('admRouter').innerHTML = routers.map(x=>`<option value="${x}">${x}</option>`).join('');
       document.getElementById('admRouter').value = selectedRouter;
+      const routerLocked = document.getElementById('admRouterLocked');
+      if (routerLocked) routerLocked.textContent = selectedRouter && selectedRouter !== 'All' ? selectedRouter : 'router hiện tại';
       document.getElementById('admAppFilter').value = ui.appFilter === 'All' ? 'TikTok' : (ui.appFilter || 'TikTok');
       const routerHint = document.getElementById('admRouterHint');
       if (routerHint) {
-        const note = guessedRouter && routersObj[guessedRouter] ? ' · scan toàn bộ máy của router hiện tại' : '';
+        const note = guessedRouter && routersObj[guessedRouter] ? ' · tự động lấy IP theo tab/router đang mở' : '';
         routerHint.textContent = selectedRouter && selectedRouter !== 'All' ? `Router hiện tại: ${selectedRouter}${note}` : 'Router hiện tại: All';
       }
       const routerWrap = document.getElementById('admRouterWrap');
-      if (routerWrap && guessedRouter && routersObj[guessedRouter]) routerWrap.style.display = 'none';
+      if (routerWrap && guessedRouter && routersObj[guessedRouter]) routerWrap.style.display = 'flex';
       toggleAdmMachineInputs();
       admSetStatus('Sẵn sàng');
       admClearLog();
