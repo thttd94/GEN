@@ -349,11 +349,7 @@
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function admGuessRouterFromGui(){
-      const text = String(appTitlePrefix || document.title || '').toLowerCase();
-      let m = text.match(/tiktok\s*(\d+)/i);
-      if (!m) m = text.match(/tl\s*0*(\d+)/i);
-      if (!m) return '';
-      return `tiktok${String(m[1]).padStart(2,'0')}`;
+      return '';
     }
     function renderAppTitle() {
       const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';

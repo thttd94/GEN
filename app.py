@@ -389,7 +389,47 @@ def admanager_routers_to_scan(cfg, router_key):
     return [(key, routers.get(key) or {})]
 
 
-def admanager_get_machine_ip_pairs(router_obj=None):
+def get_current_router_lan_ip():
+    try:
+        info = call_old_gui('/api/router/info')
+        data = info.get('data') if isinstance(info, dict) else {}
+        if isinstance(data, dict):
+            nested = data.get('data') if isinstance(data.get('data'), dict) else data
+            lan = nested.get('lan') if isinstance(nested.get('lan'), dict) else {}
+            networks = lan.get('networks') if isinstance(lan.get('networks'), list) else []
+            if networks:
+                ip = str((networks[0] or {}).get('ip') or '').strip()
+                if ip:
+                    return ip
+    except Exception:
+        pass
+    return ''
+
+
+def infer_router_key_from_lan_ip(cfg, lan_ip=''):
+    routers = cfg.get('routers') or {}
+    lan_ip = str(lan_ip or '').strip()
+    if not lan_ip:
+        return ''
+    octets = lan_ip.split('.')
+    if len(octets) != 4:
+        return ''
+    prefix = '.'.join(octets[:3]) + '.'
+    best_key = ''
+    best_count = 0
+    for rk, router in routers.items():
+        count = 0
+        for line in (router.get('entries') or []):
+            parts = str(line).split('|', 1)
+            if len(parts) == 2 and str(parts[1]).strip().startswith(prefix):
+                count += 1
+        if count > best_count:
+            best_key = rk
+            best_count = count
+    return best_key if best_count > 0 else ''
+
+
+def admanager_get_machine_ip_pairs(router_obj=None, router_key=''):
     saved_text = get_saved_ip_identity_text('1') or get_saved_ip_identity_text()
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     idx_ip = []
@@ -438,7 +478,7 @@ def admanager_get_machine_ip_pairs(router_obj=None):
 
 
 def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range, machine_list):
-    idx_ip = admanager_get_machine_ip_pairs(router_obj)
+    idx_ip = admanager_get_machine_ip_pairs(router_obj, router_key=router_key)
 
     mode = str(machine_mode or 'all').strip().lower()
     chosen_idx = set()
@@ -606,7 +646,9 @@ def xxtouch_parse_machine_spec(group_text: str, list_text: str, mode: str):
 
 
 def xxtouch_get_selected_machines(cfg: dict, state: dict):
-    router_key = str((state or {}).get('router') or ((cfg.get('uiState') or {}).get('router')) or 'All').strip() or 'All'
+    requested_router = str((state or {}).get('router') or ((cfg.get('uiState') or {}).get('router')) or '').strip()
+    inferred_router = infer_router_key_from_lan_ip(cfg, get_current_router_lan_ip())
+    router_key = inferred_router or requested_router or 'All'
     mode = str((state or {}).get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all').strip().lower()
     group_text = str((state or {}).get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '')
     list_text = str((state or {}).get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
@@ -616,8 +658,13 @@ def xxtouch_get_selected_machines(cfg: dict, state: dict):
         list_text = ''
     routers = admanager_routers_to_scan(cfg, router_key)
     out = []
+    seen = set()
     for rk, router in routers:
         for machine in admanager_iter_machines(rk, router, mode, group_text, list_text):
+            key = (machine['index'], machine['ip'])
+            if key in seen:
+                continue
+            seen.add(key)
             out.append({'router': rk, 'index': machine['index'], 'ip': machine['ip'], 'label': machine['label']})
     out.sort(key=lambda x: (x['router'], x['index']))
     return out
