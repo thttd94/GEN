@@ -990,7 +990,7 @@
       }
     }
 
-    function admSetStatus(msg){ const el=document.getElementById('admStatus'); if(el) el.textContent = msg; const hint=document.getElementById('admStatusHint'); if(hint) hint.textContent = String(msg || ''); }
+    function admSetStatus(msg){ const el=document.getElementById('admStatus'); if(el) el.textContent = msg; const hint=document.getElementById('admStatusHint'); if(hint) hint.textContent = ''; }
     function admClearLog(){ const el=document.getElementById('admLog'); if(el) el.innerHTML = ''; }
     function admLog(msg){
       const el=document.getElementById('admLog');
@@ -1004,6 +1004,17 @@
         el.appendChild(line);
       });
       el.scrollTop = el.scrollHeight;
+    }
+    function admActionLabel(action){
+      const map = {
+        reboot: 'Reboot',
+        home: 'Home',
+        lock_home: 'Lock Home',
+        clear_app: 'Clear App',
+        remove_tiktok_lite: 'Gỡ TikTok Lite',
+        remove_tiktok: 'Gỡ TikTok',
+      };
+      return map[action] || String(action || '').trim() || 'Action';
     }
     function admSetScanBusy(busy){
       admScanBusy = !!busy;
@@ -1187,18 +1198,34 @@
       }
     }
     async function admRunSimpleAction(action){
-      admSetStatus(`Đang chạy: ${action}`);
+      const label = admActionLabel(action);
+      admClearLog();
+      admLog(`Bắt đầu ${label}`);
+      admSetStatus(`Đang chạy ${label}`);
       try {
         const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action})});
-        (data.logs||[]).forEach(line => admLog(line));
         const msg = String(data.message || 'Xong');
-        admSetStatus(msg);
-        if (/xong 0\//i.test(msg)) {
-          admLog(`[WARN] ${action} chưa chạy được trên máy đã chọn`);
+        const match = msg.match(/xong\s+(\d+)\/(\d+)\s+máy/i);
+        const okCount = match ? Number(match[1] || 0) : 0;
+        const totalCount = match ? Number(match[2] || 0) : 0;
+        const rawLogs = Array.isArray(data.logs) ? data.logs : [];
+        const errorLines = rawLogs.filter(line => /lỗi[: ]/i.test(String(line || '')));
+        if (totalCount > 0 && okCount === totalCount) {
+          admLog(`${label} >> OK`);
+          admSetStatus(`${label} OK`);
+          return;
         }
+        if (totalCount > 0 && okCount > 0) {
+          admLog(`${label} >> OK ${okCount}/${totalCount} máy`);
+        } else {
+          admLog(`${label} >> Lỗi`);
+        }
+        errorLines.forEach(line => admLog(String(line).replace(/^\[[^\]]+\]\s*/,'').trim()));
+        admSetStatus(totalCount > 0 ? `${label} ${okCount}/${totalCount}` : `${label} lỗi`);
       } catch (e) {
-        admLog(`[ERR] ${action}: ${e.message}`);
-        admSetStatus(`Lỗi ${action}`);
+        admLog(`${label} >> Lỗi`);
+        admLog(String(e.message || e));
+        admSetStatus(`Lỗi ${label}`);
       }
     }
     async function admOpenRemote(){
