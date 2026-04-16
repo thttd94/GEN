@@ -26,8 +26,10 @@
     .btn.small { padding:6px 10px; font-size:12px; }
     .status { display:inline-flex; align-items:center; min-height:20px; padding:10px 14px; border-radius:999px; background:linear-gradient(135deg,#dbeafe 0%,#eff6ff 100%); border:1px solid #93c5fd; color:#1d4ed8; font-size:14px; font-weight:900; margin-left:6px; box-shadow:0 6px 18px rgba(37,99,235,.16), inset 0 1px 0 rgba(255,255,255,.85); }
     .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
-    .meta { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; gap:10px; flex-wrap:wrap; }
-    .meta-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .meta { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; gap:10px; }
+    .meta-left { display:flex; align-items:center; gap:8px; justify-self:start; min-width:0; }
+    .meta-center { display:flex; align-items:center; justify-content:center; }
+    .meta-right { display:flex; align-items:center; gap:10px; justify-self:end; text-align:right; }
     .session-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .icon-btn { border:1px solid #d1d5db; background:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
     .notes-wrap { padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
@@ -98,8 +100,9 @@
 
     <div class="panel">
       <div class="meta">
-        <div class="session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Đổi tên session">✏️</button><button class="icon-btn" onclick="toggleCurrentSessionHidden()" title="Ẩn/hiện cấu hình" id="toggleHiddenBtn">🙈</button><button class="icon-btn" onclick="deleteCurrentSession()" title="Xóa cấu hình" id="deleteSessionBtn">🗑️</button></div>
-        <div class="meta-right"><div class="sub" id="countLabel">0 rows</div><span class="status" id="status">Ready</span></div>
+        <div class="meta-left session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Đổi tên session">✏️</button><button class="icon-btn" onclick="openSessionManager()" title="Quản lý cấu hình" id="manageSessionBtn">⚙️</button></div>
+        <div class="meta-center"><span class="status" id="status">Ready</span></div>
+        <div class="meta-right"><div class="sub" id="countLabel">0 rows</div></div>
       </div>
 
       <div class="notes-wrap">
@@ -156,6 +159,19 @@
           </thead>
           <tbody id="rows"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="sessionManagerModal">
+    <div class="modal-card" style="width:min(760px, 94vw)">
+      <div class="modal-head">
+        <b>QUẢN LÝ CẤU HÌNH</b>
+        <button class="btn small" onclick="closeSessionManager()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub">Quản lý tất cả cấu hình ở một chỗ. Có thể ẩn/hiện hoặc xóa cấu hình phụ.</div>
+        <div id="sessionManagerList" style="display:grid; gap:10px;"></div>
       </div>
     </div>
   </div>
@@ -288,34 +304,14 @@
       const addBtn = document.getElementById('addSessionBtn');
       host.querySelectorAll('.session-tab-wrap').forEach(el => el.remove());
       for (const session of availableSessions) {
-        const meta = sessionMeta[String(session)] || {};
         const wrap = document.createElement('div');
         wrap.className = 'session-tab-wrap';
-        wrap.style.display = 'inline-flex';
-        wrap.style.alignItems = 'center';
-        wrap.style.gap = '4px';
-
         const btn = document.createElement('button');
         btn.className = 'btn tab' + (currentSession === session ? ' active' : '');
         btn.id = `tab${session}`;
         btn.textContent = sessionNameOf(session);
         btn.onclick = () => switchSession(session);
         wrap.appendChild(btn);
-
-        if (meta.can_hide) {
-          const hideBtn = document.createElement('button');
-          hideBtn.className = 'btn small';
-          hideBtn.textContent = meta.hidden ? 'HIỆN' : 'ẨN';
-          hideBtn.onclick = (e) => { e.stopPropagation(); toggleSessionHidden(session, !meta.hidden); };
-          wrap.appendChild(hideBtn);
-        }
-        if (meta.can_delete) {
-          const delBtn = document.createElement('button');
-          delBtn.className = 'btn small warn';
-          delBtn.textContent = 'XÓA';
-          delBtn.onclick = (e) => { e.stopPropagation(); deleteSessionById(session); };
-          wrap.appendChild(delBtn);
-        }
         host.insertBefore(wrap, addBtn);
       }
       if (addBtn) addBtn.style.display = availableSessions.length >= 5 ? 'none' : '';
@@ -434,15 +430,6 @@
       document.getElementById('viewUnconfiguredBtn').classList.toggle('active', viewMode === 'unconfigured');
       renderAppTitle();
       document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
-      const currentMeta = sessionMeta[String(currentSession)] || {};
-      const hideBtn = document.getElementById('toggleHiddenBtn');
-      const delBtn = document.getElementById('deleteSessionBtn');
-      if (hideBtn) {
-        hideBtn.style.display = currentMeta.can_hide ? '' : 'none';
-        hideBtn.textContent = currentMeta.hidden ? '👁️' : '🙈';
-        hideBtn.title = currentMeta.hidden ? 'Hiện cấu hình' : 'Ẩn cấu hình';
-      }
-      if (delBtn) delBtn.style.display = currentMeta.can_delete ? '' : 'none';
       document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionNameOf(currentSession).toUpperCase();
       const visibleRows = getVisibleRows();
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
@@ -699,10 +686,41 @@
     }
 
 
+    function renderSessionManager() {
+      const box = document.getElementById('sessionManagerList');
+      if (!box) return;
+      const rows = availableSessions.map(session => {
+        const meta = sessionMeta[String(session)] || {};
+        const actions = [];
+        if (meta.can_hide) {
+          actions.push(`<button class="btn small" onclick="toggleSessionHidden('${session}', ${meta.hidden ? 'false' : 'true'})">${meta.hidden ? 'HIỆN' : 'ẨN'}</button>`);
+        }
+        if (meta.can_delete) {
+          actions.push(`<button class="btn small warn" onclick="deleteSessionById('${session}')">XÓA</button>`);
+        }
+        return `<div style="display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;">
+          <div><b>${esc(sessionNameOf(session))}</b></div>
+          <div class="sub" style="margin:0;">Session ${session}${meta.hidden ? ' • đang ẩn' : ''}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">${actions.join('')}</div>
+        </div>`;
+      });
+      box.innerHTML = rows.join('') || '<div class="sub">Không có cấu hình</div>';
+    }
+
+    function openSessionManager() {
+      renderSessionManager();
+      document.getElementById('sessionManagerModal').classList.add('show');
+    }
+
+    function closeSessionManager() {
+      document.getElementById('sessionManagerModal').classList.remove('show');
+    }
+
     async function toggleSessionHidden(session, hidden) {
       try {
         await fetchJSON('/api/pm/sessions/hide', { method:'POST', body: JSON.stringify({ session, hidden }) });
         await fetchSessionsList(true);
+        renderSessionManager();
         if (hidden && currentSession === String(session)) {
           const fallback = availableSessions.find(x => x !== String(session)) || '1';
           await loadSession(fallback, true);
@@ -731,6 +749,7 @@
         delete sessionNames[String(session)];
         delete sessionMeta[String(session)];
         await fetchSessionsList(true);
+        renderSessionManager();
         if (currentSession === String(session)) {
           await loadSession('1', true);
         } else {
