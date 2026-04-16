@@ -498,9 +498,14 @@ def xxtouch_spawn_checked(ip, port, cmd, timeout=20, retries=2, retry_delay=1.2)
         status = result.get('status')
         stderr = str(result.get('stderr') or '').strip()
         stdout = str(result.get('stdout') or '').strip()
+        message = str(last_obj.get('message') or '').strip()
+        raw_text = str(last_obj.get('raw') or '').strip()
+        success_text = ' '.join(x for x in (stdout, stderr, message, raw_text) if x)
         if status in (0, '0', None) and 'Another singleton process is running' not in stderr:
             return last_obj
-        last_err = stderr or stdout or last_obj.get('message') or last_obj.get('raw') or f'command_spawn status={status}'
+        if 'Operation succeed' in success_text:
+            return last_obj
+        last_err = stderr or stdout or message or raw_text or f'command_spawn status={status}'
         if 'Another singleton process is running' in stderr and attempt < max_attempts - 1:
             try:
                 xxtouch_post_json(ip, port, '/recycle', {}, timeout=15)
