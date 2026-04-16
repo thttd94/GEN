@@ -180,62 +180,70 @@
         <div class="meta">
           <div class="meta-left session-meta"><b>XXTOUCH JOBS</b></div>
           <div class="meta-center"><span class="status" id="admStatus">Sẵn sàng</span></div>
-          <div class="meta-right"><div class="sub" id="admCountLabel">0 dòng</div></div>
+          <div class="meta-right"><div class="sub" id="admCountLabel">0 máy</div></div>
         </div>
         <div style="padding:14px; display:grid; gap:12px; background:#f8fafc; border-bottom:1px solid #e5e7eb;">
           <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <div style="font-weight:800; min-width:82px;">CHỌN MÁY</div>
             <select id="admRouter" style="max-width:180px;"></select>
-            <input id="admPort" style="max-width:90px;" placeholder="Port">
-            <select id="admMachineMode" style="max-width:120px;" onchange="toggleAdmMachineInputs()">
-              <option value="all">All máy</option>
-              <option value="range">Range</option>
-              <option value="list">List</option>
+            <select id="admMachineMode" style="max-width:130px;" onchange="toggleAdmMachineInputs()">
+              <option value="all">ALL MÁY</option>
+              <option value="group">NHÓM MÁY</option>
+              <option value="list">LIST MÁY</option>
             </select>
-            <input id="admMachineRange" style="max-width:120px;" placeholder="1-10">
+            <input id="admMachineGroup" style="max-width:180px; display:none;" placeholder="1-10,12-20">
             <input id="admMachineList" style="max-width:180px; display:none;" placeholder="1,2,3">
-            <select id="admAppFilter" style="max-width:130px;">
-              <option value="All">All app</option>
-              <option value="TikTok">TikTok</option>
-              <option value="TikTok Lite">TikTok Lite</option>
-            </select>
+            <button class="btn apply" onclick="admScanDevices()">SCAN</button>
+            <button class="btn apply" onclick="admToggleDevicesInfo()">DEVICES INFO</button>
+            <button class="btn apply" onclick="admRunSimpleAction('reboot')">REBOOT</button>
+            <button class="btn apply" onclick="admRunSimpleAction('home')">HOME</button>
+            <button class="btn apply" onclick="admRunSimpleAction('lock_home')">LOCK HOME</button>
+            <button class="btn apply" onclick="admRunSimpleAction('clear_app')">CLEAR APP</button>
+            <button class="btn apply" onclick="admChooseFiles()">SEND FILE</button>
+            <input id="admSelectedFilesCount" style="max-width:120px;" readonly placeholder="số file đã chọn">
+            <button class="btn apply" onclick="admOpenRemote()">REMOTE</button>
+            <input id="admRemoteMachine" style="max-width:200px;" placeholder="Nhập số máy cần điều khiển">
           </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            <select id="admDateMode" style="max-width:120px;">
-              <option value="one">Một ngày</option>
-              <option value="range">Khoảng</option>
-            </select>
-            <input id="admDateStart" style="max-width:120px;" placeholder="dd/mm hoặc dd/mm/yyyy">
-            <input id="admDateEnd" style="max-width:120px;" placeholder="dd/mm hoặc dd/mm/yyyy">
-            <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="admFullScan"> Full scan</label>
-            <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="admDoBackup"> Backup trước pull</label>
-            <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="admDeleteAfter"> Xóa sau pull</label>
-          </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            <input id="admOutputRoot" placeholder="Output root">
-            <button class="btn" onclick="admSaveConfig()">Lưu config</button>
-            <button class="btn" onclick="admScan()">Quét</button>
-            <button class="btn" onclick="admBackup()">Backup máy đã chọn</button>
-            <button class="btn apply" onclick="admPullSelected()">Pull dòng chọn</button>
-            <button class="btn apply" onclick="admPullAll()">Pull tất cả</button>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start;">
+            <div style="border:2px solid #d1d5db; border-radius:10px; padding:18px; min-height:240px; background:#fff;">
+              <div style="display:grid; gap:14px; max-width:220px;">
+                <button class="btn apply" onclick="admRunSimpleAction('remove_tiktok_lite')">Gỡ app TIKTOK LITE</button>
+                <button class="btn apply" onclick="admRunSimpleAction('remove_tiktok')">Gỡ app TIKTOK</button>
+                <button class="btn apply" onclick="admMarkDeveloping('cài app TIKTOK')">Cài app TIKTOK</button>
+                <button class="btn apply" onclick="admMarkDeveloping('cài app TIKTOK LITE')">Cài app TIKTOK LITE</button>
+              </div>
+            </div>
+            <div style="border:2px solid #d1d5db; border-radius:10px; padding:18px; min-height:240px; background:#fff;">
+              <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
+                <div style="font-weight:800; min-width:80px;">CHỌN APP</div>
+                <select id="admAppFilter" style="max-width:130px;">
+                  <option value="TikTok">TikTok</option>
+                  <option value="TikTok Lite">TikTok Lite</option>
+                </select>
+              </div>
+              <div style="display:grid; gap:14px; max-width:220px;">
+                <button class="btn apply" onclick="admMarkDeveloping('Nuôi phôi')">Nuôi Phôi</button>
+                <button class="btn apply" onclick="admMarkDeveloping('Chạy Event Video 180')">Chạy Event Video 180</button>
+                <button class="btn apply" onclick="admMarkDeveloping('Chạy Event DD 20p')">Chạy Event DD 20p</button>
+                <button class="btn apply" onclick="admMarkDeveloping('Chạy Event DD hằng ngày')">Chạy Event DD hằng ngày</button>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="grid" style="max-height:32vh;">
-          <table>
-            <thead><tr><th></th><th>Router</th><th>Máy</th><th>IP</th><th>App</th><th>Số backup</th></tr></thead>
-            <tbody id="admSummaryRows"></tbody>
-          </table>
-        </div>
-        <div class="grid" style="max-height:32vh; border-top:1px solid #e5e7eb;">
-          <table>
-            <thead><tr><th></th><th>Máy</th><th>IP</th><th>App</th><th>Ngày</th><th>Giờ</th><th>File</th></tr></thead>
-            <tbody id="admDetailRows"></tbody>
-          </table>
+        <div id="admInfoWrap" style="display:none; padding:0 14px 14px 14px; background:#fff; border-top:1px solid #e5e7eb;">
+          <div class="grid" style="max-height:28vh; padding-top:12px;">
+            <table>
+              <thead><tr><th onclick="admSortInfo('index')">Số máy</th><th onclick="admSortInfo('model')">Đời máy</th><th onclick="admSortInfo('ios')">IOS</th><th onclick="admSortInfo('capacity_label')">Dung lượng</th><th onclick="admSortInfo('free_percent')">Dung lượng còn lại</th><th onclick="admSortInfo('ip')">IP</th><th onclick="admSortInfo('status')">Status</th></tr></thead>
+              <tbody id="admInfoRows"></tbody>
+            </table>
+          </div>
         </div>
         <div style="padding:12px 14px; border-top:1px solid #e5e7eb; background:#fff;">
-          <textarea id="admLog" readonly style="min-height:120px;"></textarea>
+          <textarea id="admLog" readonly style="min-height:150px;"></textarea>
         </div>
       </div>
     </div>
+</div>
   </div>
 
   <div class="modal" id="sessionManagerModal">
@@ -321,6 +329,11 @@
     let admConfig = null;
     let admRows = [];
     let admSummary = [];
+    let admInfoRows = [];
+    let admInfoVisible = false;
+    let admInfoSortKey = 'index';
+    let admInfoSortDir = 1;
+    let admSelectedFiles = [];
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function renderAppTitle() {
@@ -958,48 +971,77 @@
       }
     }
 
-    function admSetStatus(msg){ const el=document.getElementById('admStatus'); if(el) el.textContent=msg; }
-    function admLog(msg){ const el=document.getElementById('admLog'); if(!el) return; el.value += (el.value ? '\n' : '') + msg; el.scrollTop = el.scrollHeight; }
+    function admSetStatus(msg){ const el=document.getElementById('admStatus'); if(el) el.textContent = msg; }
+    function admLog(msg){ const el=document.getElementById('admLog'); if(!el) return; el.value += (el.value ? '
+' : '') + msg; el.scrollTop = el.scrollHeight; }
     function toggleAdmMachineInputs(){
       const mode = document.getElementById('admMachineMode').value;
-      document.getElementById('admMachineRange').style.display = mode === 'range' ? '' : 'none';
-      document.getElementById('admMachineList').style.display = mode === 'list' ? '' : 'none';
+      const group = document.getElementById('admMachineGroup');
+      const list = document.getElementById('admMachineList');
+      if (group) group.style.display = mode === 'group' ? '' : 'none';
+      if (list) list.style.display = mode === 'list' ? '' : 'none';
+      const remote = document.getElementById('admRemoteMachine');
+      if (remote) remote.style.display = '';
     }
     function admState(){
       return {
         router: document.getElementById('admRouter').value,
-        port: document.getElementById('admPort').value,
         machineMode: document.getElementById('admMachineMode').value,
-        machineRange: document.getElementById('admMachineRange').value,
+        machineGroup: document.getElementById('admMachineGroup').value,
         machineList: document.getElementById('admMachineList').value,
-        dateMode: document.getElementById('admDateMode').value,
-        dateStart: document.getElementById('admDateStart').value,
-        dateEnd: document.getElementById('admDateEnd').value,
         appFilter: document.getElementById('admAppFilter').value,
-        fullScan: document.getElementById('admFullScan').checked,
-        doBackupBeforePull: document.getElementById('admDoBackup').checked,
-        deleteAfterPull: document.getElementById('admDeleteAfter').checked,
-        outputRoot: document.getElementById('admOutputRoot').value,
+        remoteMachine: document.getElementById('admRemoteMachine').value,
       };
     }
-    function admSelectedRows(){
-      const checked = [...document.querySelectorAll('#admDetailRows input[type="checkbox"]:checked')].map(x => x.value);
-      const set = new Set(checked);
-      return admRows.filter((_, idx) => set.has(String(idx)));
+    function admSelectedMachineText(){
+      const s = admState();
+      if (s.machineMode === 'all') return 'ALL MÁY';
+      if (s.machineMode === 'group') return s.machineGroup || '(chưa nhập nhóm)';
+      return s.machineList || '(chưa nhập list)';
     }
-    function admRender(){
-      const sbody = document.getElementById('admSummaryRows');
-      const dbody = document.getElementById('admDetailRows');
-      sbody.innerHTML = admSummary.map((r,idx)=>`<tr><td><input type="checkbox" value="${idx}" onchange="admToggleSummary(${idx}, this.checked)"></td><td>${r.router}</td><td>${r.machine}</td><td>${r.ip}</td><td>${r.app}</td><td>${r.count}</td></tr>`).join('');
-      dbody.innerHTML = admRows.map((r,idx)=>`<tr><td><input type="checkbox" value="${idx}"></td><td>${r.machine}</td><td>${r.ip}</td><td>${r.app}</td><td>${r.date8||''}</td><td>${r.time6||''}</td><td>${r.filename}</td></tr>`).join('');
-      document.getElementById('admCountLabel').textContent = `${admRows.length} file`;
-    }
-    function admToggleSummary(idx, checked){
-      const row = admSummary[idx];
-      const boxes = [...document.querySelectorAll('#admDetailRows input[type="checkbox"]')];
-      admRows.forEach((r, i) => {
-        if(r.machine===row.machine && r.app===row.app && boxes[i]) boxes[i].checked = checked;
+    function admRenderInfo(){
+      const body = document.getElementById('admInfoRows');
+      if(!body) return;
+      const rows = [...admInfoRows].sort((a,b)=>{
+        const k = admInfoSortKey;
+        let av = a?.[k], bv = b?.[k];
+        if (k === 'index' || k === 'free_percent') { av = Number(av||0); bv = Number(bv||0); }
+        else { av = String(av||''); bv = String(bv||''); }
+        if (av < bv) return -1 * admInfoSortDir;
+        if (av > bv) return 1 * admInfoSortDir;
+        return 0;
       });
+      body.innerHTML = rows.map(r => `<tr><td>${r.index||''}</td><td>${esc(r.model||'')}</td><td>${esc(r.ios||'')}</td><td>${esc(r.capacity_label||'')}</td><td>${esc(r.free_label||'')}</td><td>${esc(r.ip||'')}</td><td><span class="badge ${r.status==='online'?'online':'offline'}">${r.status||''}</span></td></tr>`).join('');
+      const countEl = document.getElementById('admCountLabel');
+      if (countEl) countEl.textContent = `${admInfoRows.length} máy`;
+    }
+    function admSortInfo(key){
+      if (admInfoSortKey === key) admInfoSortDir *= -1;
+      else { admInfoSortKey = key; admInfoSortDir = 1; }
+      admRenderInfo();
+    }
+    function admToggleDevicesInfo(){
+      admInfoVisible = !admInfoVisible;
+      const wrap = document.getElementById('admInfoWrap');
+      if (wrap) wrap.style.display = admInfoVisible ? '' : 'none';
+      if (admInfoVisible) admRenderInfo();
+      admSetStatus(admInfoVisible ? 'Đang hiện bảng DEVICES INFO' : 'Đã ẩn DEVICES INFO');
+    }
+    function admChooseFiles(){
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.onchange = () => {
+        admSelectedFiles = [...(input.files || [])];
+        const el = document.getElementById('admSelectedFilesCount');
+        if (el) el.value = `${admSelectedFiles.length} file`;
+        admLog(`Đã chọn ${admSelectedFiles.length} file để gửi`);
+      };
+      input.click();
+    }
+    function admMarkDeveloping(name){
+      admSetStatus('Đang phát triển');
+      admLog(`[DEV] ${name}: đang phát triển`);
     }
     async function admInit(){
       const data = await fetchJSON('/api/admanager/config');
@@ -1008,61 +1050,51 @@
       const routers = ['All', ...Object.keys(admConfig.routers || {})];
       document.getElementById('admRouter').innerHTML = routers.map(x=>`<option value="${x}">${x}</option>`).join('');
       document.getElementById('admRouter').value = ui.router || 'All';
-      document.getElementById('admPort').value = ui.port || '46952';
       document.getElementById('admMachineMode').value = ui.machineMode || 'all';
-      document.getElementById('admMachineRange').value = ui.machineRange || '1-10';
+      document.getElementById('admMachineGroup').value = ui.machineGroup || ui.machineRange || '';
       document.getElementById('admMachineList').value = ui.machineList || '';
-      document.getElementById('admDateMode').value = ui.dateMode || 'one';
-      document.getElementById('admDateStart').value = ui.dateStart || '';
-      document.getElementById('admDateEnd').value = ui.dateEnd || '';
-      document.getElementById('admAppFilter').value = ui.appFilter || 'All';
-      document.getElementById('admFullScan').checked = !!ui.fullScan;
-      document.getElementById('admDoBackup').checked = !!ui.doBackupBeforePull;
-      document.getElementById('admDeleteAfter').checked = !!ui.deleteAfterPull;
-      document.getElementById('admOutputRoot').value = ui.outputRoot || admConfig.defaultOutput || '';
+      document.getElementById('admAppFilter').value = ui.appFilter === 'All' ? 'TikTok' : (ui.appFilter || 'TikTok');
       toggleAdmMachineInputs();
       admSetStatus('Sẵn sàng');
-      admLog('Đã nạp config');
+      admLog('Đã nạp config XXTOUCH JOBS');
     }
     async function admSaveConfig(){
       const state = admState();
       admConfig = admConfig || {};
-      admConfig.defaultOutput = state.outputRoot;
-      admConfig.uiState = {...(admConfig.uiState||{}), ...state};
+      admConfig.uiState = {...(admConfig.uiState||{}), ...state, machineRange: state.machineGroup};
       await fetchJSON('/api/admanager/save-config', {method:'POST', body: JSON.stringify({config: admConfig})});
       admSetStatus('Đã lưu config');
     }
-    async function admScan(){
-      admSetStatus('Đang quét...');
-      admLog('Bắt đầu quét');
-      const data = await fetchJSON('/api/admanager/scan', {method:'POST', body: JSON.stringify(admState())});
-      admRows = data.rows || [];
-      admSummary = data.summary || [];
-      admRender();
-      if ((data.failed||[]).length) admLog('Lỗi máy: ' + data.failed.map(x => `${x.machine}: ${x.error}`).join(' | '));
-      admSetStatus(`Quét xong: ${admRows.length} file hợp lệ`);
-      admLog(`Quét xong: ${admRows.length} file / tổng phát hiện ${data.total_files||0}`);
+    async function admScanDevices(){
+      admSetStatus('Đang scan máy...');
+      admLog(`Bắt đầu scan theo lựa chọn: ${admSelectedMachineText()}`);
+      const data = await fetchJSON('/api/xxtouch/scan-devices', {method:'POST', body: JSON.stringify(admState())});
+      admInfoRows = data.rows || [];
+      admRenderInfo();
+      const online = (data.online||[]).join(', ') || 'không có';
+      const offline = (data.offline||[]).join(', ') || 'không có';
+      admLog(`Online: ${data.online_count||0} máy - ${online}`);
+      admLog(`Offline: ${data.offline_count||0} máy - ${offline}`);
+      admSetStatus(`Scan xong: online ${data.online_count||0} / offline ${data.offline_count||0}`);
     }
-    async function admPullSelected(){
-      const rows = admSelectedRows();
-      if(!rows.length) return admSetStatus('Chưa chọn dòng nào');
-      admSetStatus('Đang pull dòng chọn...');
-      const data = await fetchJSON('/api/admanager/pull', {method:'POST', body: JSON.stringify({...admState(), rows})});
-      admLog((data.results||[]).map(x => x.ok ? `[OK] ${x.machine} ${x.filename}` : `[ERR] ${x.machine} ${x.filename}: ${x.error}`).join('\n'));
-      admSetStatus('Pull xong');
+    async function admRunSimpleAction(action){
+      admSetStatus(`Đang chạy: ${action}`);
+      const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action})});
+      (data.logs||[]).forEach(line => admLog(line));
+      admSetStatus(data.message || 'Xong');
     }
-    async function admPullAll(){
-      if(!admRows.length) return admSetStatus('Chưa có dữ liệu để pull');
-      admSetStatus('Đang pull tất cả...');
-      const data = await fetchJSON('/api/admanager/pull', {method:'POST', body: JSON.stringify({...admState(), rows: admRows})});
-      admLog((data.results||[]).map(x => x.ok ? `[OK] ${x.machine} ${x.filename}` : `[ERR] ${x.machine} ${x.filename}: ${x.error}`).join('\n'));
-      admSetStatus('Pull xong tất cả');
-    }
-    async function admBackup(){
-      admSetStatus('Đang backup...');
-      const data = await fetchJSON('/api/admanager/backup', {method:'POST', body: JSON.stringify(admState())});
-      admLog((data.results||[]).map(x => x.ok ? `[OK] ${x.machine} ${x.app}` : `[ERR] ${x.machine} ${x.app}: ${x.error}`).join('\n'));
-      admSetStatus('Backup xong');
+    async function admOpenRemote(){
+      const machine = String(document.getElementById('admRemoteMachine').value || '').trim();
+      if (!machine) {
+        admSetStatus('Phải nhập số máy để remote');
+        return;
+      }
+      const data = await fetchJSON('/api/xxtouch/remote-link', {method:'POST', body: JSON.stringify({...admState(), machine})});
+      if (data.url) {
+        window.open(data.url, '_blank');
+        admLog('Mở remote: ' + data.url);
+        admSetStatus('Đã mở remote');
+      }
     }
 
     async function bootstrap() {

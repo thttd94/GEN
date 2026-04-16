@@ -472,6 +472,138 @@ def admanager_cleanup_tmp():
         pass
 
 
+
+
+def xxtouch_parse_machine_spec(group_text: str, list_text: str, mode: str):
+    mode = str(mode or 'all').strip().lower()
+    chosen = set()
+    if mode == 'all':
+        return None
+    if mode == 'group':
+        for token in str(group_text or '').split(','):
+            token = token.strip()
+            if not token:
+                continue
+            if '-' in token:
+                try:
+                    a, b = token.split('-', 1)
+                    lo, hi = int(a), int(b)
+                    if lo > hi:
+                        lo, hi = hi, lo
+                    for i in range(lo, hi + 1):
+                        chosen.add(i)
+                except Exception:
+                    pass
+            elif token.isdigit():
+                chosen.add(int(token))
+    else:
+        for token in str(list_text or '').split(','):
+            token = token.strip()
+            if token.isdigit():
+                chosen.add(int(token))
+    return chosen
+
+
+def xxtouch_get_selected_machines(cfg: dict, state: dict):
+    router_key = str((state or {}).get('router') or ((cfg.get('uiState') or {}).get('router')) or 'All').strip() or 'All'
+    mode = str((state or {}).get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all').strip().lower()
+    group_text = str((state or {}).get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '')
+    list_text = str((state or {}).get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
+    picked = xxtouch_parse_machine_spec(group_text, list_text, mode)
+    routers = admanager_routers_to_scan(cfg, router_key)
+    out = []
+    for rk, router in routers:
+        prefix = router.get('machinePrefix') or (rk + '-may')
+        entries = router.get('entries') or []
+        for line in entries:
+            parts = str(line).split('|', 1)
+            if len(parts) != 2 or not parts[0].startswith('proxy_'):
+                continue
+            try:
+                idx = int(parts[0].split('_', 1)[1])
+            except Exception:
+                continue
+            if picked is not None and idx not in picked:
+                continue
+            out.append({'router': rk, 'index': idx, 'ip': parts[1].strip(), 'label': f'{prefix}{idx:02d}'})
+    out.sort(key=lambda x: (x['router'], x['index']))
+    return out
+
+
+def xxtouch_post_json(ip, port, path, payload=None, timeout=20):
+    data = json.dumps(payload or {}).encode('utf-8')
+    req = urllib.request.Request(f'http://{ip}:{port}{path}', data=data, method='POST', headers={'Content-Type':'application/json'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read().decode('utf-8', errors='ignore')
+    return json.loads(raw)
+
+
+def xxtouch_df_info(ip, port):
+    obj = admanager_command_spawn(ip, port, '/bin/df -k /private/var', timeout=20)
+    stdout = (((obj or {}).get('result') or {}).get('stdout') or '').strip().splitlines()
+    if len(stdout) < 2:
+        return {}
+    cols = stdout[-1].split()
+    if len(cols) < 6:
+        return {}
+    try:
+        total_kb = int(cols[1]); free_kb = int(cols[3])
+    except Exception:
+        return {}
+    total_gib = total_kb / 1024 / 1024
+    free_gib = free_kb / 1024 / 1024
+    capacity_label = '64GB'
+    for size in (16, 32, 64, 128, 256, 512, 1024):
+        capacity_label = f'{size}GB'
+        if total_gib <= size * 0.94:
+            break
+    free_percent = int(round((free_kb / total_kb) * 100)) if total_kb else 0
+    return {
+        'capacity_gib': round(total_gib, 1),
+        'free_gib': round(free_gib, 1),
+        'capacity_label': capacity_label,
+        'free_percent': free_percent,
+        'free_label': f"~{round(free_gib,1)}GB ({free_percent}%)",
+    }
+
+
+def xxtouch_stop_script(ip, port):
+    try:
+        xxtouch_post_json(ip, port, '/recycle', {}, timeout=15)
+        return 'stop_script: /recycle'
+    except Exception as e:
+        return f'stop_script lỗi: {e}'
+
+
+def xxtouch_run_action_on_machine(machine, port, action):
+    ip = machine['ip']
+    label = machine['label']
+    logs = [f'[{label}] bắt đầu {action}', f'[{label}] {xxtouch_stop_script(ip, port)}']
+    if action == 'reboot':
+        xxtouch_post_json(ip, port, '/reboot2', {}, timeout=20)
+        logs.append(f'[{label}] reboot ok')
+        return True, logs
+    if action in ('home', 'lock_home'):
+        admanager_command_spawn(ip, port, 'nohup lua /var/mobile/Media/1ferver/bin/screen.lua </dev/null >/dev/null 2>/dev/null &', timeout=15)
+        logs.append(f'[{label}] screen.lua started')
+        logs.append(f'[{label}] {action} queued')
+        return True, logs
+    if action == 'clear_app':
+        clear_script = "lua -e 'app=require(\"app\"); local ids={\"com.apple.weather\",\"com.apple.mobileme.fmip1\",\"com.apple.Home\",\"com.apple.MobileAddressBook\",\"com.apple.stocks\",\"com.apple.Translate\",\"com.apple.iBooks\",\"com.apple.calculator\",\"com.apple.compass\",\"com.apple.facetime\",\"com.apple.mobilemail\",\"com.apple.Health\",\"com.apple.Maps\",\"com.apple.podcasts\",\"com.apple.reminders\",\"com.apple.tv\",\"com.apple.Passbook\",\"com.apple.mobilecal\",\"com.apple.Magnifier\",\"com.apple.measure\",\"com.apple.Music\",\"com.apple.VoiceMemos\",\"com.apple.mobilephone\",\"com.apple.MobileSMS\",\"com.apple.Bridge\"}; for i=1,#ids do pcall(app.uninstall, ids[i]) end'"
+        admanager_command_spawn(ip, port, clear_script, timeout=50)
+        logs.append(f'[{label}] clear app ok')
+        return True, logs
+    if action == 'remove_tiktok_lite':
+        admanager_command_spawn(ip, port, 'lua -e \'app=require("app"); pcall(app.uninstall, "com.ss.iphone.ugc.tiktok.lite")\'', timeout=25)
+        logs.append(f'[{label}] gỡ TikTok Lite ok')
+        return True, logs
+    if action == 'remove_tiktok':
+        admanager_command_spawn(ip, port, 'lua -e \'app=require("app"); pcall(app.uninstall, "com.ss.iphone.ugc.Ame")\'', timeout=25)
+        logs.append(f'[{label}] gỡ TikTok ok')
+        return True, logs
+    logs.append(f'[{label}] action chưa hỗ trợ')
+    return False, logs
+
 def load_notes():
     if not NOTES_FILE.exists():
         return {}
@@ -1409,6 +1541,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix()})
+        if path == '/api/admanager/config':
+            return self._send_json({'ok': True, 'config': load_admanager_config()})
         if path == '/api/pm/xxtouch/workspace':
             ensure_xxtouch_workspace()
             return self._send_json({
@@ -1485,6 +1619,64 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/meta':
                 prefix = set_app_title_prefix(payload.get('app_title_prefix', 'Genrouter'))
                 return self._send_json({'ok': True, 'app_title_prefix': prefix})
+            if path == '/api/xxtouch/scan-devices':
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+                port = str(state.get('port') or ui.get('port') or '46952').strip()
+                machines = xxtouch_get_selected_machines(cfg, state)
+                rows = []
+                online = []
+                offline = []
+                for m in machines:
+                    try:
+                        info = xxtouch_post_json(m['ip'], port, '/deviceinfo', {}, timeout=15)
+                        data = info.get('data') or {}
+                        df = xxtouch_df_info(m['ip'], port)
+                        row = {
+                            'router': m['router'],
+                            'index': m['index'],
+                            'machine': m['label'],
+                            'ip': m['ip'],
+                            'status': 'online',
+                            'model': data.get('marketing_name') or data.get('devtype') or '',
+                            'ios': data.get('sysversion') or '',
+                            **df,
+                        }
+                        rows.append(row)
+                        online.append(str(m['index']))
+                    except Exception:
+                        rows.append({'router': m['router'], 'index': m['index'], 'machine': m['label'], 'ip': m['ip'], 'status': 'offline', 'model': '', 'ios': '', 'capacity_label': '', 'free_label': '', 'free_percent': 0})
+                        offline.append(str(m['index']))
+                return self._send_json({'ok': True, 'rows': rows, 'online': online, 'offline': offline, 'online_count': len(online), 'offline_count': len(offline)})
+            if path == '/api/xxtouch/action':
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+                port = str(state.get('port') or ui.get('port') or '46952').strip()
+                action = str(state.get('action') or '').strip()
+                machines = xxtouch_get_selected_machines(cfg, state)
+                logs = []
+                ok_count = 0
+                for m in machines:
+                    try:
+                        ok, lines = xxtouch_run_action_on_machine(m, port, action)
+                        logs.extend(lines)
+                        if ok:
+                            ok_count += 1
+                    except Exception as e:
+                        logs.append(f"[{m['label']}] lỗi: {e}")
+                return self._send_json({'ok': True, 'logs': logs, 'message': f'{action}: xong {ok_count}/{len(machines)} máy'})
+            if path == '/api/xxtouch/remote-link':
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+                port = str(state.get('port') or ui.get('port') or '46952').strip()
+                machine_no = str(state.get('machine') or '').strip()
+                machines = xxtouch_get_selected_machines(cfg, {'router': state.get('router') or ui.get('router') or 'All', 'machineMode': 'list', 'machineList': machine_no})
+                if not machines:
+                    raise ValueError('Không tìm thấy máy để remote')
+                return self._send_json({'ok': True, 'url': f"http://{machines[0]['ip']}:{port}/screen.html", 'machine': machines[0]})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}
