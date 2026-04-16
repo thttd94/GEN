@@ -11,6 +11,8 @@ import urllib.request
 import urllib.error
 import socket
 import struct
+import plistlib
+import re
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
@@ -45,6 +47,10 @@ XXTOUCH_WORK_DIR = BASE_DIR / 'xxtouch_jobs'
 XXTOUCH_DATA_DIR = XXTOUCH_WORK_DIR / 'data'
 XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
 XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
+ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
+ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
+ADMANAGER_REMOTE_DIR = '/private/var/mobile/Library/ADManager'
+ADMANAGER_FILE_RE = re.compile(r'^(?P<prefix>[^_]+_)(?P<date>\d{8})(?:_(?P<time_u>\d{6})|(?P<time>\d{6}))\.adbk$')
 MAX_SESSION_COUNT = 5
 SESSION_FILES = {
     str(i): PRESET_DIR / f'session{i}.json'
@@ -239,6 +245,231 @@ def load_json(path: Path):
 def save_json(path: Path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def load_admanager_config():
+    cfg = {
+        'routers': {},
+        'apps': {
+            'tiktok': {
+                'label': 'TikTok',
+                'matchPrefixes': ['com.ss.iphone.ugc.Ame', 'com.zhiliaoapp.musically']
+            },
+            'tiktok_lite': {
+                'label': 'TikTok Lite',
+                'matchPrefixes': ['com.ss.iphone.ugc.AmeLite', 'com.zhiliaoapp.musically.lite', 'com.ss.iphone.ugc.tiktoklite']
+            }
+        },
+        'backupCommands': {
+            'TikTok': 'echo BACKUP_TIKTOK',
+            'TikTok Lite': 'echo BACKUP_TIKTOK_LITE'
+        },
+        'defaultOutput': str(XXTOUCH_DATA_DIR),
+        'uiState': {
+            'router': 'All',
+            'port': '46952',
+            'machineMode': 'all',
+            'machineRange': '1-10',
+            'machineList': '1,2,3',
+            'dateMode': 'one',
+            'dateStart': '',
+            'dateEnd': '',
+            'appFilter': 'All',
+            'fullScan': False,
+            'doBackupBeforePull': False,
+            'deleteAfterPull': False,
+            'outputRoot': str(XXTOUCH_DATA_DIR),
+        }
+    }
+    for path in (ADMANAGER_CONFIG_FILE, ADMANAGER_LOCAL_FILE):
+        try:
+            if path.exists():
+                cfg.update(json.loads(path.read_text(encoding='utf-8')))
+        except Exception:
+            pass
+    ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+    if not ui.get('outputRoot'):
+        ui['outputRoot'] = cfg.get('defaultOutput') or str(XXTOUCH_DATA_DIR)
+    cfg['uiState'] = ui
+    return cfg
+
+
+def save_admanager_local(cfg):
+    local = {}
+    try:
+        if ADMANAGER_LOCAL_FILE.exists():
+            local = json.loads(ADMANAGER_LOCAL_FILE.read_text(encoding='utf-8'))
+    except Exception:
+        local = {}
+    for key in ('defaultOutput', 'backupCommands', 'uiState'):
+        if key in cfg:
+            local[key] = cfg[key]
+    save_json(ADMANAGER_LOCAL_FILE, local)
+
+
+def admanager_detect_app_label(apps_cfg: dict, base_name: str) -> str:
+    low = str(base_name or '').lower()
+    for key, info in (apps_cfg or {}).items():
+        for p in info.get('matchPrefixes', []):
+            if low.startswith(p.lower() + '_'):
+                return info.get('label', key)
+    return 'TikTok Lite' if 'lite' in low else 'TikTok'
+
+
+def admanager_parse_base(m):
+    date8 = m.group('date') or ''
+    time6 = m.group('time_u') or m.group('time') or ''
+    base = f"{m.group('prefix')}{date8}{('_' if m.group('time_u') else '')}{time6}"
+    return base, base + '.adbk', date8, time6
+
+
+def admanager_parse_date_input(s: str) -> str:
+    s = str(s or '').strip()
+    if not s:
+        return ''
+    m = re.match(r'^(\d{1,2})\/(\d{1,2})\/(\d{4})$', s)
+    if m:
+        dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= dd <= 31 and 1 <= mm <= 12:
+            return f'{yyyy:04d}{mm:02d}{dd:02d}'
+    m = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})$', s)
+    if m:
+        yyyy, mm, dd = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= dd <= 31 and 1 <= mm <= 12:
+            return f'{yyyy:04d}{mm:02d}{dd:02d}'
+    digits = re.sub(r'\D', '', s)
+    if len(digits) == 8:
+        yyyy, mm, dd = int(digits[:4]), int(digits[4:6]), int(digits[6:8])
+        if 1 <= dd <= 31 and 1 <= mm <= 12 and 2000 <= yyyy <= 2100:
+            return digits
+    return ''
+
+
+def admanager_parse_daymonth(s: str) -> str:
+    m = re.match(r'^(\d{1,2})\/(\d{1,2})$', str(s or '').strip())
+    if not m:
+        return ''
+    dd, mm = int(m.group(1)), int(m.group(2))
+    if 1 <= dd <= 31 and 1 <= mm <= 12:
+        return f'{mm:02d}{dd:02d}'
+    return ''
+
+
+def admanager_in_mmdd_range(mmdd, a, b):
+    return a <= mmdd <= b if a <= b else (mmdd >= a or mmdd <= b)
+
+
+def admanager_routers_to_scan(cfg, router_key):
+    routers = cfg.get('routers') or {}
+    key = str(router_key or '').strip()
+    if key == 'All' or not key:
+        return list(routers.items())
+    return [(key, routers.get(key) or {})]
+
+
+def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range, machine_list):
+    entries = router_obj.get('entries') or []
+    idx_ip = []
+    for line in entries:
+        parts = str(line).split('|', 1)
+        if len(parts) == 2 and parts[0].startswith('proxy_'):
+            try:
+                idx = int(parts[0].split('_', 1)[1])
+            except Exception:
+                continue
+            idx_ip.append((idx, parts[1].strip()))
+    idx_ip.sort(key=lambda x: x[0])
+    chosen_idx = set()
+    if machine_mode == 'all':
+        chosen_idx = {i for i, _ in idx_ip}
+    elif machine_mode == 'range':
+        try:
+            a, b = str(machine_range or '').split('-', 1)
+            lo, hi = int(a), int(b)
+            chosen_idx = {i for i, _ in idx_ip if lo <= i <= hi}
+        except Exception:
+            chosen_idx = set()
+    else:
+        for tok in str(machine_list or '').split(','):
+            tok = tok.strip()
+            if tok.isdigit():
+                chosen_idx.add(int(tok))
+    prefix = router_obj.get('machinePrefix') or (router_key + '-may')
+    out = []
+    for i, ip in idx_ip:
+        if i in chosen_idx:
+            out.append({'index': i, 'ip': ip, 'label': f'{prefix}{i:02d}'})
+    return out
+
+
+def admanager_base(ip, port):
+    return f'http://{ip}:{port}'
+
+
+def admanager_command_spawn(ip, port, cmd, timeout=20):
+    req = urllib.request.Request(admanager_base(ip, port) + '/command_spawn', data=cmd.encode('utf-8'), method='POST')
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read().decode('utf-8', errors='ignore')
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {'raw': raw}
+
+
+def admanager_download_file(ip, port, remote_path, local_path: Path, timeout=60):
+    enc = urllib.parse.quote(remote_path, safe='/')
+    with urllib.request.urlopen(admanager_base(ip, port) + f'/download_file?filename={enc}', timeout=timeout) as r:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(r.read())
+
+
+def admanager_download_backups_plist(ip, port):
+    p = XXTOUCH_TMP_DIR / f"tmp_Backups_runtime_{ip.replace('.', '_')}.plist"
+    admanager_download_file(ip, port, f'{ADMANAGER_REMOTE_DIR}/Backups.plist', p, timeout=30)
+    return p
+
+
+def admanager_parse_backups_plist_map(plist_path: Path):
+    try:
+        obj = plistlib.loads(plist_path.read_bytes())
+    except Exception:
+        return {}
+    objs = obj.get('$objects') or []
+    UID = plistlib.UID
+    def dec(x):
+        if isinstance(x, UID):
+            return dec(objs[x.data])
+        if isinstance(x, list):
+            return [dec(v) for v in x]
+        if isinstance(x, dict):
+            if 'NS.keys' in x and 'NS.objects' in x:
+                return dict(zip(dec(x['NS.keys']), dec(x['NS.objects'])))
+            if 'NS.objects' in x and '$class' in x and len(x) == 2:
+                return dec(x['NS.objects'])
+            return {k: dec(v) for k, v in x.items() if k != '$class'}
+        return x
+    try:
+        root = dec(obj['$top']['root'])
+    except Exception:
+        return {}
+    out = {}
+    for _, maybe_list in (root.items() if isinstance(root, dict) else []):
+        if isinstance(maybe_list, list):
+            for item in maybe_list:
+                if isinstance(item, dict) and isinstance(item.get('name'), str):
+                    out[item['name']] = ('__backupName' not in item)
+    return out
+
+
+def admanager_cleanup_tmp():
+    try:
+        for fp in XXTOUCH_TMP_DIR.glob('tmp_Backups_runtime_*.plist'):
+            try:
+                fp.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def load_notes():
@@ -1254,6 +1485,158 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/meta':
                 prefix = set_app_title_prefix(payload.get('app_title_prefix', 'Genrouter'))
                 return self._send_json({'ok': True, 'app_title_prefix': prefix})
+            if path == '/api/admanager/save-config':
+                cfg = load_admanager_config()
+                incoming = payload.get('config') if isinstance(payload, dict) else {}
+                if isinstance(incoming, dict):
+                    for key in ('backupCommands', 'defaultOutput', 'uiState'):
+                        if key in incoming:
+                            cfg[key] = incoming[key]
+                save_admanager_local(cfg)
+                return self._send_json({'ok': True})
+            if path == '/api/admanager/scan':
+                ensure_xxtouch_workspace()
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+                router_key = state.get('router') or ui.get('router') or 'All'
+                port = str(state.get('port') or ui.get('port') or '46952').strip()
+                machine_mode = state.get('machineMode') or ui.get('machineMode') or 'all'
+                machine_range = state.get('machineRange') or ui.get('machineRange') or '1-10'
+                machine_list = state.get('machineList') or ui.get('machineList') or ''
+                date_mode = state.get('dateMode') or ui.get('dateMode') or 'one'
+                date_start = state.get('dateStart') or ui.get('dateStart') or ''
+                date_end = state.get('dateEnd') or ui.get('dateEnd') or date_start
+                app_filter = state.get('appFilter') or ui.get('appFilter') or 'All'
+                full_scan = bool(state.get('fullScan', ui.get('fullScan', False)))
+                apps_cfg = cfg.get('apps') or {}
+                if full_scan:
+                    date_allow = None
+                    mmdd_allow = None
+                else:
+                    if date_mode != 'range':
+                        date_end = date_start
+                    ds_mmdd = admanager_parse_daymonth(date_start)
+                    de_mmdd = admanager_parse_daymonth(date_end)
+                    if ds_mmdd and de_mmdd:
+                        mmdd_allow = (ds_mmdd, de_mmdd)
+                        date_allow = None
+                    else:
+                        ds = admanager_parse_date_input(date_start)
+                        de = admanager_parse_date_input(date_end)
+                        if not ds or not de:
+                            raise ValueError('Định dạng ngày không hợp lệ')
+                        if ds > de:
+                            ds, de = de, ds
+                        date_allow = (ds, de)
+                        mmdd_allow = None
+                app_targets = [info.get('label', key) for key, info in apps_cfg.items()] if app_filter == 'All' else [app_filter]
+                rows = []
+                summary = []
+                failed = []
+                total_files = 0
+                summary_map = {}
+                for rk, router in admanager_routers_to_scan(cfg, router_key):
+                    selected = admanager_iter_machines(rk, router, machine_mode, machine_range, machine_list)
+                    for m in selected:
+                        for app_lbl in app_targets:
+                            summary_map[(rk, m['label'], m['ip'], app_lbl)] = 0
+                    for m in selected:
+                        try:
+                            obj = admanager_command_spawn(m['ip'], port, f'echo {ADMANAGER_REMOTE_DIR}/*', timeout=20)
+                            stdout = (((obj or {}).get('result') or {}).get('stdout') or '').strip()
+                            names = []
+                            for token in stdout.split():
+                                fname = token.rsplit('/', 1)[-1]
+                                mm = ADMANAGER_FILE_RE.match(fname)
+                                if mm:
+                                    base, _fn, date8, time6 = admanager_parse_base(mm)
+                                    names.append((fname, base, date8, time6))
+                            names = sorted(set(names))
+                            total_files += len(names)
+                            plist_path = admanager_download_backups_plist(m['ip'], port)
+                            status_map = admanager_parse_backups_plist_map(plist_path)
+                            for (name, base, date8, time6) in names:
+                                if date_allow is not None and not (date_allow[0] <= date8 <= date_allow[1]):
+                                    continue
+                                if mmdd_allow is not None and not admanager_in_mmdd_range(date8[4:8], mmdd_allow[0], mmdd_allow[1]):
+                                    continue
+                                app_label = admanager_detect_app_label(apps_cfg, base)
+                                if app_filter != 'All' and app_label != app_filter:
+                                    continue
+                                ok = status_map.get(base, True)
+                                if not ok:
+                                    continue
+                                row = {'router': rk, 'machine': m['label'], 'ip': m['ip'], 'app': app_label, 'ok': True, 'date8': date8, 'time6': time6, 'filename': name}
+                                rows.append(row)
+                                key = (rk, m['label'], m['ip'], app_label)
+                                summary_map[key] = summary_map.get(key, 0) + 1
+                        except Exception as e:
+                            failed.append({'router': rk, 'machine': m['label'], 'ip': m['ip'], 'error': str(e)})
+                admanager_cleanup_tmp()
+                for (rk, machine, ip, app), count in sorted(summary_map.items()):
+                    summary.append({'router': rk, 'machine': machine, 'ip': ip, 'app': app, 'count': count})
+                return self._send_json({'ok': True, 'rows': rows, 'summary': summary, 'failed': failed, 'total_files': total_files})
+            if path == '/api/admanager/pull':
+                ensure_xxtouch_workspace()
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+                port = str(state.get('port') or ui.get('port') or '46952').strip()
+                output_root = str(state.get('outputRoot') or ui.get('outputRoot') or cfg.get('defaultOutput') or XXTOUCH_DATA_DIR)
+                do_backup = bool(state.get('doBackupBeforePull', ui.get('doBackupBeforePull', False)))
+                delete_after = bool(state.get('deleteAfterPull', ui.get('deleteAfterPull', False)))
+                rows = state.get('rows') if isinstance(state.get('rows'), list) else []
+                results = []
+                cnt = 0
+                total = len(rows) or 1
+                for r in rows:
+                    try:
+                        if do_backup:
+                            cmd = (cfg.get('backupCommands') or {}).get(r.get('app'))
+                            if cmd:
+                                try:
+                                    admanager_command_spawn(r['ip'], port, cmd, timeout=40)
+                                except Exception:
+                                    pass
+                        subdir = Path(output_root) / str(r['machine'])
+                        remote = f"{ADMANAGER_REMOTE_DIR}/{r['filename']}"
+                        local = subdir / r['filename']
+                        admanager_download_file(r['ip'], port, remote, local, timeout=120)
+                        if delete_after:
+                            try:
+                                admanager_command_spawn(r['ip'], port, f"rm -f '{remote}'", timeout=20)
+                            except Exception:
+                                pass
+                        cnt += 1
+                        results.append({'ok': True, 'machine': r['machine'], 'filename': r['filename'], 'size': local.stat().st_size if local.exists() else 0, 'progress': int(cnt * 100 / total)})
+                    except Exception as e:
+                        results.append({'ok': False, 'machine': r.get('machine'), 'filename': r.get('filename'), 'error': str(e)})
+                return self._send_json({'ok': True, 'results': results, 'output_root': output_root})
+            if path == '/api/admanager/backup':
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+                router_key = state.get('router') or ui.get('router') or 'All'
+                port = str(state.get('port') or ui.get('port') or '46952').strip()
+                machine_mode = state.get('machineMode') or ui.get('machineMode') or 'all'
+                machine_range = state.get('machineRange') or ui.get('machineRange') or '1-10'
+                machine_list = state.get('machineList') or ui.get('machineList') or ''
+                app_filter = state.get('appFilter') or ui.get('appFilter') or 'All'
+                cmds = cfg.get('backupCommands') or {}
+                results = []
+                for rk, router in admanager_routers_to_scan(cfg, router_key):
+                    for m in admanager_iter_machines(rk, router, machine_mode, machine_range, machine_list):
+                        candidates = [('TikTok', cmds.get('TikTok')), ('TikTok Lite', cmds.get('TikTok Lite'))] if app_filter == 'All' else [(app_filter, cmds.get(app_filter))]
+                        for app_lbl, cmd in candidates:
+                            if not cmd:
+                                continue
+                            try:
+                                admanager_command_spawn(m['ip'], port, cmd, timeout=40)
+                                results.append({'ok': True, 'machine': m['label'], 'ip': m['ip'], 'app': app_lbl})
+                            except Exception as e:
+                                results.append({'ok': False, 'machine': m['label'], 'ip': m['ip'], 'app': app_lbl, 'error': str(e)})
+                return self._send_json({'ok': True, 'results': results})
             if path.startswith('/api/pm/map-ip/'):
                 session_id = path.rsplit('/', 1)[-1]
                 if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
