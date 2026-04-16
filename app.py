@@ -83,10 +83,11 @@ def ensure_sessions_exist():
     if not base_file.exists():
         save_json(base_file, load_json(RUNTIME_SOURCE_FILE))
 
+    create_default_second = not SESSION_STATE_FILE.exists()
     for session_id, path in SESSION_FILES.items():
         if session_id == '1':
             continue
-        if not path.exists() and session_id == '2':
+        if create_default_second and not path.exists() and session_id == '2':
             data = load_json(base_file)
             clear_session_proxies(data)
             save_json(path, data)
@@ -172,8 +173,8 @@ def set_session_hidden(session_id, hidden=True):
 
 def delete_session(session_id):
     session_id = str(session_id)
-    if session_id in ('1', '2'):
-        raise ValueError('Không thể xóa cấu hình mặc định')
+    if session_id == '1':
+        raise ValueError('Không thể xóa cấu hình mặc định số 1')
     path = SESSION_FILES.get(session_id)
     if not path or not path.exists():
         raise ValueError('Cấu hình không tồn tại')
@@ -214,7 +215,7 @@ def get_available_sessions(include_hidden=True):
                 'exists': True,
                 'hidden': hidden,
                 'can_hide': session_id != '1',
-                'can_delete': session_id not in ('1', '2'),
+                'can_delete': session_id != '1',
                 'is_default': session_id in ('1', '2'),
             })
     items.sort(key=lambda x: int(x['session']))

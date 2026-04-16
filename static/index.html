@@ -34,8 +34,10 @@
     .icon-btn { border:1px solid #d1d5db; background:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
     .notes-wrap { padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
     .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:105px; max-height:165px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
+    .top-work-grid { display:grid; grid-template-columns: 1fr 1fr 2fr; gap:12px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; align-items:stretch; }
+    .top-work-card { display:grid; gap:8px; align-content:start; }
     .notes-summary-empty { color:#9ca3af; }
-    .bulkbar { display:grid; grid-template-columns: minmax(320px, 420px) minmax(420px, 1fr); gap:12px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
+    .bulkbar { display:grid; grid-template-columns: 1fr; gap:12px; padding:0; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
     .bulk-card { display:grid; gap:8px; align-content:start; }
     .bulk-card-title { font-size:13px; font-weight:800; color:#111827; }
     .bulk-actions-inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
@@ -88,8 +90,6 @@
 
     <div class="toolbar">
       <div class="toolbar-left" id="sessionTabs">
-        <button class="btn tab active" id="tab1" onclick="switchSession('1')">CẤU HÌNH 1</button>
-        <button class="btn tab" id="tab2" onclick="switchSession('2')">CẤU HÌNH 2</button>
         <button class="btn" id="addSessionBtn" onclick="addSession()">+ THÊM CẤU HÌNH</button>
         <button class="btn apply" onclick="applyCurrentSession()">NẠP & APPLY CẤU HÌNH ĐANG MỞ</button>
       </div>
@@ -108,28 +108,28 @@
         <div class="meta-right"><div class="sub" id="countLabel">0 rows</div></div>
       </div>
 
-      <div class="notes-wrap">
-        <div class="notes-summary-box" id="notesSummary"></div>
-      </div>
-
       <div class="bulkbar">
-        <div class="bulk-card">
-          <div class="bulk-card-title">GÁN 1 PROXY CHO TOÀN BỘ CẤU HÌNH ĐANG MỞ</div>
-          <input id="bulkProxy" placeholder="server:port:user:pass">
-          <div class="bulk-actions-inline">
-            <button class="btn" onclick="assignAllProxy()">GÁN 1 ALL</button>
-            <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
-            <button class="btn" onclick="clearAllNotes()">Clear Notes</button>
+        <div class="top-work-grid">
+          <div class="top-work-card">
+            <div class="bulk-card-title">GÁN 1 PROXY CHO TOÀN BỘ CẤU HÌNH ĐANG MỞ</div>
+            <input id="bulkProxy" placeholder="server:port:user:pass">
+            <div class="bulk-actions-inline">
+              <button class="btn" onclick="assignAllProxy()">GÁN 1 ALL</button>
+              <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
+              <button class="btn" onclick="clearAllNotes()">Clear Notes</button>
+            </div>
           </div>
-        </div>
-        <div class="bulk-card">
-          <div class="bulk-card-title">GÁN PROXY HÀNG LOẠT THEO TAG</div>
-          <textarea id="bulkMap" placeholder="225|1.2.3.4:1080:user:pass
+          <div class="top-work-card">
+            <div class="bulk-card-title">GÁN PROXY HÀNG LOẠT THEO TAG</div>
+            <textarea id="bulkMap" placeholder="225|1.2.3.4:1080:user:pass
 225;1.2.3.4:1080:user:pass
 225 1.2.3.4:1080:user:pass"></textarea>
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-            <div class="sub">x = số tag. Ví dụ 225 = proxy_225. Chỉ đổi các dòng có trong danh sách nhập.</div>
             <div class="bulk-actions"><button class="btn" onclick="applyBulkMap()">Gán hàng loạt</button></div>
+          </div>
+          <div class="top-work-card">
+            <div class="bulk-card-title">NOTE TỔNG</div>
+            <div class="notes-summary-box" id="notesSummary"></div>
+            <div class="sub">x = số tag. Ví dụ 225 = proxy_225. Chỉ đổi các dòng có trong danh sách nhập.</div>
           </div>
         </div>
       </div>
