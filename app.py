@@ -593,6 +593,23 @@ PORT=$(grep -o '"port"[[:space:]]*:[[:space:]]*[0-9]\+' "$CONF" 2>/dev/null | he
         raise RuntimeError(stdout[:300])
 
 
+def xxtouch_http_probe(ip, port, timeout=5):
+    last_error = None
+    for path in ('/screen.html', '/', '/deviceinfo'):
+        try:
+            method = 'GET' if path != '/deviceinfo' else 'POST'
+            data = None if method == 'GET' else b''
+            req = urllib.request.Request(f'http://{ip}:{port}{path}', data=data, method=method)
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                code = getattr(r, 'status', None) or r.getcode()
+                body = r.read(256).decode('utf-8', errors='ignore')
+            if 200 <= int(code or 0) < 500:
+                return {'ok': True, 'path': path, 'code': int(code or 0), 'body': body}
+        except Exception as e:
+            last_error = e
+    raise RuntimeError(str(last_error or 'http probe fail'))
+
+
 def xxtouch_try_claim_scan(machine_key: str) -> bool:
     with XXTOUCH_SCAN_LOCK:
         if machine_key in XXTOUCH_SCAN_INFLIGHT:
@@ -1719,18 +1736,32 @@ class Handler(BaseHTTPRequestHandler):
                             'free_percent': 0,
                         }
                     try:
-                        info = xxtouch_device_info(m['ip'], port, timeout=8)
-                        data = info.get('data') or {}
-                        df = xxtouch_df_info(m['ip'], port)
+                        probe = xxtouch_http_probe(m['ip'], port, timeout=5)
+                        model = ''
+                        ios = ''
+                        df = {}
+                        info_error = ''
+                        try:
+                            info = xxtouch_device_info(m['ip'], port, timeout=6)
+                            data = info.get('data') or {}
+                            model = data.get('marketing_name') or data.get('devtype') or ''
+                            ios = data.get('sysversion') or ''
+                            try:
+                                df = xxtouch_df_info(m['ip'], port)
+                            except Exception:
+                                df = {}
+                        except Exception as e:
+                            info_error = str(e)
                         return {
                             'router': m['router'],
                             'index': m['index'],
                             'machine': m['label'],
                             'ip': m['ip'],
                             'status': 'online',
-                            'model': data.get('marketing_name') or data.get('devtype') or '',
-                            'ios': data.get('sysversion') or '',
-                            'error': '',
+                            'model': model,
+                            'ios': ios,
+                            'error': info_error,
+                            'probe_path': probe.get('path') or '',
                             **df,
                         }
                     except Exception as e:
