@@ -342,6 +342,12 @@
     let admSelectedFiles = [];
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    function admGuessRouterFromGui(){
+      const text = String(appTitlePrefix || document.title || '').toLowerCase();
+      const m = text.match(/tiktok\s*(\d+)/i);
+      if (!m) return '';
+      return `tiktok${String(m[1]).padStart(2,'0')}`;
+    }
     function renderAppTitle() {
       const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
       const full = `${prefix} PROXY MANAGER - HGTHAI`;
@@ -1052,16 +1058,21 @@
       const data = await fetchJSON('/api/admanager/config');
       admConfig = data.config || {};
       const ui = admConfig.uiState || {};
-      const routers = ['All', ...Object.keys(admConfig.routers || {})];
+      const routersObj = admConfig.routers || {};
+      const routerKeys = Object.keys(routersObj);
+      const guessedRouter = admGuessRouterFromGui();
+      const selectedRouter = (guessedRouter && routersObj[guessedRouter]) ? guessedRouter : (ui.router || 'All');
+      const routers = ['All', ...routerKeys];
       document.getElementById('admRouter').innerHTML = routers.map(x=>`<option value="${x}">${x}</option>`).join('');
-      document.getElementById('admRouter').value = ui.router || 'All';
+      document.getElementById('admRouter').value = selectedRouter;
       document.getElementById('admMachineMode').value = ui.machineMode === 'range' ? 'group' : (ui.machineMode || 'all');
       document.getElementById('admMachineGroup').value = ui.machineGroup || ui.machineRange || '';
       document.getElementById('admMachineList').value = ui.machineList || '';
       document.getElementById('admAppFilter').value = ui.appFilter === 'All' ? 'TikTok' : (ui.appFilter || 'TikTok');
       toggleAdmMachineInputs();
       admSetStatus('Sẵn sàng');
-      admLog(`Đã nạp config XXTOUCH JOBS - ${Math.max(routers.length - 1, 0)} router`);
+      admLog(`Đã nạp config XXTOUCH JOBS - ${Math.max(routerKeys.length, 0)} router`);
+      if (selectedRouter && selectedRouter !== 'All') admLog(`Đang bám theo GUI hiện tại: ${selectedRouter}`);
     }
     async function admSaveConfig(){
       const state = admState();
