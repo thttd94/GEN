@@ -972,8 +972,7 @@
     }
 
     function admSetStatus(msg){ const el=document.getElementById('admStatus'); if(el) el.textContent = msg; }
-    function admLog(msg){ const el=document.getElementById('admLog'); if(!el) return; el.value += (el.value ? '
-' : '') + msg; el.scrollTop = el.scrollHeight; }
+    function admLog(msg){ const el=document.getElementById('admLog'); if(!el) return; el.value += (el.value ? '\\n' : '') + msg; el.scrollTop = el.scrollHeight; }
     function toggleAdmMachineInputs(){
       const mode = document.getElementById('admMachineMode').value;
       const group = document.getElementById('admMachineGroup');
