@@ -449,6 +449,31 @@ def admanager_command_spawn(ip, port, cmd, timeout=20):
         return {'raw': raw}
 
 
+def xxtouch_spawn_checked(ip, port, cmd, timeout=20, retries=2, retry_delay=1.2):
+    last_obj = {}
+    last_err = None
+    max_attempts = max(1, int(retries) + 1)
+    for attempt in range(max_attempts):
+        obj = admanager_command_spawn(ip, port, cmd, timeout=timeout)
+        last_obj = obj if isinstance(obj, dict) else {'raw': obj}
+        result = last_obj.get('result') if isinstance(last_obj.get('result'), dict) else {}
+        status = result.get('status')
+        stderr = str(result.get('stderr') or '').strip()
+        stdout = str(result.get('stdout') or '').strip()
+        if status in (0, '0', None) and 'Another singleton process is running' not in stderr:
+            return last_obj
+        last_err = stderr or stdout or last_obj.get('message') or last_obj.get('raw') or f'command_spawn status={status}'
+        if 'Another singleton process is running' in stderr and attempt < max_attempts - 1:
+            try:
+                xxtouch_post_json(ip, port, '/recycle', {}, timeout=15)
+            except Exception:
+                pass
+            time.sleep(retry_delay)
+            continue
+        break
+    raise RuntimeError(str(last_err or 'command_spawn failed'))
+
+
 def admanager_download_file(ip, port, remote_path, local_path: Path, timeout=60):
     enc = urllib.parse.quote(remote_path, safe='/')
     with urllib.request.urlopen(admanager_base(ip, port) + f'/download_file?filename={enc}', timeout=timeout) as r:
@@ -682,21 +707,21 @@ def xxtouch_run_action_on_machine(machine, port, action):
         logs.append(f'[{label}] reboot ok')
         return True, logs
     if action in ('home', 'lock_home'):
-        admanager_command_spawn(ip, port, 'nohup lua /var/mobile/Media/1ferver/bin/screen.lua </dev/null >/dev/null 2>/dev/null &', timeout=15)
+        xxtouch_spawn_checked(ip, port, 'nohup lua /var/mobile/Media/1ferver/bin/screen.lua </dev/null >/dev/null 2>/dev/null &', timeout=15)
         logs.append(f'[{label}] screen.lua started')
         logs.append(f'[{label}] {action} queued')
         return True, logs
     if action == 'clear_app':
         clear_script = "lua -e 'app=require(\"app\"); local ids={\"com.apple.weather\",\"com.apple.mobileme.fmip1\",\"com.apple.Home\",\"com.apple.MobileAddressBook\",\"com.apple.stocks\",\"com.apple.Translate\",\"com.apple.iBooks\",\"com.apple.calculator\",\"com.apple.compass\",\"com.apple.facetime\",\"com.apple.mobilemail\",\"com.apple.Health\",\"com.apple.Maps\",\"com.apple.podcasts\",\"com.apple.reminders\",\"com.apple.tv\",\"com.apple.Passbook\",\"com.apple.mobilecal\",\"com.apple.Magnifier\",\"com.apple.measure\",\"com.apple.Music\",\"com.apple.VoiceMemos\",\"com.apple.mobilephone\",\"com.apple.MobileSMS\",\"com.apple.Bridge\"}; for i=1,#ids do pcall(app.uninstall, ids[i]) end'"
-        admanager_command_spawn(ip, port, clear_script, timeout=50)
+        xxtouch_spawn_checked(ip, port, clear_script, timeout=50)
         logs.append(f'[{label}] clear app ok')
         return True, logs
     if action == 'remove_tiktok_lite':
-        admanager_command_spawn(ip, port, 'lua -e \'app=require("app"); pcall(app.uninstall, "com.ss.iphone.ugc.tiktok.lite")\'', timeout=25)
+        xxtouch_spawn_checked(ip, port, 'lua -e \'app=require("app"); pcall(app.uninstall, "com.ss.iphone.ugc.tiktok.lite")\'', timeout=25)
         logs.append(f'[{label}] gỡ TikTok Lite ok')
         return True, logs
     if action == 'remove_tiktok':
-        admanager_command_spawn(ip, port, 'lua -e \'app=require("app"); pcall(app.uninstall, "com.ss.iphone.ugc.Ame")\'', timeout=25)
+        xxtouch_spawn_checked(ip, port, 'lua -e \'app=require("app"); pcall(app.uninstall, "com.ss.iphone.ugc.Ame")\'', timeout=25)
         logs.append(f'[{label}] gỡ TikTok ok')
         return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
