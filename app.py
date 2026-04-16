@@ -527,7 +527,7 @@ def admanager_command_spawn(ip, port, cmd, timeout=20):
         return {'raw': raw}
 
 
-def xxtouch_spawn_checked(ip, port, cmd, timeout=20, retries=2, retry_delay=1.2):
+def xxtouch_spawn_checked(ip, port, cmd, timeout=20, retries=3, retry_delay=2.0):
     last_obj = {}
     last_err = None
     max_attempts = max(1, int(retries) + 1)
@@ -543,10 +543,10 @@ def xxtouch_spawn_checked(ip, port, cmd, timeout=20, retries=2, retry_delay=1.2)
         success_text = ' '.join(x for x in (stdout, stderr, message, raw_text) if x)
         if status in (0, '0', None) and 'Another singleton process is running' not in stderr:
             return last_obj
-        if 'Operation succeed' in success_text:
+        if 'Operation succeed' in success_text and 'Another singleton process is running' not in success_text:
             return last_obj
         last_err = stderr or stdout or message or raw_text or f'command_spawn status={status}'
-        if 'Another singleton process is running' in stderr and attempt < max_attempts - 1:
+        if 'Another singleton process is running' in success_text and attempt < max_attempts - 1:
             try:
                 xxtouch_post_json(ip, port, '/recycle', {}, timeout=15)
             except Exception:
