@@ -389,9 +389,29 @@ def admanager_routers_to_scan(cfg, router_key):
     return [(key, routers.get(key) or {})]
 
 
-def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range, machine_list):
-    entries = router_obj.get('entries') or []
+def admanager_get_machine_ip_pairs(router_obj=None):
+    saved_text = get_saved_ip_identity_text('1') or get_saved_ip_identity_text()
+    configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     idx_ip = []
+    seen = set()
+    for item in configured_rows:
+        tag = normalize_tag(item.get('tag', ''))
+        ip = str(item.get('ip', '')).strip()
+        if not tag.startswith('proxy_') or not ip:
+            continue
+        try:
+            idx = int(tag.split('_', 1)[1])
+        except Exception:
+            continue
+        if idx in seen:
+            continue
+        seen.add(idx)
+        idx_ip.append((idx, ip))
+    if idx_ip:
+        idx_ip.sort(key=lambda x: x[0])
+        return idx_ip
+
+    entries = (router_obj or {}).get('entries') or []
     for line in entries:
         parts = str(line).split('|', 1)
         if len(parts) == 2 and parts[0].startswith('proxy_'):
@@ -401,6 +421,11 @@ def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range,
                 continue
             idx_ip.append((idx, parts[1].strip()))
     idx_ip.sort(key=lambda x: x[0])
+    return idx_ip
+
+
+def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range, machine_list):
+    idx_ip = admanager_get_machine_ip_pairs(router_obj)
 
     mode = str(machine_mode or 'all').strip().lower()
     chosen_idx = set()
