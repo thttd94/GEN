@@ -1,3 +1,5 @@
+presets/
+session_state.json
 __pycache__/
 *.pyc
 server.log

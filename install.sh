@@ -21,6 +21,8 @@ fi
 mkdir -p "$APP_DIR"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cp "$SCRIPT_DIR/app.py" "$APP_DIR/app.py"
+cp "$SCRIPT_DIR/admanager_gui_config.json" "$APP_DIR/admanager_gui_config.json"
+cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
 rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
 cp -r "$SCRIPT_DIR/static/." "$APP_DIR/static/"
