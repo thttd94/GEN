@@ -141,11 +141,25 @@ def is_session_hidden(session_id, state=None):
     return bool(hidden.get(str(session_id), False))
 
 
+def get_visible_session_ids(state=None):
+    state = state if isinstance(state, dict) else load_session_state()
+    ensure_sessions_exist()
+    items = []
+    for session_id, path in SESSION_FILES.items():
+        if path.exists() and not is_session_hidden(session_id, state):
+            items.append(str(session_id))
+    items.sort(key=lambda x: int(x))
+    return items
+
+
 def set_session_hidden(session_id, hidden=True):
     session_id = str(session_id)
     if session_id == '1':
         raise ValueError('Không thể ẩn cấu hình 1')
     state = load_session_state()
+    visible_ids = get_visible_session_ids(state)
+    if hidden and session_id in visible_ids and len(visible_ids) <= 1:
+        raise ValueError('Phải luôn giữ lại ít nhất 1 cấu hình đang hiện')
     state, meta = get_meta_section(state)
     hidden_map = meta.setdefault('hidden_sessions', {}) if isinstance(meta, dict) else {}
     if not isinstance(hidden_map, dict):
@@ -201,6 +215,7 @@ def get_available_sessions(include_hidden=True):
                 'hidden': hidden,
                 'can_hide': session_id != '1',
                 'can_delete': session_id not in ('1', '2'),
+                'is_default': session_id in ('1', '2'),
             })
     items.sort(key=lambda x: int(x['session']))
     return items
@@ -267,11 +282,12 @@ def get_meta_section(state=None):
 
 
 def get_session_display_name(session_id):
+    session_id = str(session_id)
     state = load_session_state()
     _state, meta = get_meta_section(state)
     names = meta.get('session_names', {}) if isinstance(meta, dict) else {}
-    name = str(names.get(str(session_id), '')).strip()
-    return name or f'Session {session_id}'
+    name = str(names.get(session_id, '')).strip()
+    return name or f'CẤU HÌNH {session_id}'
 
 
 def get_app_title_prefix():
@@ -321,7 +337,7 @@ def set_saved_ip_identity_text(session_id, text):
 
 def set_session_display_name(session_id, name):
     session_id = str(session_id)
-    name = str(name or '').strip() or f'Session {session_id}'
+    name = str(name or '').strip() or f'CẤU HÌNH {session_id}'
     state = load_session_state()
     state, meta = get_meta_section(state)
     names = meta.setdefault('session_names', {})

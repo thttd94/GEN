@@ -300,7 +300,7 @@
 
     function sessionNameOf(session) {
       const key = String(session);
-      return sessionNames[key] || `Session ${key}`;
+      return sessionNames[key] || `CẤU HÌNH ${key}`;
     }
     function renderSessionTabs() {
       const host = document.getElementById('sessionTabs');
@@ -369,7 +369,7 @@
       for (const item of (data.sessions || [])) {
         if (item && item.session) {
           const key = String(item.session);
-          sessionNames[key] = item.name || `Session ${key}`;
+          sessionNames[key] = item.name || `CẤU HÌNH ${key}`;
           sessionMeta[key] = item;
           if (!(key in sessionCache)) sessionCache[key] = null;
         }
@@ -697,15 +697,16 @@
       if (!box) return;
       const rows = allSessions.map(session => {
         const meta = sessionMeta[String(session)] || {};
+        const isLastVisible = !meta.hidden && availableSessions.length <= 1;
         const actions = [];
         if (meta.can_hide) {
-          actions.push(`<button class="btn small" onclick="toggleSessionHidden('${session}', ${meta.hidden ? 'false' : 'true'})">${meta.hidden ? 'HIỆN' : 'ẨN'}</button>`);
+          actions.push(`<button class="btn small" ${isLastVisible ? 'disabled title="Phải giữ lại ít nhất 1 cấu hình hiện"' : ''} onclick="toggleSessionHidden('${session}', ${meta.hidden ? 'false' : 'true'})">${meta.hidden ? 'HIỆN' : 'ẨN'}</button>`);
         }
         if (meta.can_delete) {
           actions.push(`<button class="btn small warn" onclick="deleteSessionById('${session}')">XÓA</button>`);
         }
         return `<div style="display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;">
-          <div><b>${esc(sessionNameOf(session))}</b></div>
+          <div><b>${esc(sessionNameOf(session))}${meta.is_default ? ' (mặc định)' : ''}</b></div>
           <div class="sub" style="margin:0;">Session ${session}${meta.hidden ? ' • đang ẩn' : ''}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">${actions.join('')}</div>
         </div>`;
@@ -785,7 +786,7 @@
           method:'POST',
           body: JSON.stringify({ session: next, source_session: currentSession, current_session: currentSession })
         });
-        sessionNames[next] = data.name || `Session ${next}`;
+        sessionNames[next] = data.name || `CẤU HÌNH ${next}`;
         sessionCache[next] = null;
         await fetchSessionsList(false);
         await fetchSessionsList(true);
