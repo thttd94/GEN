@@ -1072,8 +1072,12 @@
     }
     async function admScanDevices(){
       admSetStatus('Đang scan máy...');
+      const state = admState();
       admLog(`Bắt đầu scan theo lựa chọn: ${admSelectedMachineText()}`);
-      const data = await fetchJSON('/api/xxtouch/scan-devices', {method:'POST', body: JSON.stringify(admState())});
+      if ((state.machineMode === 'list' || state.machineMode === 'group') && (!state.router || state.router === 'All')) {
+        admLog('Lưu ý: đang để router = All, số máy có thể trùng giữa nhiều router. Muốn đúng 1 máy, hãy chọn đúng router trước.');
+      }
+      const data = await fetchJSON('/api/xxtouch/scan-devices', {method:'POST', body: JSON.stringify(state)});
       admInfoRows = data.rows || [];
       admRenderInfo();
       const online = (data.online||[]).join(', ') || 'không có';
