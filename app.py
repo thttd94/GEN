@@ -538,6 +538,10 @@ def xxtouch_get_selected_machines(cfg: dict, state: dict):
     mode = str((state or {}).get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all').strip().lower()
     group_text = str((state or {}).get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '')
     list_text = str((state or {}).get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
+    if mode not in ('group', 'range', 'list'):
+        mode = 'all'
+        group_text = ''
+        list_text = ''
     routers = admanager_routers_to_scan(cfg, router_key)
     out = []
     for rk, router in routers:
@@ -1664,9 +1668,10 @@ class Handler(BaseHTTPRequestHandler):
                             'status': 'online',
                             'model': data.get('marketing_name') or data.get('devtype') or '',
                             'ios': data.get('sysversion') or '',
+                            'error': '',
                             **df,
                         }
-                    except Exception:
+                    except Exception as e:
                         return {
                             'router': m['router'],
                             'index': m['index'],
@@ -1675,6 +1680,7 @@ class Handler(BaseHTTPRequestHandler):
                             'status': 'offline',
                             'model': '',
                             'ios': '',
+                            'error': str(e),
                             'capacity_label': '',
                             'free_label': '',
                             'free_percent': 0,
