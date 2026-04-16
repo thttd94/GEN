@@ -1786,11 +1786,11 @@ class Handler(BaseHTTPRequestHandler):
                                 'machine': m['label'],
                                 'ip': m['ip'],
                                 'status': 'online',
-                                'model': '',
-                                'ios': '',
+                                'model': 'Không đọc được từ router',
+                                'ios': 'HTTP/command bị chặn',
                                 'error': f'HTTP bị chặn từ router nhưng ping ok: {e}',
-                                'capacity_label': '',
-                                'free_label': '',
+                                'capacity_label': '—',
+                                'free_label': '—',
                                 'free_percent': 0,
                             }
                         return {
