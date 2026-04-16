@@ -9,6 +9,7 @@
     .wrap { max-width: 1780px; margin: 0 auto; padding: 14px; }
     .titlebar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
     .titlebar-left { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .project-tabs { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .title { font-size:26px; font-weight:800; }
     .brand { font-size:14px; font-weight:700; color:#2563eb; }
     .titlebar-right { display:flex; align-items:center; gap:8px; }
@@ -80,7 +81,10 @@
   <div class="wrap">
     <div class="titlebar">
       <div class="titlebar-left">
-        <div class="title" id="appTitle">Genrouter PROXY MANAGER - HGTHAI</div>
+        <div class="project-tabs">
+          <button class="btn tab active" id="projectTabProxy">TIKTOK 03 PROXY MANAGER - HGTHAI</button>
+          <button class="btn tab" id="projectTabXXTouch" onclick="openXXTouchTab()">XXTOUCH JOBS</button>
+        </div>
         <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
       </div>
       <div class="titlebar-right">
@@ -253,7 +257,7 @@
     function renderAppTitle() {
       const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
       const full = `${prefix} PROXY MANAGER - HGTHAI`;
-      const titleEl = document.getElementById('appTitle');
+      const titleEl = document.getElementById('projectTabProxy');
       if (titleEl) titleEl.textContent = full;
       document.title = prefix;
     }
@@ -263,6 +267,11 @@
       el.className = 'conn-badge ' + (isConnected ? 'connected' : 'disconnected');
       el.textContent = isConnected ? 'Connected' : 'Disconnected';
     }
+    function openXXTouchTab() {
+      window.open('/xxtouch/', '_blank');
+      setStatus('Đã mở XXTOUCH JOBS');
+    }
+
     function extractNetworkConnected(data) {
       if (!data) return false;
       if (typeof data.success === 'boolean') return data.success;

@@ -1,7 +1,8 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlparse, urlencode, unquote
+import mimetypes
 import json
 import shutil
 import subprocess
@@ -39,6 +40,7 @@ else:
     GENRUNNER = DEV_GENRUNNER
 
 PRESET_DIR = BASE_DIR / 'presets'
+XXTOUCH_WEB_DIR = Path('/mnt/e/OpenClaw/XXTouch_jobs/upload/web')
 MAX_SESSION_COUNT = 5
 SESSION_FILES = {
     str(i): PRESET_DIR / f'session{i}.json'
@@ -1111,11 +1113,48 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_disk_file(self, path: Path):
+        if not path.exists() or not path.is_file():
+            return self._send_json({'error': 'Not found'}, 404)
+        ctype, _ = mimetypes.guess_type(str(path))
+        if path.suffix.lower() in ('.js',):
+            ctype = 'application/javascript; charset=utf-8'
+        elif path.suffix.lower() in ('.css',):
+            ctype = 'text/css; charset=utf-8'
+        elif path.suffix.lower() in ('.html', '.htm'):
+            ctype = 'text/html; charset=utf-8'
+        elif path.suffix.lower() in ('.json',):
+            ctype = 'application/json; charset=utf-8'
+        else:
+            ctype = ctype or 'application/octet-stream'
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_xxtouch(self, request_path: str):
+        if not XXTOUCH_WEB_DIR.exists():
+            return self._send_json({'error': 'XXTouch web not found'}, 404)
+        raw = request_path[len('/xxtouch'):].lstrip('/') if request_path.startswith('/xxtouch') else ''
+        raw = unquote(raw)
+        rel = raw or 'index.html'
+        safe = (XXTOUCH_WEB_DIR / rel).resolve()
+        base = XXTOUCH_WEB_DIR.resolve()
+        if base not in safe.parents and safe != base:
+            return self._send_json({'error': 'Invalid path'}, 400)
+        if safe.is_dir():
+            safe = safe / 'index.html'
+        return self._send_disk_file(safe)
+
     def do_GET(self):
         ensure_sessions_exist()
         path = urlparse(self.path).path
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
+        if path == '/xxtouch' or path.startswith('/xxtouch/'):
+            return self._serve_xxtouch(path)
         if path == '/api/pm/sessions':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             return self._send_json({'ok': True, 'sessions': get_available_sessions(include_hidden=include_hidden), 'max_sessions': MAX_SESSION_COUNT})
