@@ -220,7 +220,7 @@
               <div style="display:grid; gap:14px; max-width:220px;">
                 <button class="btn apply" onclick="admRunSimpleAction('remove_tiktok_lite')">Gỡ app TIKTOK LITE</button>
                 <button class="btn apply" onclick="admRunSimpleAction('remove_tiktok')">Gỡ app TIKTOK</button>
-                <button class="btn apply" onclick="admMarkDeveloping('cài app TIKTOK')">Cài app TIKTOK</button>
+                <button class="btn apply" onclick="admRunSimpleAction('install_tiktok')">Cài app TIKTOK</button>
                 <button class="btn apply" onclick="admMarkDeveloping('cài app TIKTOK LITE')">Cài app TIKTOK LITE</button>
               </div>
             </div>
@@ -1012,7 +1012,7 @@
         lock_home: 'Lock Home',
         clear_app: 'Clear App',
         remove_tiktok_lite: 'Gỡ TikTok Lite',
-        remove_tiktok: 'Gỡ TikTok',
+        install_tiktok: 'Cài TikTok',
       };
       return map[action] || String(action || '').trim() || 'Action';
     }

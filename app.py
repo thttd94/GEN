@@ -714,6 +714,23 @@ def xxtouch_run_action_on_machine(machine, port, action):
         xxtouch_spawn_checked(ip, port, 'lua -e \'key=require("key"); key.press(0x0C, 48); print("POWER_OK")\'', timeout=15)
         logs.append(f'[{label}] lock home ok')
         return True, logs
+    if action == 'install_tiktok':
+        install_script = r'''lua - <<'LUA'
+local app = require("app")
+local sys = require("sys")
+local TIKTOK_URL = "https://apps.apple.com/jp/app/tiktok-%E3%83%86%E3%82%A3%E3%83%83%E3%82%AF%E3%83%88%E3%83%83%E3%82%AF/id1235601864"
+local TIKTOK_BUNDLE = "com.ss.iphone.ugc.Ame"
+app.close("com.apple.AppStore")
+sys.msleep(1500)
+app.open_url(TIKTOK_URL)
+sys.msleep(6000)
+app.run(TIKTOK_BUNDLE)
+sys.msleep(10000)
+print("INSTALL_TIKTOK_OK")
+LUA'''
+        xxtouch_spawn_checked(ip, port, install_script, timeout=30)
+        logs.append(f'[{label}] install tiktok ok')
+        return True, logs
     if action == 'clear_app':
         clear_script = "lua -e 'app=require(\"app\"); local ids={\"com.apple.weather\",\"com.apple.mobileme.fmip1\",\"com.apple.Home\",\"com.apple.MobileAddressBook\",\"com.apple.stocks\",\"com.apple.Translate\",\"com.apple.iBooks\",\"com.apple.calculator\",\"com.apple.compass\",\"com.apple.facetime\",\"com.apple.mobilemail\",\"com.apple.Health\",\"com.apple.Maps\",\"com.apple.podcasts\",\"com.apple.reminders\",\"com.apple.tv\",\"com.apple.Passbook\",\"com.apple.mobilecal\",\"com.apple.Magnifier\",\"com.apple.measure\",\"com.apple.Music\",\"com.apple.VoiceMemos\",\"com.apple.mobilephone\",\"com.apple.MobileSMS\",\"com.apple.Bridge\"}; for i=1,#ids do pcall(app.uninstall, ids[i]) end'"
         xxtouch_spawn_checked(ip, port, clear_script, timeout=50)
