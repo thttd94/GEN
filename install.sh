@@ -21,8 +21,10 @@ fi
 mkdir -p "$APP_DIR"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cp "$SCRIPT_DIR/app.py" "$APP_DIR/app.py"
+rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
-cp "$SCRIPT_DIR/static/index.html" "$APP_DIR/static/index.html"
+cp -r "$SCRIPT_DIR/static/." "$APP_DIR/static/"
+mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxtouch_jobs/tmp"
 chmod 755 "$APP_DIR/app.py"
 
 cat > "/etc/init.d/$SERVICE_NAME" <<EOF
@@ -45,3 +47,4 @@ chmod +x "/etc/init.d/$SERVICE_NAME"
 
 echo "[OK] Installed"
 echo "[OK] Open: http://$(uci -q get network.lan.ipaddr 2>/dev/null || echo 192.168.1.1):$PORT"
+echo "[OK] XXTouch assets synced to: $APP_DIR/static/xxtouch"
