@@ -235,10 +235,11 @@
     let currentSession = '1';
     let currentRows = [];
     let viewMode = 'configured';
-    let availableSessions = ['1', '2'];
+    let availableSessions = [];
+    let allSessions = [];
     let sessionMeta = {};
-    let sessionNames = { '1': 'CẤU HÌNH 1', '2': 'CẤU HÌNH 2' };
-    const sessionCache = { '1': null, '2': null };
+    let sessionNames = {};
+    const sessionCache = {};
     let networkPollTimer = null;
     let appTitlePrefix = 'Genrouter';
 
@@ -297,7 +298,10 @@
       box.textContent = lines.join('\n');
     }
 
-    function sessionNameOf(session) { return sessionNames[String(session)] || `Session ${session}`; }
+    function sessionNameOf(session) {
+      const key = String(session);
+      return sessionNames[key] || `Session ${key}`;
+    }
     function renderSessionTabs() {
       const host = document.getElementById('sessionTabs');
       if (!host) return;
@@ -359,16 +363,18 @@
     }
     async function fetchSessionsList(includeHidden=false) {
       const data = await fetchJSON('/api/pm/sessions' + (includeHidden ? '?include_hidden=1' : ''));
-      availableSessions = (data.sessions || []).map(x => String(x.session)).sort((a,b) => Number(a)-Number(b));
-      sessionMeta = {};
+      const list = (data.sessions || []).map(x => String(x.session)).sort((a,b) => Number(a)-Number(b));
+      if (includeHidden) allSessions = list;
+      else availableSessions = list;
       for (const item of (data.sessions || [])) {
         if (item && item.session) {
-          sessionNames[String(item.session)] = item.name || sessionNameOf(item.session);
-          sessionMeta[String(item.session)] = item;
-          if (!(String(item.session) in sessionCache)) sessionCache[String(item.session)] = null;
+          const key = String(item.session);
+          sessionNames[key] = item.name || `Session ${key}`;
+          sessionMeta[key] = item;
+          if (!(key in sessionCache)) sessionCache[key] = null;
         }
       }
-      renderSessionTabs();
+      if (!includeHidden) renderSessionTabs();
       return data;
     }
     async function fetchSessionData(session, force=false) {
@@ -689,7 +695,7 @@
     function renderSessionManager() {
       const box = document.getElementById('sessionManagerList');
       if (!box) return;
-      const rows = availableSessions.map(session => {
+      const rows = allSessions.map(session => {
         const meta = sessionMeta[String(session)] || {};
         const actions = [];
         if (meta.can_hide) {
@@ -707,7 +713,8 @@
       box.innerHTML = rows.join('') || '<div class="sub">Không có cấu hình</div>';
     }
 
-    function openSessionManager() {
+    async function openSessionManager() {
+      await fetchSessionsList(true);
       renderSessionManager();
       document.getElementById('sessionManagerModal').classList.add('show');
     }
@@ -720,6 +727,7 @@
       try {
         await fetchJSON('/api/pm/sessions/hide', { method:'POST', body: JSON.stringify({ session, hidden }) });
         await fetchSessionsList(true);
+        await fetchSessionsList(false);
         renderSessionManager();
         if (hidden && currentSession === String(session)) {
           const fallback = availableSessions.find(x => x !== String(session)) || '1';
@@ -748,7 +756,10 @@
         delete sessionCache[String(session)];
         delete sessionNames[String(session)];
         delete sessionMeta[String(session)];
+        allSessions = allSessions.filter(x => x !== String(session));
+        availableSessions = availableSessions.filter(x => x !== String(session));
         await fetchSessionsList(true);
+        await fetchSessionsList(false);
         renderSessionManager();
         if (currentSession === String(session)) {
           await loadSession('1', true);
@@ -774,8 +785,9 @@
           method:'POST',
           body: JSON.stringify({ session: next, source_session: currentSession, current_session: currentSession })
         });
-        sessionNames[next] = data.name || `CẤU HÌNH ${next}`;
+        sessionNames[next] = data.name || `Session ${next}`;
         sessionCache[next] = null;
+        await fetchSessionsList(false);
         await fetchSessionsList(true);
         await loadSession(next, true);
         setStatus('Đã tạo ' + sessionNameOf(next));
@@ -850,6 +862,7 @@
       refreshConnectionStatus(true);
       if (networkPollTimer) clearInterval(networkPollTimer);
       networkPollTimer = setInterval(() => refreshConnectionStatus(true), 10000);
+      await fetchSessionsList(false);
       await fetchSessionsList(true);
       loadSession('1', true);
     }
