@@ -18,6 +18,10 @@ if [ "$INPUT_PASS" != "$INSTALL_PASSWORD" ]; then
   exit 1
 fi
 
+LAN_IP="$(uci -q get network.lan.ipaddr 2>/dev/null || echo 192.168.1.1)"
+LAN_CIDR="$(ip -4 -o addr show br-lan 2>/dev/null | awk '{print $4}' | head -n1)"
+[ -n "$LAN_CIDR" ] || LAN_CIDR="${LAN_IP}/24"
+
 mkdir -p "$APP_DIR"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cp "$SCRIPT_DIR/app.py" "$APP_DIR/app.py"
@@ -29,6 +33,20 @@ cp -r "$SCRIPT_DIR/static/." "$APP_DIR/static/"
 mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxtouch_jobs/tmp"
 chmod 755 "$APP_DIR/app.py"
 
+cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
+#!/bin/sh
+set -eu
+LAN_IP="${LAN_IP}"
+LAN_CIDR="${LAN_CIDR}"
+RULE_SPEC="-s \\$LAN_CIDR -d \\$LAN_IP/32 -p tcp -j RETURN"
+if iptables -t mangle -C GENROUTER \\$RULE_SPEC 2>/dev/null; then
+  exit 0
+fi
+iptables -t mangle -I GENROUTER 1 \\$RULE_SPEC
+EOF
+chmod 755 "$APP_DIR/apply_xxtouch_bypass.sh"
+"$APP_DIR/apply_xxtouch_bypass.sh" || true
+
 cat > "/etc/init.d/$SERVICE_NAME" <<EOF
 #!/bin/sh /etc/rc.common
 START=99
@@ -36,6 +54,7 @@ STOP=10
 USE_PROCD=1
 
 start_service() {
+  $APP_DIR/apply_xxtouch_bypass.sh || true
   procd_open_instance
   procd_set_param command python3 $APP_DIR/app.py
   procd_set_param respawn
@@ -48,5 +67,6 @@ chmod +x "/etc/init.d/$SERVICE_NAME"
 /etc/init.d/$SERVICE_NAME restart || /etc/init.d/$SERVICE_NAME start
 
 echo "[OK] Installed"
-echo "[OK] Open: http://$(uci -q get network.lan.ipaddr 2>/dev/null || echo 192.168.1.1):$PORT"
+echo "[OK] Open: http://$LAN_IP:$PORT"
 echo "[OK] XXTouch assets synced to: $APP_DIR/static/xxtouch"
+echo "[OK] XXTouch admin LAN bypass ensured for router $LAN_IP"
