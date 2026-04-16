@@ -1117,17 +1117,30 @@
       await fetchJSON('/api/admanager/save-config', {method:'POST', body: JSON.stringify({config: admConfig})});
       admSetStatus('Đã lưu config');
     }
+    function admBuildPersistPayload(){
+      const state = admState();
+      admConfig = admConfig || {};
+      admConfig.uiState = {...(admConfig.uiState||{}), ...state, machineRange: state.machineGroup};
+      return JSON.stringify({config: admConfig});
+    }
     let admPersistTimer = null;
     function admPersistUiState(){
       if (!admConfig) return;
-      const state = admState();
-      admConfig.uiState = {...(admConfig.uiState||{}), ...state, machineRange: state.machineGroup};
+      const payload = admBuildPersistPayload();
       if (admPersistTimer) clearTimeout(admPersistTimer);
       admPersistTimer = setTimeout(async () => {
         try {
-          await fetchJSON('/api/admanager/save-config', {method:'POST', body: JSON.stringify({config: admConfig})});
+          await fetchJSON('/api/admanager/save-config', {method:'POST', body: payload});
         } catch (e) {}
       }, 250);
+    }
+    function admPersistUiStateSync(){
+      if (!admConfig || !navigator.sendBeacon) return;
+      try {
+        const payload = admBuildPersistPayload();
+        const blob = new Blob([payload], {type:'application/json'});
+        navigator.sendBeacon('/api/admanager/save-config', blob);
+      } catch (e) {}
     }
     async function admScanDevices(){
       if (admScanBusy) return;
@@ -1210,6 +1223,10 @@
     }
 
     bootstrap();
+    window.addEventListener('beforeunload', admPersistUiStateSync);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') admPersistUiStateSync();
+    });
   </script>
 </body>
 </html>

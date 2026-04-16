@@ -575,7 +575,22 @@ def xxtouch_post_form(ip, port, path, body='', timeout=20, headers=None):
 
 
 def xxtouch_device_info(ip, port, timeout=8):
-    return xxtouch_post_form(ip, port, '/deviceinfo', '', timeout=timeout)
+    try:
+        return xxtouch_post_form(ip, port, '/deviceinfo', '', timeout=timeout)
+    except Exception:
+        pass
+    cmd = r'''CONF="/private/var/mobile/Media/1ferver/1ferver.conf"; \
+PORT=$(grep -o '"port"[[:space:]]*:[[:space:]]*[0-9]\+' "$CONF" 2>/dev/null | head -n1 | tr -cd '0-9'); \
+[ -n "$PORT" ] || PORT=46952; \
+/usr/bin/curl -s -X POST "http://127.0.0.1:${PORT}/deviceinfo" -d "" || curl -s -X POST "http://127.0.0.1:${PORT}/deviceinfo" -d ""'''
+    obj = admanager_command_spawn(ip, port, cmd, timeout=max(timeout, 12))
+    stdout = (((obj or {}).get('result') or {}).get('stdout') or (obj or {}).get('raw') or '').strip()
+    if not stdout:
+        raise RuntimeError('deviceinfo trống')
+    try:
+        return json.loads(stdout)
+    except Exception:
+        raise RuntimeError(stdout[:300])
 
 
 def xxtouch_try_claim_scan(machine_key: str) -> bool:
