@@ -49,6 +49,8 @@ XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
 XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
+ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui_config.json')
+ADMANAGER_GUI_LOCAL_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui.local.json')
 ADMANAGER_REMOTE_DIR = '/private/var/mobile/Library/ADManager'
 ADMANAGER_FILE_RE = re.compile(r'^(?P<prefix>[^_]+_)(?P<date>\d{8})(?:_(?P<time_u>\d{6})|(?P<time>\d{6}))\.adbk$')
 MAX_SESSION_COUNT = 5
@@ -281,10 +283,26 @@ def load_admanager_config():
             'outputRoot': str(XXTOUCH_DATA_DIR),
         }
     }
-    for path in (ADMANAGER_CONFIG_FILE, ADMANAGER_LOCAL_FILE):
+    config_sources = [
+        ADMANAGER_GUI_CONFIG_FILE,
+        ADMANAGER_CONFIG_FILE,
+        ADMANAGER_GUI_LOCAL_FILE,
+        ADMANAGER_LOCAL_FILE,
+    ]
+    for path in config_sources:
         try:
             if path.exists():
-                cfg.update(json.loads(path.read_text(encoding='utf-8')))
+                incoming = json.loads(path.read_text(encoding='utf-8'))
+                if isinstance(incoming.get('routers'), dict) and incoming.get('routers'):
+                    cfg['routers'] = incoming['routers']
+                if isinstance(incoming.get('apps'), dict) and incoming.get('apps'):
+                    cfg['apps'] = incoming['apps']
+                if isinstance(incoming.get('backupCommands'), dict) and incoming.get('backupCommands'):
+                    cfg['backupCommands'] = incoming['backupCommands']
+                if incoming.get('defaultOutput'):
+                    cfg['defaultOutput'] = incoming['defaultOutput']
+                if isinstance(incoming.get('uiState'), dict):
+                    cfg['uiState'] = {**cfg.get('uiState', {}), **incoming['uiState']}
         except Exception:
             pass
     ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
