@@ -706,10 +706,13 @@ def xxtouch_run_action_on_machine(machine, port, action):
         xxtouch_post_json(ip, port, '/reboot2', {}, timeout=20)
         logs.append(f'[{label}] reboot ok')
         return True, logs
-    if action in ('home', 'lock_home'):
-        xxtouch_spawn_checked(ip, port, 'nohup lua /var/mobile/Media/1ferver/bin/screen.lua </dev/null >/dev/null 2>/dev/null &', timeout=15)
-        logs.append(f'[{label}] screen.lua started')
-        logs.append(f'[{label}] {action} queued')
+    if action == 'home':
+        xxtouch_spawn_checked(ip, port, 'lua -e \'key=require("key"); key.press(0x0C, 64); print("HOME_OK")\'', timeout=15)
+        logs.append(f'[{label}] home ok')
+        return True, logs
+    if action == 'lock_home':
+        xxtouch_spawn_checked(ip, port, 'lua -e \'key=require("key"); key.press(0x0C, 48); print("POWER_OK")\'', timeout=15)
+        logs.append(f'[{label}] lock home ok')
         return True, logs
     if action == 'clear_app':
         clear_script = "lua -e 'app=require(\"app\"); local ids={\"com.apple.weather\",\"com.apple.mobileme.fmip1\",\"com.apple.Home\",\"com.apple.MobileAddressBook\",\"com.apple.stocks\",\"com.apple.Translate\",\"com.apple.iBooks\",\"com.apple.calculator\",\"com.apple.compass\",\"com.apple.facetime\",\"com.apple.mobilemail\",\"com.apple.Health\",\"com.apple.Maps\",\"com.apple.podcasts\",\"com.apple.reminders\",\"com.apple.tv\",\"com.apple.Passbook\",\"com.apple.mobilecal\",\"com.apple.Magnifier\",\"com.apple.measure\",\"com.apple.Music\",\"com.apple.VoiceMemos\",\"com.apple.mobilephone\",\"com.apple.MobileSMS\",\"com.apple.Bridge\"}; for i=1,#ids do pcall(app.uninstall, ids[i]) end'"
