@@ -2211,9 +2211,9 @@ class Handler(BaseHTTPRequestHandler):
                 ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
                 port = str(state.get('port') or ui.get('port') or '46952').strip()
                 machine_no = str(state.get('machine') or '').strip()
-                machines = xxtouch_get_selected_machines(cfg, {'router': state.get('router') or ui.get('router') or 'All', 'machineMode': 'list', 'machineList': machine_no})
+                machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no})
                 if not machines:
-                    raise ValueError('Không tìm thấy máy để remote')
+                    raise ValueError('Không tìm thấy máy để remote theo Gán IP')
                 return self._send_json({'ok': True, 'url': f"http://{machines[0]['ip']}:{port}/screen.html", 'machine': machines[0]})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
