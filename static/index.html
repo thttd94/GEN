@@ -1021,12 +1021,27 @@
       const mode = document.getElementById('admMachineMode').value;
       const group = document.getElementById('admMachineGroup');
       const list = document.getElementById('admMachineList');
-      if (group) group.style.display = mode === 'group' ? '' : 'none';
-      if (list) list.style.display = mode === 'list' ? '' : 'none';
+      if (group) {
+        group.style.display = mode === 'group' ? '' : 'none';
+        if (mode !== 'group') group.value = '';
+      }
+      if (list) {
+        list.style.display = mode === 'list' ? '' : 'none';
+        if (mode !== 'list') list.value = '';
+      }
       const remote = document.getElementById('admRemoteMachine');
       if (remote) remote.style.display = '';
     }
-    function admState(){
+    function admApplySavedMachineState(ui = {}){
+      const mode = ui.machineMode === 'range' ? 'group' : (ui.machineMode || 'all');
+      const groupVal = ui.machineGroup || ui.machineRange || '';
+      const listVal = ui.machineList || '';
+      document.getElementById('admMachineMode').value = mode;
+      document.getElementById('admMachineGroup').value = mode === 'group' ? groupVal : '';
+      document.getElementById('admMachineList').value = mode === 'list' ? listVal : '';
+      toggleAdmMachineInputs();
+    }
+
       return {
         machineMode: document.getElementById('admMachineMode').value,
         machineGroup: document.getElementById('admMachineGroup').value,
@@ -1142,12 +1157,9 @@
       const ui = admConfig.uiState || {};
       const routersObj = admConfig.routers || {};
       const routerKeys = Object.keys(routersObj);
-      document.getElementById('admMachineMode').value = ui.machineMode === 'range' ? 'group' : (ui.machineMode || 'all');
-      document.getElementById('admMachineGroup').value = ui.machineGroup || ui.machineRange || '';
-      document.getElementById('admMachineList').value = ui.machineList || '';
+      admApplySavedMachineState(ui);
       const remoteInput = document.getElementById('admRemoteMachine');
       if (remoteInput) remoteInput.value = ui.remoteMachine || '';
-      toggleAdmMachineInputs();
       admSetStatus('Sẵn sàng');
       admClearLog();
       admLog(`Đã nạp config - ${Math.max(routerKeys.length, 0)} router`);
