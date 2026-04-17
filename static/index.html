@@ -1113,9 +1113,17 @@
         admLog('Chưa có file nào được chọn');
         return;
       }
+      const targetMachines = admInfoRows.filter(r => r && r.status === 'online').map(r => ({router: r.router, index: r.index, ip: r.ip, machine: r.machine}));
+      if (!targetMachines.length) {
+        admSetStatus('Cần SCAN trước');
+        admLog('Chưa có máy online từ kết quả SCAN');
+        admLog('Hãy bấm SCAN trước rồi mới SEND FILE');
+        return;
+      }
       admClearLog();
       admLog(`Bắt đầu gửi ${admSelectedFiles.length} file`);
       admLog(`Máy: ${admSelectedMachineText()}`);
+      admLog(`Target online: ${targetMachines.map(x => `${x.machine}@${x.ip}`).join(', ')}`);
       admLog('Cơ chế: gửi trực tiếp qua API write_file của XXTouch');
       admSetStatus('Đang đọc file...');
       try {
@@ -1136,7 +1144,7 @@
           };
         }));
         admSetStatus('Đang gửi file...');
-        const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action:'send_files', files, targetMachines: admInfoRows.filter(r => r && r.status === 'online').map(r => ({router: r.router, index: r.index, ip: r.ip, machine: r.machine}))})});
+        const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action:'send_files', files, targetMachines})});
         (data.logs || []).forEach(line => admLog(line));
         admSetStatus(data.message || 'Gửi file xong');
       } catch (e) {

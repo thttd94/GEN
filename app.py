@@ -2178,10 +2178,13 @@ class Handler(BaseHTTPRequestHandler):
                 ok_count = 0
                 if action == 'send_files':
                     files = state.get('files') if isinstance(state.get('files'), list) else []
+                    target_machines = state.get('targetMachines') if isinstance(state.get('targetMachines'), list) else []
                     if not files:
                         return self._send_json({'ok': False, 'error': 'Chưa chọn file nào'}, 400)
+                    if not target_machines:
+                        return self._send_json({'ok': False, 'error': 'Hãy SCAN trước để chốt đúng máy online rồi mới SEND FILE'}, 400)
                     if not machines:
-                        return self._send_json({'ok': False, 'error': 'Chưa chọn máy nào'}, 400)
+                        return self._send_json({'ok': False, 'error': 'Không có máy online hợp lệ để gửi file'}, 400)
                     if len(machines) <= 1:
                         for m in machines:
                             try:
