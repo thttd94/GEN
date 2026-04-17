@@ -353,7 +353,9 @@
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function admGuessRouterFromGui(){
-      return '';
+      const hint = document.getElementById('admRouterLocked');
+      const val = hint?.dataset?.router || '';
+      return String(val || '').trim();
     }
     function renderAppTitle() {
       const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
@@ -1055,9 +1057,9 @@
     }
     function admSelectedMachineText(){
       const s = admState();
-      if (s.machineMode === 'all') return `ALL MÁY - ${s.router}`;
-      if (s.machineMode === 'group') return `${s.machineGroup || '(chưa nhập nhóm)'} - ${s.router}`;
-      return `${s.machineList || '(chưa nhập list)'} - ${s.router}`;
+      if (s.machineMode === 'all') return `ALL MÁY - ${s.router || '(router hiện tại)'}`;
+      if (s.machineMode === 'group') return `${s.machineGroup || '(chưa nhập nhóm)'} - ${s.router || '(router hiện tại)'}`;
+      return `${s.machineList || '(chưa nhập list)'} - ${s.router || '(router hiện tại)'}`;
     }
     function admRenderInfo(){
       const body = document.getElementById('admInfoRows');
@@ -1162,11 +1164,22 @@
       const ui = admConfig.uiState || {};
       const routersObj = admConfig.routers || {};
       const routerKeys = Object.keys(routersObj);
-      const guessedRouter = admGuessRouterFromGui();
-      const selectedRouter = (guessedRouter && routersObj[guessedRouter]) ? guessedRouter : (ui.router || 'All');
-      const routers = ['All', ...routerKeys];
-      document.getElementById('admRouter').innerHTML = routers.map(x=>`<option value="${x}">${x}</option>`).join('');
-      document.getElementById('admRouter').value = selectedRouter;
+      const guessedRouter = admGuessRouterFromGui() || data.currentRouter || '';
+      const selectedRouter = (guessedRouter && routersObj[guessedRouter]) ? guessedRouter : ((ui.router && routersObj[ui.router]) ? ui.router : '');
+      document.getElementById('admRouter').innerHTML = routerKeys.map(x=>`<option value="${x}">${x}</option>`).join('');
+      if (selectedRouter) document.getElementById('admRouter').value = selectedRouter;
+      const routerLock = document.getElementById('admRouterLocked');
+      if (routerLock) {
+        routerLock.dataset.router = selectedRouter || '';
+        routerLock.textContent = selectedRouter ? `Router hiện tại: ${selectedRouter}` : 'Không xác định được router hiện tại';
+      }
+      const routerHint = document.getElementById('admRouterHint');
+      if (routerHint) {
+        routerHint.style.display = '';
+        routerHint.textContent = selectedRouter ? `XXTOUCH JOBS đang khóa theo router ${selectedRouter}` : 'XXTOUCH JOBS chưa xác định được router hiện tại';
+      }
+      const routerWrap = document.getElementById('admRouterWrap');
+      if (routerWrap) routerWrap.style.display = '';
       document.getElementById('admMachineMode').value = ui.machineMode === 'range' ? 'group' : (ui.machineMode || 'all');
       document.getElementById('admMachineGroup').value = ui.machineGroup || ui.machineRange || '';
       document.getElementById('admMachineList').value = ui.machineList || '';
@@ -1177,7 +1190,7 @@
       admSetStatus('Sẵn sàng');
       admClearLog();
       admLog(`Đã nạp config - ${Math.max(routerKeys.length, 0)} router`);
-      if (selectedRouter && selectedRouter !== 'All') admLog(`Đang khóa theo router hiện tại: ${selectedRouter}`);
+      if (selectedRouter) admLog(`Đang khóa theo router hiện tại: ${selectedRouter}`);
     }
     async function admSaveConfig(){
       const state = admState();
