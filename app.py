@@ -696,6 +696,27 @@ def xxtouch_parse_machine_spec(group_text: str, list_text: str, mode: str):
 
 
 def xxtouch_get_selected_machines(cfg: dict, state: dict):
+    target_machines = (state or {}).get('targetMachines') if isinstance(state, dict) else None
+    if isinstance(target_machines, list) and target_machines:
+        out = []
+        seen = set()
+        for item in target_machines:
+            if not isinstance(item, dict):
+                continue
+            ip = str(item.get('ip') or '').strip()
+            if not ip:
+                continue
+            index = int(item.get('index') or 0)
+            router = str(item.get('router') or '').strip() or 'All'
+            label = str(item.get('machine') or item.get('label') or item.get('index') or '').strip() or str(index)
+            key = (index, ip)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({'router': router, 'index': index, 'ip': ip, 'label': label})
+        if out:
+            out.sort(key=lambda x: (x['router'], x['index']))
+            return out
     requested_router = str((state or {}).get('router') or ((cfg.get('uiState') or {}).get('router')) or '').strip()
     inferred_router = infer_router_key_from_lan_ip(cfg, get_current_router_lan_ip())
     router_key = inferred_router or requested_router or 'All'

@@ -210,7 +210,10 @@
             <button class="btn apply" onclick="admRunSimpleAction('lock_home')">LOCK HOME</button>
             <button class="btn apply" onclick="admRunSimpleAction('clear_app')">CLEAR APP</button>
             <button class="btn apply" onclick="admChooseFiles()">CHỌN FILE</button>
-            <input id="admSelectedFilesCount" style="max-width:140px;" readonly placeholder="0 file">
+            <div style="display:flex; align-items:center; gap:4px; border:1px solid #374151; border-radius:8px; padding:0 8px; min-width:150px; background:#111827;">
+              <input id="admSelectedFilesCount" style="max-width:110px; border:none; background:transparent;" readonly placeholder="0 file">
+              <button class="btn" type="button" onclick="admClearFiles()" title="Xóa file đã chọn" style="min-width:28px; height:28px; padding:0 8px; line-height:1;">✕</button>
+            </div>
             <button class="btn apply" onclick="admSendFiles()">SEND FILE</button>
             <button class="btn apply" onclick="admOpenRemote()">REMOTE</button>
             <input id="admRemoteMachine" style="max-width:200px;" placeholder="Nhập số máy cần điều khiển" oninput="admPersistUiState()">
@@ -1084,14 +1087,22 @@
       if (admInfoVisible) admRenderInfo();
       admSetStatus(admInfoVisible ? 'Đang hiện bảng DEVICES INFO' : 'Đã ẩn DEVICES INFO');
     }
+    function admRenderSelectedFiles(){
+      const el = document.getElementById('admSelectedFilesCount');
+      if (el) el.value = `${admSelectedFiles.length} file`;
+    }
+    function admClearFiles(){
+      admSelectedFiles = [];
+      admRenderSelectedFiles();
+      admLog('Đã xoá toàn bộ file đã chọn');
+    }
     async function admChooseFiles(){
       const input = document.createElement('input');
       input.type = 'file';
       input.multiple = true;
       input.onchange = () => {
         admSelectedFiles = [...(input.files || [])];
-        const el = document.getElementById('admSelectedFilesCount');
-        if (el) el.value = `${admSelectedFiles.length} file`;
+        admRenderSelectedFiles();
         admLog(`Đã chọn ${admSelectedFiles.length} file`);
       };
       input.click();
@@ -1125,7 +1136,7 @@
           };
         }));
         admSetStatus('Đang gửi file...');
-        const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action:'send_files', files})});
+        const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action:'send_files', files, targetMachines: admInfoRows.filter(r => r && r.status === 'online').map(r => ({router: r.router, index: r.index, ip: r.ip, machine: r.machine}))})});
         (data.logs || []).forEach(line => admLog(line));
         admSetStatus(data.message || 'Gửi file xong');
       } catch (e) {
