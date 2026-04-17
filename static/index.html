@@ -1105,21 +1105,26 @@
       admClearLog();
       admLog(`Bắt đầu gửi ${admSelectedFiles.length} file`);
       admLog(`Máy: ${admSelectedMachineText()}`);
-      admSetStatus('Đang gửi file...');
+      admLog('Cơ chế: gửi trực tiếp qua API write_file của XXTouch');
+      admSetStatus('Đang đọc file...');
       try {
-        const files = await Promise.all(admSelectedFiles.map(async (file) => ({
-          name: file.name,
-          content_b64: await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const text = String(reader.result || '');
-              const idx = text.indexOf(',');
-              resolve(idx >= 0 ? text.slice(idx + 1) : text);
-            };
-            reader.onerror = () => reject(new Error(`Không đọc được file ${file.name}`));
-            reader.readAsDataURL(file);
-          })
-        })));
+        const files = await Promise.all(admSelectedFiles.map(async (file, idx) => {
+          admLog(`Đang đọc file ${idx + 1}/${admSelectedFiles.length}: ${file.name}`);
+          return {
+            name: file.name,
+            content_b64: await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const text = String(reader.result || '');
+                const idx = text.indexOf(',');
+                resolve(idx >= 0 ? text.slice(idx + 1) : text);
+              };
+              reader.onerror = () => reject(new Error(`Không đọc được file ${file.name}`));
+              reader.readAsDataURL(file);
+            })
+          };
+        }));
+        admSetStatus('Đang gửi file...');
         const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action:'send_files', files})});
         (data.logs || []).forEach(line => admLog(line));
         admSetStatus(data.message || 'Gửi file xong');

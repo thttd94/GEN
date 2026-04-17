@@ -844,42 +844,15 @@ def xxtouch_upload_file(ip, port, local_name: str, file_bytes: bytes, remote_dir
         raise ValueError('Tên file không hợp lệ')
     remote_dir = str(remote_dir or '/var/mobile/Media/1ferver/lua/examples').strip() or '/var/mobile/Media/1ferver/lua/examples'
     remote_path = f"{remote_dir.rstrip('/')}/{safe_name}"
-    payload_b64 = base64.b64encode(file_bytes or b'').decode('ascii')
-    lua_script = """lua - <<'LUA'
-local data_b64 = [[__DATA_B64__]]
-local output_path = [[__REMOTE_PATH__]]
-local function decode_base64(data)
-  local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-  data = string.gsub(data, '[^'..b..'=]', '')
-  return (data:gsub('.', function(x)
-    if x == '=' then return '' end
-    local r, f = '', (b:find(x, 1, true) - 1)
-    for i = 6, 1, -1 do
-      r = r .. ((f % 2^i - f % 2^(i-1) > 0) and '1' or '0')
-    end
-    return r
-  end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
-    if #x ~= 8 then return '' end
-    local c = 0
-    for i = 1, 8 do
-      c = c + ((x:sub(i,i) == '1') and 2^(8-i) or 0)
-    end
-    return string.char(c)
-  end))
-end
-local function dirname(path)
-  return (path:gsub('/+$',''):match('(.+)/[^/]+$')) or '/'
-end
-local dir = dirname(output_path)
-os.execute('mkdir -p "' .. dir:gsub('"', '\\"') .. '"')
-local f, err = io.open(output_path, 'wb')
-if not f then error('OPEN_FAIL: ' .. tostring(err)) end
-f:write(decode_base64(data_b64))
-f:close()
-print('UPLOAD_OK:' .. output_path)
-LUA"""
-    lua_script = lua_script.replace('__DATA_B64__', payload_b64).replace('__REMOTE_PATH__', remote_path)
-    return xxtouch_spawn_checked(ip, port, lua_script, timeout=max(30, min(600, int(len(file_bytes or b'') / 50000) + 30)))
+    rel_path = remote_path
+    prefix = '/var/mobile/Media/1ferver/'
+    if rel_path.startswith(prefix):
+        rel_path = rel_path[len(prefix):]
+    payload = {
+        'filename': rel_path.lstrip('/'),
+        'data': base64.b64encode(file_bytes or b'').decode('ascii'),
+    }
+    return xxtouch_post_json(ip, port, '/write_file', payload, timeout=max(30, min(600, int(len(file_bytes or b'') / 50000) + 30)))
 
 
 def xxtouch_send_files_to_machine(machine, port, files, remote_dir='/var/mobile/Media/1ferver/lua/examples'):
@@ -887,13 +860,17 @@ def xxtouch_send_files_to_machine(machine, port, files, remote_dir='/var/mobile/
     label = machine['label']
     logs = [f'[{label}] bắt đầu gửi {len(files or [])} file']
     uploaded = []
-    for item in files or []:
+    for idx, item in enumerate(files or [], start=1):
         name = Path(str((item or {}).get('name') or '')).name
         data_b64 = str((item or {}).get('content_b64') or '')
         if not name or not data_b64:
             continue
+        logs.append(f'[{label}] đang gửi {idx}/{len(files or [])}: {name}')
         raw = base64.b64decode(data_b64)
-        xxtouch_upload_file(ip, port, name, raw, remote_dir=remote_dir)
+        obj = xxtouch_upload_file(ip, port, name, raw, remote_dir=remote_dir)
+        code = obj.get('code') if isinstance(obj, dict) else 0
+        if code not in (0, None):
+            raise ValueError((obj or {}).get('message') or f'write_file lỗi code={code}')
         uploaded.append(name)
         logs.append(f'[{label}] đã gửi {name}')
     if not uploaded:
