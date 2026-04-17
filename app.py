@@ -445,78 +445,16 @@ def get_current_router_lan_ip():
     return ''
 
 
-def infer_router_key_from_host(cfg, host=''):
-    host = str(host or '').strip().lower()
-    if not host:
-        return ''
-    host = host.split(':', 1)[0].strip('[]')
-    parts = host.split('.')
-    if len(parts) != 4:
-        return ''
-    prefix2 = '.'.join(parts[:2])
-    best_key = ''
-    best_count = 0
-    for rk, router in (cfg.get('routers') or {}).items():
-        count = 0
-        for line in (router.get('entries') or []):
-            try:
-                ip = str(line).split('|', 1)[1].strip()
-            except Exception:
-                continue
-            ip_parts = ip.split('.')
-            if len(ip_parts) == 4 and '.'.join(ip_parts[:2]) == prefix2:
-                count += 1
-        if count > best_count:
-            best_key = rk
-            best_count = count
-    return best_key if best_count > 0 else ''
-
-
-def infer_router_key_from_lan_ip(cfg, lan_ip=''):
-    routers = cfg.get('routers') or {}
-    lan_ip = str(lan_ip or '').strip()
-    if not lan_ip:
-        return ''
-    octets = lan_ip.split('.')
-    if len(octets) != 4:
-        return ''
-    prefix = '.'.join(octets[:3]) + '.'
-    best_key = ''
-    best_count = 0
-    for rk, router in routers.items():
-        count = 0
-        for line in (router.get('entries') or []):
-            parts = str(line).split('|', 1)
-            if len(parts) == 2 and str(parts[1]).strip().startswith(prefix):
-                count += 1
-        if count > best_count:
-            best_key = rk
-            best_count = count
-    return best_key if best_count > 0 else ''
-
-
+def admanager_get_machine_ip_pairs(router_obj=None, router_key=''):
     saved_text = get_saved_ip_identity_text('1') or get_saved_ip_identity_text()
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     idx_ip = []
     seen = set()
-    allowed_tags = None
-    if isinstance(router_obj, dict):
-        entries = router_obj.get('entries') or []
-        tags = set()
-        for line in entries:
-            parts = str(line).split('|', 1)
-            tag = normalize_tag(parts[0]) if parts else ''
-            if tag.startswith('proxy_'):
-                tags.add(tag)
-        if tags:
-            allowed_tags = tags
     for item in configured_rows:
         tag = normalize_tag(item.get('tag', ''))
         ip = str(item.get('ip', '')).strip()
         machine = normalize_machine(item.get('machine', ''))
         if not tag.startswith('proxy_') or not ip:
-            continue
-        if allowed_tags is not None and tag not in allowed_tags:
             continue
         try:
             idx = int(machine or proxy_tag_num(tag))
@@ -723,7 +661,6 @@ def xxtouch_parse_machine_spec(group_text: str, list_text: str, mode: str):
 
 def xxtouch_get_selected_machines(cfg: dict, state: dict):
     target_machines = (state or {}).get('targetMachines') if isinstance(state, dict) else None
-    inferred_router = infer_router_key_from_host(cfg, (state or {}).get('requestHost') or '') or infer_router_key_from_lan_ip(cfg, get_current_router_lan_ip())
     if isinstance(target_machines, list) and target_machines:
         out = []
         seen = set()
@@ -734,22 +671,16 @@ def xxtouch_get_selected_machines(cfg: dict, state: dict):
             if not ip:
                 continue
             index = int(item.get('index') or 0)
-            router = str(item.get('router') or '').strip() or inferred_router or ''
-            if inferred_router and router and router != inferred_router:
-                continue
             label = str(item.get('machine') or item.get('label') or item.get('index') or '').strip() or str(index)
             key = (index, ip)
             if key in seen:
                 continue
             seen.add(key)
-            out.append({'router': router or inferred_router or '', 'index': index, 'ip': ip, 'label': label})
+            out.append({'router': '', 'index': index, 'ip': ip, 'label': label})
         if out:
-            out.sort(key=lambda x: (x['router'], x['index']))
+            out.sort(key=lambda x: x['index'])
             return out
     requested_router = str((state or {}).get('router') or ((cfg.get('uiState') or {}).get('router')) or '').strip()
-    router_key = inferred_router or requested_router
-    if not router_key:
-        return []
     mode = str((state or {}).get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all').strip().lower()
     group_text = str((state or {}).get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '')
     list_text = str((state or {}).get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
@@ -757,13 +688,11 @@ def xxtouch_get_selected_machines(cfg: dict, state: dict):
         mode = 'all'
         group_text = ''
         list_text = ''
-    router = (cfg.get('routers') or {}).get(router_key) if isinstance(cfg.get('routers'), dict) else None
-    if not isinstance(router, dict):
-        return []
+    router = (cfg.get('routers') or {}).get(requested_router) if isinstance(cfg.get('routers'), dict) and requested_router else {}
     out = []
-    for machine in admanager_iter_machines(router_key, router, mode, group_text, list_text):
-        out.append({'router': router_key, 'index': machine['index'], 'ip': machine['ip'], 'label': machine['label']})
-    out.sort(key=lambda x: (x['router'], x['index']))
+    for machine in admanager_iter_machines(requested_router, router if isinstance(router, dict) else {}, mode, group_text, list_text):
+        out.append({'router': '', 'index': machine['index'], 'ip': machine['ip'], 'label': machine['label']})
+    out.sort(key=lambda x: x['index'])
     return out
 
 
@@ -2015,9 +1944,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix()})
         if path == '/api/admanager/config':
             cfg = load_admanager_config()
-            host = self.headers.get('Host', '')
-            current_router = infer_router_key_from_host(cfg, host) or infer_router_key_from_lan_ip(cfg, get_current_router_lan_ip())
-            return self._send_json({'ok': True, 'config': cfg, 'currentRouter': current_router, 'requestHost': host})
+            return self._send_json({'ok': True, 'config': cfg})
         if path == '/api/pm/xxtouch/workspace':
             ensure_xxtouch_workspace()
             return self._send_json({
