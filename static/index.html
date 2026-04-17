@@ -241,11 +241,6 @@
             </table>
           </div>
         </div>
-        <div id="admRemoteWrap" style="display:none; padding:0 14px 14px 14px; background:#fff; border-top:1px solid #e5e7eb;">
-          <div style="padding-top:12px;">
-            <iframe id="admRemoteFrame" src="about:blank" style="width:100%; height:70vh; border:1px solid #d1d5db; border-radius:10px; background:#fff;"></iframe>
-          </div>
-        </div>
         <div style="padding:12px 14px; border-top:1px solid #e5e7eb; background:#fff;">
           <div id="admLog" class="adm-log"></div>
         </div>
@@ -344,8 +339,6 @@
     let admSelectedFiles = [];
     let admScanBusy = false;
     let admLastScanKey = '';
-    let admRemoteVisible = false;
-    let admRemoteUrl = '';
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function renderAppTitle() {
@@ -1090,14 +1083,6 @@
       if (admInfoVisible) admRenderInfo();
       admSetStatus(admInfoVisible ? 'Đang hiện bảng DEVICES INFO' : 'Đã ẩn DEVICES INFO');
     }
-    function admToggleRemote(forceVisible = null){
-      const wrap = document.getElementById('admRemoteWrap');
-      const frame = document.getElementById('admRemoteFrame');
-      admRemoteVisible = forceVisible == null ? !admRemoteVisible : !!forceVisible;
-      if (wrap) wrap.style.display = admRemoteVisible ? '' : 'none';
-      if (!admRemoteVisible && frame) frame.src = 'about:blank';
-      admSetStatus(admRemoteVisible ? 'Đang hiện REMOTE' : 'Đã ẩn REMOTE');
-    }
     function admRenderSelectedFiles(){
       const el = document.getElementById('admSelectedFilesCount');
       if (el) el.value = `${admSelectedFiles.length} file`;
@@ -1287,10 +1272,6 @@
       }
     }
     async function admOpenRemote(){
-      if (admRemoteVisible) {
-        admToggleRemote(false);
-        return;
-      }
       const machine = String(document.getElementById('admRemoteMachine').value || '').trim();
       if (!machine) {
         admSetStatus('Phải nhập số máy để remote');
@@ -1299,10 +1280,9 @@
       try {
         const data = await fetchJSON('/api/xxtouch/remote-link', {method:'POST', body: JSON.stringify({...admState(), machine})});
         if (data.url) {
-          admRemoteUrl = String(data.url || '');
-          const frame = document.getElementById('admRemoteFrame');
-          if (frame) frame.src = admRemoteUrl;
-          admToggleRemote(true);
+          window.open(data.url, '_blank');
+          admLog('Mở remote: ' + data.url);
+          admSetStatus('Đã mở remote');
         } else {
           admSetStatus('Không lấy được link remote');
         }
