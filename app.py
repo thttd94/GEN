@@ -2310,7 +2310,7 @@ class Handler(BaseHTTPRequestHandler):
                 date_mode = state.get('dateMode') or ui.get('dateMode') or 'one'
                 date_start = state.get('dateStart') or ui.get('dateStart') or ''
                 date_end = state.get('dateEnd') or ui.get('dateEnd') or date_start
-                app_filter = state.get('appFilter') or ui.get('appFilter') or 'All'
+                app_filter = 'All'
                 full_scan = bool(state.get('fullScan', ui.get('fullScan', False)))
                 apps_cfg = cfg.get('apps') or {}
                 if full_scan:
@@ -2425,7 +2425,7 @@ class Handler(BaseHTTPRequestHandler):
                 machine_mode = state.get('machineMode') or ui.get('machineMode') or 'all'
                 machine_range = state.get('machineRange') or ui.get('machineRange') or '1-10'
                 machine_list = state.get('machineList') or ui.get('machineList') or ''
-                app_filter = state.get('appFilter') or ui.get('appFilter') or 'All'
+                app_filter = 'All'
                 cmds = cfg.get('backupCommands') or {}
                 results = []
                 for rk, router in admanager_routers_to_scan(cfg, router_key):

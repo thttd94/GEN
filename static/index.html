@@ -228,13 +228,7 @@
               </div>
             </div>
             <div style="border:2px solid #d1d5db; border-radius:10px; padding:18px; min-height:240px; background:#fff;">
-              <div style="display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap;">
-                <div style="font-weight:800; min-width:80px;">CHỌN APP</div>
-                <select id="admAppFilter" style="max-width:130px;" onchange="admPersistUiState()">
-                  <option value="TikTok">TikTok</option>
-                  <option value="TikTok Lite">TikTok Lite</option>
-                </select>
-              </div>
+              <div class="sub" style="font-weight:700; margin-bottom:14px; color:#374151;">Các tác vụ bên dưới chỉ là khung phát triển. Luồng chọn máy/scan/send file không check TikTok loại nào.</div>
               <div style="display:grid; gap:14px; max-width:220px;">
                 <button class="btn apply" onclick="admMarkDeveloping('Nuôi phôi')">Nuôi Phôi</button>
                 <button class="btn apply" onclick="admMarkDeveloping('Chạy Event Video 180')">Chạy Event Video 180</button>
@@ -1073,7 +1067,6 @@
         machineMode: document.getElementById('admMachineMode').value,
         machineGroup: document.getElementById('admMachineGroup').value,
         machineList: document.getElementById('admMachineList').value,
-        appFilter: document.getElementById('admAppFilter').value,
         remoteMachine: document.getElementById('admRemoteMachine').value,
         requestHost: window.location.host,
       };
@@ -1206,7 +1199,6 @@
       document.getElementById('admMachineMode').value = ui.machineMode === 'range' ? 'group' : (ui.machineMode || 'all');
       document.getElementById('admMachineGroup').value = ui.machineGroup || ui.machineRange || '';
       document.getElementById('admMachineList').value = ui.machineList || '';
-      document.getElementById('admAppFilter').value = ui.appFilter === 'All' ? 'TikTok' : (ui.appFilter || 'TikTok');
       const remoteInput = document.getElementById('admRemoteMachine');
       if (remoteInput) remoteInput.value = ui.remoteMachine || '';
       toggleAdmMachineInputs();
