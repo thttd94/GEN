@@ -1105,7 +1105,6 @@
       admLog(`Bắt đầu gửi ${admSelectedFiles.length} file`);
       admLog(`Máy: ${admSelectedMachineText()}`);
       admLog(`Target online: ${targetMachines.map(x => `${x.machine}@${x.ip}`).join(', ')}`);
-      admLog('Cơ chế: gửi trực tiếp qua API write_file của XXTouch');
       admSetStatus('Đang đọc file...');
       try {
         const files = await Promise.all(admSelectedFiles.map(async (file, idx) => {
