@@ -353,6 +353,28 @@
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function admGuessRouterFromGui(){
+      const host = String(window.location.hostname || '').trim();
+      const hostParts = host.split('.');
+      const hostPrefix2 = hostParts.length === 4 ? hostParts.slice(0, 2).join('.') : '';
+      if (admConfig && admConfig.routers && hostPrefix2) {
+        let bestRouter = '';
+        let bestCount = 0;
+        for (const [rk, router] of Object.entries(admConfig.routers || {})) {
+          const entries = Array.isArray(router?.entries) ? router.entries : [];
+          let count = 0;
+          for (const line of entries) {
+            const parts = String(line || '').split('|');
+            const ip = String(parts[parts.length - 1] || '').trim();
+            const ipParts = ip.split('.');
+            if (ipParts.length === 4 && ipParts.slice(0, 2).join('.') === hostPrefix2) count += 1;
+          }
+          if (count > bestCount) {
+            bestRouter = rk;
+            bestCount = count;
+          }
+        }
+        if (bestRouter) return bestRouter;
+      }
       const hint = document.getElementById('admRouterLocked');
       const val = hint?.dataset?.router || '';
       return String(val || '').trim();
@@ -1172,12 +1194,12 @@
       const routerLock = document.getElementById('admRouterLocked');
       if (routerLock) {
         routerLock.dataset.router = selectedRouter || '';
-        routerLock.textContent = selectedRouter ? `Router hiện tại: ${selectedRouter}` : 'Không xác định được router hiện tại';
+        routerLock.textContent = selectedRouter ? `Router hiện tại: ${selectedRouter}` : `Không xác định được router hiện tại (${window.location.hostname || 'unknown host'})`;
       }
       const routerHint = document.getElementById('admRouterHint');
       if (routerHint) {
         routerHint.style.display = '';
-        routerHint.textContent = selectedRouter ? `XXTOUCH JOBS đang khóa theo router ${selectedRouter}` : 'XXTOUCH JOBS chưa xác định được router hiện tại';
+        routerHint.textContent = selectedRouter ? `XXTOUCH JOBS đang khóa theo router ${selectedRouter}` : `XXTOUCH JOBS chưa xác định được router hiện tại từ ${window.location.hostname || 'unknown host'}`;
       }
       const routerWrap = document.getElementById('admRouterWrap');
       if (routerWrap) routerWrap.style.display = '';
