@@ -2029,12 +2029,12 @@ class Handler(BaseHTTPRequestHandler):
                 machines = xxtouch_get_selected_machines(cfg, state)
 
                 def scan_one(m):
-                    machine_key = f"{m['router']}|{m['index']}|{m['ip']}"
+                    machine_key = f"{m['index']}|{m['ip']}"
                     if not xxtouch_try_claim_scan(machine_key):
                         return {
-                            'router': m['router'],
+                            'router': '',
                             'index': m['index'],
-                            'machine': m['label'],
+                            'machine': str(m['index']),
                             'ip': m['ip'],
                             'status': 'waiting',
                             'model': '',
@@ -2045,13 +2045,13 @@ class Handler(BaseHTTPRequestHandler):
                             'free_percent': 0,
                         }
                     try:
-                        probe = xxtouch_http_probe(m['ip'], port, timeout=5)
+                        probe = xxtouch_http_probe(m['ip'], port, timeout=3)
                         model = ''
                         ios = ''
                         df = {}
                         info_error = ''
                         try:
-                            info = xxtouch_device_info(m['ip'], port, timeout=6)
+                            info = xxtouch_device_info(m['ip'], port, timeout=4)
                             data = info.get('data') or {}
                             model = data.get('marketing_name') or data.get('devtype') or ''
                             ios = data.get('sysversion') or ''
@@ -2062,9 +2062,9 @@ class Handler(BaseHTTPRequestHandler):
                         except Exception as e:
                             info_error = str(e)
                         return {
-                            'router': m['router'],
+                            'router': '',
                             'index': m['index'],
-                            'machine': m['label'],
+                            'machine': str(m['index']),
                             'ip': m['ip'],
                             'status': 'online',
                             'model': model,
@@ -2074,25 +2074,10 @@ class Handler(BaseHTTPRequestHandler):
                             **df,
                         }
                     except Exception as e:
-                        ping_ok = xxtouch_ping_probe(m['ip'], timeout=2)
-                        if ping_ok:
-                            return {
-                                'router': m['router'],
-                                'index': m['index'],
-                                'machine': m['label'],
-                                'ip': m['ip'],
-                                'status': 'online',
-                                'model': 'Không đọc được từ router',
-                                'ios': 'HTTP/command bị chặn',
-                                'error': f'HTTP bị chặn từ router nhưng ping ok: {e}',
-                                'capacity_label': '—',
-                                'free_label': '—',
-                                'free_percent': 0,
-                            }
                         return {
-                            'router': m['router'],
+                            'router': '',
                             'index': m['index'],
-                            'machine': m['label'],
+                            'machine': str(m['index']),
                             'ip': m['ip'],
                             'status': 'offline',
                             'model': '',
