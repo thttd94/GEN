@@ -1091,51 +1091,42 @@
     async function admSendFiles(){
       if (!admSelectedFiles.length) {
         admSetStatus('Chưa chọn file');
-        admLog('Chưa có file nào được chọn');
         return;
       }
       const targetMachines = admInfoRows.filter(r => r && r.status === 'online').map(r => ({router: r.router, index: r.index, ip: r.ip, machine: r.machine}));
       if (!targetMachines.length) {
         admSetStatus('Cần SCAN trước');
-        admLog('Chưa có máy online từ kết quả SCAN');
-        admLog('Hãy bấm SCAN trước rồi mới SEND FILE');
         return;
       }
       admClearLog();
-      admLog(`Bắt đầu gửi ${admSelectedFiles.length} file`);
-      admLog(`Máy: ${admSelectedMachineText()}`);
-      admLog(`Target online: ${targetMachines.map(x => `${x.machine}@${x.ip}`).join(', ')}`);
-      admLog('Cơ chế: gửi trực tiếp qua API write_file của XXTouch');
-      admSetStatus('Đang đọc file...');
+      admSetStatus('Đang thực hiện...');
       try {
-        const files = await Promise.all(admSelectedFiles.map(async (file, idx) => {
-          admLog(`Đang đọc file ${idx + 1}/${admSelectedFiles.length}: ${file.name}`);
-          return {
-            name: file.name,
-            content_b64: await new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const text = String(reader.result || '');
-                const idx = text.indexOf(',');
-                resolve(idx >= 0 ? text.slice(idx + 1) : text);
-              };
-              reader.onerror = () => reject(new Error(`Không đọc được file ${file.name}`));
-              reader.readAsDataURL(file);
-            })
-          };
-        }));
-        admSetStatus('Đang gửi file...');
+        const files = await Promise.all(admSelectedFiles.map(async (file) => ({
+          name: file.name,
+          content_b64: await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const text = String(reader.result || '');
+              const idx = text.indexOf(',');
+              resolve(idx >= 0 ? text.slice(idx + 1) : text);
+            };
+            reader.onerror = () => reject(new Error(`Không đọc được file ${file.name}`));
+            reader.readAsDataURL(file);
+          })
+        })));
         const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action:'send_files', files, targetMachines})});
-        (data.logs || []).forEach(line => admLog(line));
-        admSetStatus(data.message || 'Gửi file xong');
+        const logs = Array.isArray(data.logs) ? data.logs : [];
+        const successLine = logs.find(line => /Đã gửi thành công\s+\d+\s+file/i.test(String(line || '')));
+        if (successLine) admLog(successLine);
+        admSetStatus('Hoàn thành...');
       } catch (e) {
-        admLog(`Lỗi gửi file: ${e.message}`);
-        admSetStatus('Gửi file lỗi');
+        admLog(`Lỗi: ${e.message}`);
+        admSetStatus('Lỗi');
       }
     }
     function admMarkDeveloping(name){
-      admSetStatus('Đang phát triển');
-      admLog(`[DEV] ${name}: đang phát triển`);
+      admSetStatus('Đang thực hiện...');
+      admLog(`Đang thực hiện ${name}...`);
     }
     async function admInit(){
       const data = await fetchJSON('/api/admanager/config');
@@ -1151,8 +1142,6 @@
       toggleAdmMachineInputs();
       admSetStatus('Sẵn sàng');
       admClearLog();
-      admLog(`Đã nạp config - ${Math.max(routerKeys.length, 0)} router`);
-      admLog('Map máy đang lấy theo Gán IP');
     }
     async function admSaveConfig(){
       const state = admState();
@@ -1191,40 +1180,24 @@
       const state = admState();
       const scanKey = JSON.stringify({mode: state.machineMode, group: state.machineGroup, list: state.machineList});
       if (scanKey === admLastScanKey && admInfoRows.length) {
-        admSetStatus('Giữ kết quả scan trước');
-        admClearLog();
-        admLog(`Máy đã scan rồi: ${admSelectedMachineText()}`);
-        admLog(`Kết quả hiện tại: ${admInfoRows.length} máy`);
+        admSetStatus('Hoàn thành...');
         return;
       }
       admLastScanKey = scanKey;
       admSetScanBusy(true);
-      admSetStatus('Đang scan...');
+      admSetStatus('Đang thực hiện...');
       admClearLog();
-      admLog(`Máy: ${admSelectedMachineText()}`);
       try {
         const data = await fetchJSON('/api/xxtouch/scan-devices', {method:'POST', body: JSON.stringify(state)});
         admInfoRows = data.rows || [];
         admRenderInfo();
-        const onlineRows = admInfoRows.filter(r => r.status === 'online');
-        const waitingRows = admInfoRows.filter(r => r.status === 'waiting');
-        const offlineRows = admInfoRows.filter(r => !['online','waiting'].includes(r.status));
-        const onlineText = onlineRows.map(r => `${r.index} → ${r.ip}`).join(', ') || 'không có';
-        const waitingText = waitingRows.map(r => `${r.index} → ${r.ip} (${String(r.error || 'đang scan').trim()})`).join(', ') || 'không có';
-        const offlineText = offlineRows.map(r => {
-          const reason = String(r.error || '').trim();
-          return reason ? `${r.index} → ${r.ip} (${reason})` : `${r.index} → ${r.ip}`;
-        }).join(', ') || 'không có';
-        admLog(`Online: ${onlineText}`);
-        if (waitingRows.length) admLog(`Đang scan: ${waitingText}`);
-        admLog(`Offline: ${offlineText}`);
-        admSetStatus(`Online ${onlineRows.length} / Waiting ${waitingRows.length} / Offline ${offlineRows.length}`);
+        admSetStatus('Hoàn thành...');
       } catch (e) {
         admInfoRows = [];
         admRenderInfo();
         admLastScanKey = '';
-        admLog(`Lỗi scan: ${e.message}`);
-        admSetStatus('Scan lỗi');
+        admLog(`Lỗi: ${e.message}`);
+        admSetStatus('Lỗi');
       } finally {
         admSetScanBusy(false);
       }
@@ -1232,32 +1205,13 @@
     async function admRunSimpleAction(action){
       const label = admActionLabel(action);
       admClearLog();
-      admLog(`Bắt đầu ${label}`);
-      admSetStatus(`Đang chạy ${label}`);
+      admSetStatus('Đang thực hiện...');
       try {
-        const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action})});
-        const msg = String(data.message || 'Xong');
-        const match = msg.match(/xong\s+(\d+)\/(\d+)\s+máy/i);
-        const okCount = match ? Number(match[1] || 0) : 0;
-        const totalCount = match ? Number(match[2] || 0) : 0;
-        const rawLogs = Array.isArray(data.logs) ? data.logs : [];
-        const errorLines = rawLogs.filter(line => /lỗi[: ]/i.test(String(line || '')));
-        if (totalCount > 0 && okCount === totalCount) {
-          admLog(`${label} >> OK`);
-          admSetStatus(`${label} OK`);
-          return;
-        }
-        if (totalCount > 0 && okCount > 0) {
-          admLog(`${label} >> OK ${okCount}/${totalCount} máy`);
-        } else {
-          admLog(`${label} >> Lỗi`);
-        }
-        errorLines.forEach(line => admLog(String(line).replace(/^\[[^\]]+\]\s*/,'').trim()));
-        admSetStatus(totalCount > 0 ? `${label} ${okCount}/${totalCount}` : `${label} lỗi`);
+        await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action})});
+        admSetStatus('Hoàn thành...');
       } catch (e) {
-        admLog(`${label} >> Lỗi`);
-        admLog(String(e.message || e));
-        admSetStatus(`Lỗi ${label}`);
+        admLog(`Lỗi: ${e.message}`);
+        admSetStatus('Lỗi');
       }
     }
     async function admOpenRemote(){
