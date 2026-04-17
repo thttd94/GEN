@@ -14,6 +14,7 @@ import struct
 import plistlib
 import re
 import threading
+import base64
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
@@ -835,6 +836,70 @@ def xxtouch_stop_script(ip, port):
         return 'stop_script: /recycle'
     except Exception as e:
         return f'stop_script lỗi: {e}'
+
+
+def xxtouch_upload_file(ip, port, local_name: str, file_bytes: bytes, remote_dir: str = '/var/mobile/Media/1ferver/lua/examples'):
+    safe_name = Path(str(local_name or '')).name
+    if not safe_name:
+        raise ValueError('Tên file không hợp lệ')
+    remote_dir = str(remote_dir or '/var/mobile/Media/1ferver/lua/examples').strip() or '/var/mobile/Media/1ferver/lua/examples'
+    remote_path = f"{remote_dir.rstrip('/')}/{safe_name}"
+    payload_b64 = base64.b64encode(file_bytes or b'').decode('ascii')
+    lua_script = """lua - <<'LUA'
+local data_b64 = [[__DATA_B64__]]
+local output_path = [[__REMOTE_PATH__]]
+local function decode_base64(data)
+  local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  data = string.gsub(data, '[^'..b..'=]', '')
+  return (data:gsub('.', function(x)
+    if x == '=' then return '' end
+    local r, f = '', (b:find(x, 1, true) - 1)
+    for i = 6, 1, -1 do
+      r = r .. ((f % 2^i - f % 2^(i-1) > 0) and '1' or '0')
+    end
+    return r
+  end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+    if #x ~= 8 then return '' end
+    local c = 0
+    for i = 1, 8 do
+      c = c + ((x:sub(i,i) == '1') and 2^(8-i) or 0)
+    end
+    return string.char(c)
+  end))
+end
+local function dirname(path)
+  return (path:gsub('/+$',''):match('(.+)/[^/]+$')) or '/'
+end
+local dir = dirname(output_path)
+os.execute('mkdir -p "' .. dir:gsub('"', '\\"') .. '"')
+local f, err = io.open(output_path, 'wb')
+if not f then error('OPEN_FAIL: ' .. tostring(err)) end
+f:write(decode_base64(data_b64))
+f:close()
+print('UPLOAD_OK:' .. output_path)
+LUA"""
+    lua_script = lua_script.replace('__DATA_B64__', payload_b64).replace('__REMOTE_PATH__', remote_path)
+    return xxtouch_spawn_checked(ip, port, lua_script, timeout=max(30, min(600, int(len(file_bytes or b'') / 50000) + 30)))
+
+
+def xxtouch_send_files_to_machine(machine, port, files, remote_dir='/var/mobile/Media/1ferver/lua/examples'):
+    ip = machine['ip']
+    label = machine['label']
+    logs = [f'[{label}] bắt đầu gửi {len(files or [])} file']
+    uploaded = []
+    for item in files or []:
+        name = Path(str((item or {}).get('name') or '')).name
+        data_b64 = str((item or {}).get('content_b64') or '')
+        if not name or not data_b64:
+            continue
+        raw = base64.b64decode(data_b64)
+        xxtouch_upload_file(ip, port, name, raw, remote_dir=remote_dir)
+        uploaded.append(name)
+        logs.append(f'[{label}] đã gửi {name}')
+    if not uploaded:
+        raise ValueError('Không có file hợp lệ để gửi')
+    logs.append(f'[{label}] xong {len(uploaded)} file -> {remote_dir}')
+    return True, logs
 
 
 def xxtouch_run_action_on_machine(machine, port, action):
@@ -2113,6 +2178,44 @@ class Handler(BaseHTTPRequestHandler):
                 machines = xxtouch_get_selected_machines(cfg, state)
                 logs = []
                 ok_count = 0
+                if action == 'send_files':
+                    files = state.get('files') if isinstance(state.get('files'), list) else []
+                    if not files:
+                        return self._send_json({'ok': False, 'error': 'Chưa chọn file nào'}, 400)
+                    if not machines:
+                        return self._send_json({'ok': False, 'error': 'Chưa chọn máy nào'}, 400)
+                    if len(machines) <= 1:
+                        for m in machines:
+                            try:
+                                ok, lines = xxtouch_send_files_to_machine(m, port, files, remote_dir='/var/mobile/Media/1ferver/lua/examples')
+                                logs.extend(lines)
+                                if ok:
+                                    ok_count += 1
+                            except Exception as e:
+                                logs.append(f"[{m['label']}] lỗi gửi file: {e}")
+                    else:
+                        max_workers = min(8, len(machines))
+                        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                            future_map = {ex.submit(xxtouch_send_files_to_machine, m, port, files, '/var/mobile/Media/1ferver/lua/examples'): m for m in machines}
+                            ordered_results = []
+                            for future in as_completed(future_map):
+                                m = future_map[future]
+                                try:
+                                    ok, lines = future.result()
+                                except Exception as e:
+                                    ok, lines = False, [f"[{m['label']}] lỗi gửi file: {e}"]
+                                ordered_results.append({
+                                    'index': int(m.get('index') or 0),
+                                    'label': str(m.get('label') or ''),
+                                    'ok': ok,
+                                    'lines': lines,
+                                })
+                        ordered_results.sort(key=lambda item: (item['index'], item['label']))
+                        for item in ordered_results:
+                            logs.extend(item['lines'])
+                            if item['ok']:
+                                ok_count += 1
+                    return self._send_json({'ok': True, 'logs': logs, 'message': f'send_files: xong {ok_count}/{len(machines)} máy'})
                 if len(machines) <= 1:
                     for m in machines:
                         try:
