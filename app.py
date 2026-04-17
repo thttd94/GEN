@@ -509,10 +509,11 @@ def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range,
             tok = tok.strip()
             if tok.isdigit():
                 chosen_idx.add(int(tok))
+    prefix = router_obj.get('machinePrefix') or (router_key + '-may')
     out = []
     for i, ip in idx_ip:
         if i in chosen_idx:
-            out.append({'index': i, 'ip': ip, 'label': str(i)})
+            out.append({'index': i, 'ip': ip, 'label': f'{prefix}{i:02d}'})
     return out
 
 
@@ -832,22 +833,26 @@ def xxtouch_upload_file(ip, port, local_name: str, file_bytes: bytes, remote_dir
 
 def xxtouch_send_files_to_machine(machine, port, files, remote_dir='/var/mobile/Media/1ferver/lua/examples'):
     ip = machine['ip']
-    _label = machine['label']
+    label = machine['label']
+    logs = [f'[{label}] bắt đầu gửi {len(files or [])} file']
     uploaded = []
     for idx, item in enumerate(files or [], start=1):
         name = Path(str((item or {}).get('name') or '')).name
         data_b64 = str((item or {}).get('content_b64') or '')
         if not name or not data_b64:
             continue
+        logs.append(f'[{label}] đang gửi {idx}/{len(files or [])}: {name}')
         raw = base64.b64decode(data_b64)
         obj = xxtouch_upload_file(ip, port, name, raw, remote_dir=remote_dir)
         code = obj.get('code') if isinstance(obj, dict) else 0
         if code not in (0, None):
             raise ValueError((obj or {}).get('message') or f'write_file lỗi code={code}')
         uploaded.append(name)
+        logs.append(f'[{label}] đã gửi {name}')
     if not uploaded:
         raise ValueError('Không có file hợp lệ để gửi')
-    return True, [f'Đã gửi thành công {len(uploaded)} file']
+    logs.append(f'[{label}] xong {len(uploaded)} file -> {remote_dir}')
+    return True, logs
 
 
 def xxtouch_run_action_on_machine(machine, port, action):
