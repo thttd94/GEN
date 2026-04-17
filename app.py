@@ -445,6 +445,33 @@ def get_current_router_lan_ip():
     return ''
 
 
+def infer_router_key_from_host(cfg, host=''):
+    host = str(host or '').strip().lower()
+    if not host:
+        return ''
+    host = host.split(':', 1)[0].strip('[]')
+    parts = host.split('.')
+    if len(parts) != 4:
+        return ''
+    prefix2 = '.'.join(parts[:2])
+    best_key = ''
+    best_count = 0
+    for rk, router in (cfg.get('routers') or {}).items():
+        count = 0
+        for line in (router.get('entries') or []):
+            try:
+                ip = str(line).split('|', 1)[1].strip()
+            except Exception:
+                continue
+            ip_parts = ip.split('.')
+            if len(ip_parts) == 4 and '.'.join(ip_parts[:2]) == prefix2:
+                count += 1
+        if count > best_count:
+            best_key = rk
+            best_count = count
+    return best_key if best_count > 0 else ''
+
+
 def infer_router_key_from_lan_ip(cfg, lan_ip=''):
     routers = cfg.get('routers') or {}
     lan_ip = str(lan_ip or '').strip()
@@ -468,7 +495,6 @@ def infer_router_key_from_lan_ip(cfg, lan_ip=''):
     return best_key if best_count > 0 else ''
 
 
-def admanager_get_machine_ip_pairs(router_obj=None, router_key=''):
     saved_text = get_saved_ip_identity_text('1') or get_saved_ip_identity_text()
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     idx_ip = []
@@ -697,7 +723,7 @@ def xxtouch_parse_machine_spec(group_text: str, list_text: str, mode: str):
 
 def xxtouch_get_selected_machines(cfg: dict, state: dict):
     target_machines = (state or {}).get('targetMachines') if isinstance(state, dict) else None
-    inferred_router = infer_router_key_from_lan_ip(cfg, get_current_router_lan_ip())
+    inferred_router = infer_router_key_from_host(cfg, (state or {}).get('requestHost') or '') or infer_router_key_from_lan_ip(cfg, get_current_router_lan_ip())
     if isinstance(target_machines, list) and target_machines:
         out = []
         seen = set()
@@ -1989,7 +2015,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix()})
         if path == '/api/admanager/config':
             cfg = load_admanager_config()
-            return self._send_json({'ok': True, 'config': cfg, 'currentRouter': infer_router_key_from_lan_ip(cfg, get_current_router_lan_ip())})
+            host = self.headers.get('Host', '')
+            current_router = infer_router_key_from_host(cfg, host) or infer_router_key_from_lan_ip(cfg, get_current_router_lan_ip())
+            return self._send_json({'ok': True, 'config': cfg, 'currentRouter': current_router, 'requestHost': host})
         if path == '/api/pm/xxtouch/workspace':
             ensure_xxtouch_workspace()
             return self._send_json({
