@@ -1,5 +1,9 @@
 # Changelog
 
+## v2026.04.18-17
+
+- rewrite XXTouch `screen.js` on the fly so remote control posts directly to the device HTTP API and opens websocket against the device IP:46968 instead of browser domain assumptions
+
 ## v2026.04.18-16
 
 - proxy XXTouch remote assets (`js/`, `css/`, `mdui/`, `screen.js`, `xxtouch.png`) through router app so remote screen can load over domain instead of breaking on private asset paths

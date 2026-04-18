@@ -2054,6 +2054,13 @@ class Handler(BaseHTTPRequestHandler):
                     html = html.replace('href="./index.html"', f'href="/api/xxtouch/remote-assets/index.html?machine={machine_no}&port={port}')
                     data = html.encode('utf-8')
                     content_type = 'text/html; charset=utf-8'
+                elif remote_path.endswith('screen.js'):
+                    js = data.decode('utf-8', errors='ignore')
+                    js = js.replace('"ws://" + document.domain + ":46968"', f'"ws://{machines[0]["ip"]}:46968"')
+                    js = js.replace('$.post("/write_file"', f'$.post("http://{machines[0]["ip"]}:{port}/write_file"')
+                    js = js.replace('$.post("/command_spawn"', f'$.post("http://{machines[0]["ip"]}:{port}/command_spawn"')
+                    data = js.encode('utf-8')
+                    content_type = 'application/javascript; charset=utf-8'
                 self.send_response(200)
                 self.send_header('Content-Type', content_type)
                 self.send_header('Content-Length', str(len(data)))
