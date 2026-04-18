@@ -134,7 +134,7 @@
             </div>
           </div>
           <div class="top-work-card">
-            <div class="bulk-card-title">GÁN PROXY HÀNG LOẠT THEO TAG</div>
+            <div class="bulk-card-title">GÁN PROXY HÀNG LOẠT THEO SỐ MÁY (AUTO MAP VỀ PROXY TAG)</div>
             <textarea id="bulkMap" placeholder="225|1.2.3.4:1080:user:pass
 225;1.2.3.4:1080:user:pass
 225 1.2.3.4:1080:user:pass"></textarea>
@@ -381,6 +381,26 @@
     let admRemoteIndex = 0;
     let admMachineNote = '';
     let admMachineIndexes = [];
+
+    function formatMachineRanges(nums){
+      const values = [...new Set((nums || []).map(x => Number(x)).filter(Number.isFinite))].sort((a,b)=>a-b);
+      if (!values.length) return 'Chưa có dữ liệu Gán IP';
+      const ranges = [];
+      let start = values[0], prev = values[0];
+      for (const cur of values.slice(1)) {
+        if (cur === prev + 1) {
+          prev = cur;
+          continue;
+        }
+        ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+        start = prev = cur;
+      }
+      ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+      return ranges.join(', ');
+    }
+    function getConfiguredMachineIndexes(){
+      return [...new Set((currentRows || []).map(r => Number(String(r?.machine || '').trim())).filter(Number.isFinite))].sort((a,b)=>a-b);
+    }
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function renderAppTitle() {
@@ -799,14 +819,14 @@
         const item = parseBulkLine(line);
         if (!item) continue;
         const machineText = String(item.x || '').trim();
-        const row = getVisibleRows().find(r => String(r.machine || '').trim() === machineText);
+        const row = currentRows.find(r => String(r.machine || '').trim() === machineText && String(r.tag || '').startsWith('proxy_'));
         if (!row) continue;
         row.proxy = item.proxy.trim();
         changed++;
       }
       persistDraft(currentSession);
       render();
-      setStatus(`Đã gán hàng loạt ${changed} dòng cho ` + sessionNameOf(currentSession));
+      setStatus(`Đã gán hàng loạt ${changed} dòng theo số máy -> proxy tag cho ` + sessionNameOf(currentSession));
     }
 
     function closeIpMacModal() {
@@ -1093,9 +1113,13 @@
       };
     }
     function admSetMachineNote(note){
-      admMachineNote = String(note || '').trim() || 'Chưa có dữ liệu Gán IP';
+      const fallback = formatMachineRanges(admMachineIndexes);
+      admMachineNote = String(note || '').trim() || fallback || 'Chưa có dữ liệu Gán IP';
       const el = document.getElementById('admMachineNote');
-      if (el) el.textContent = `Máy theo Gán IP: ${admMachineNote}`;
+      if (el) {
+        el.textContent = `Máy trong router này: ${admMachineNote}`;
+        el.style.display = '';
+      }
     }
     function admParseMachineTokens(raw){
       const text = String(raw || '').trim();
@@ -1371,14 +1395,16 @@
     async function admInit(){
       const data = await fetchJSON('/api/admanager/config');
       admConfig = data.config || {};
-      admMachineIndexes = Array.isArray(data.machine_indexes) ? data.machine_indexes.map(Number) : [];
+      admMachineIndexes = Array.isArray(data.machine_indexes) ? data.machine_indexes.map(Number).filter(Number.isFinite) : [];
+      if (!admMachineIndexes.length) admMachineIndexes = getConfiguredMachineIndexes();
       const ui = admConfig.uiState || {};
       const routersObj = admConfig.routers || {};
       const routerKeys = Object.keys(routersObj);
       admApplySavedMachineState(ui);
       const remoteInput = document.getElementById('admRemoteMachine');
       if (remoteInput) remoteInput.value = ui.remoteMachine || '';
-      admSetMachineNote(data.machine_note || 'Chưa có dữ liệu Gán IP');
+      const noteText = String(data.machine_note || '').trim() || formatMachineRanges(admMachineIndexes);
+      admSetMachineNote(noteText);
       admSetStatus('Sẵn sàng');
       admClearLog();
       admLog(`Đã nạp config - ${Math.max(routerKeys.length, 0)} router`);
