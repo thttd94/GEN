@@ -3,6 +3,7 @@
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 import json
 import threading
 import time
@@ -76,6 +77,23 @@ def assign_frp_port(router_id: str):
     return next_port
 
 
+def frp_http_url_for_router(router_id: str):
+    rid = str(router_id or '').strip()
+    if not rid:
+        return ''
+    cfg = load_config()
+    public_url = str(cfg.get('public_url', DEFAULT_PUBLIC_URL) or DEFAULT_PUBLIC_URL).strip()
+    host = ''
+    try:
+        parsed = urlparse(public_url if '://' in public_url else f'http://{public_url}')
+        host = str(parsed.hostname or '').strip()
+    except Exception:
+        host = ''
+    if not host:
+        host = 'aeg.ooguy.com'
+    return f'http://{rid}.{host}:8080'
+
+
 def build_router_items():
     state = load_state()
     routers = state.get('routers', {}) if isinstance(state, dict) else {}
@@ -85,6 +103,8 @@ def build_router_items():
         payload = item.get('payload', {}) if isinstance(item, dict) else {}
         updated_at = int(item.get('updated_at', 0) or 0)
         status = 'online' if now - updated_at <= ONLINE_WINDOW_SEC else 'offline'
+        if status != 'online':
+            continue
         sessions = payload.get('sessions', []) if isinstance(payload, dict) else []
         frp_port = assign_frp_port(router_id)
         items.append({
@@ -98,7 +118,8 @@ def build_router_items():
             'payload': payload,
             'sessions': sessions,
             'frp_port': frp_port,
-            'frp_url': f"tcp://aeg.ooguy.com:{frp_port}",
+            'frp_tcp_url': f"tcp://aeg.ooguy.com:{frp_port}",
+            'frp_http_url': frp_http_url_for_router(router_id),
         })
     items.sort(key=lambda x: str(x.get('router_title', '')))
     return items
@@ -211,6 +232,10 @@ class PyGuiServerApp:
         self.session_tree.bind('<<TreeviewSelect>>', self.on_session_select)
 
         ttk.Label(right, text='Toàn bộ Proxy trong cấu hình').pack(anchor='w')
+        proxy_actions = ttk.Frame(right)
+        proxy_actions.pack(fill='x', pady=(6, 4))
+        ttk.Button(proxy_actions, text='Copy Máy + Proxy', command=self.copy_all_machine_proxy).pack(side='left')
+        ttk.Button(proxy_actions, text='Copy toàn bộ Proxy', command=self.copy_all_proxy_only).pack(side='left', padx=(6, 0))
         self.proxy_tree = ttk.Treeview(right, columns=('machine', 'proxy', 'status', 'note'), show='headings', height=24)
         self.proxy_tree.pack(fill='both', expand=True, pady=(6, 0))
         for col, text, width in [
@@ -361,8 +386,39 @@ class PyGuiServerApp:
     def _selected_remote_url(self):
         if not self.current_router:
             return ''
-        payload = self.current_router.get('payload', {}) or {}
-        return str(payload.get('remote_url', '')).strip()
+        return str(self.current_router.get('frp_http_url', '')).strip()
+
+    def _current_proxy_rows(self):
+        if not self.current_session:
+            return []
+        return self.current_session.get('rows', []) or []
+
+    def _copy_text(self, text: str, ok_message: str, empty_message: str):
+        text = str(text or '').strip()
+        if not text:
+            messagebox.showinfo('Thiếu dữ liệu', empty_message)
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.status_var.set(ok_message)
+
+    def copy_all_machine_proxy(self):
+        rows = self._current_proxy_rows()
+        text = '\n'.join(
+            f"{str(row.get('machine', '')).strip()} {str(row.get('proxy', '')).strip()}".strip()
+            for row in rows
+            if str(row.get('proxy', '')).strip()
+        )
+        self._copy_text(text, 'Đã copy toàn bộ Máy + Proxy', 'Cấu hình hiện tại chưa có proxy để copy')
+
+    def copy_all_proxy_only(self):
+        rows = self._current_proxy_rows()
+        text = '\n'.join(
+            str(row.get('proxy', '')).strip()
+            for row in rows
+            if str(row.get('proxy', '')).strip()
+        )
+        self._copy_text(text, 'Đã copy toàn bộ Proxy', 'Cấu hình hiện tại chưa có proxy để copy')
 
     def open_remote_url(self):
         url = self._selected_remote_url()
