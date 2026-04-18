@@ -1,5 +1,12 @@
 # Changelog
 
+## v2026.04.18-08
+
+- add `py_gui_server.py` as the final central app combining GUI and embedded router push server
+- add router online/offline state and last seen display
+- keep direct open/copy support for `remote_url`
+- move closer to the final one-app workflow: open one Python app and see all routers
+
 ## v2026.04.18-07
 
 - set default collector/server URL to `http://aeg.ooguy.com:9010`
