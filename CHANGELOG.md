@@ -1,5 +1,12 @@
 # Changelog
 
+## v2026.04.18-11
+
+- switch remote access direction to FRP with auto-assigned unique remote ports
+- add FRP registry on server side so each newly installed router gets a non-duplicated port
+- add `frpc` config/template/setup/run files for Genrouter-side deployment
+- extend `install.sh` to deploy FRP client scaffolding and service hooks
+
 ## v2026.04.18-10
 
 - add reverse SSH tunnel scaffold for Genrouter outbound remote access

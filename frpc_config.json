@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "server_host": "aeg.ooguy.com",
+  "server_port": 7000,
+  "auth_token": "",
+  "remote_port": 0,
+  "local_ip": "127.0.0.1",
+  "local_port": 9001,
+  "service_name": "genrouter-web"
+}

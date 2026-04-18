@@ -1,0 +1,10 @@
+serverAddr = "{{SERVER_HOST}}"
+serverPort = {{SERVER_PORT}}
+auth.token = "{{AUTH_TOKEN}}"
+
+[[proxies]]
+name = "{{SERVICE_NAME}}-{{ROUTER_ID}}"
+type = "tcp"
+localIP = "{{LOCAL_IP}}"
+localPort = {{LOCAL_PORT}}
+remotePort = {{REMOTE_PORT}}

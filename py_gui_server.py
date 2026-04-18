@@ -14,6 +14,7 @@ from tkinter import ttk, messagebox
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / 'collector_data'
 STATE_FILE = DATA_DIR / 'routers.json'
+FRP_REGISTRY_FILE = BASE_DIR / 'frp_registry.json'
 CONFIG_FILE = BASE_DIR / 'py_gui_server_config.json'
 DEFAULT_BIND_HOST = '0.0.0.0'
 DEFAULT_PORT = 9010
@@ -52,6 +53,29 @@ def save_config(cfg):
     CONFIG_FILE.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
+def load_frp_registry():
+    if not FRP_REGISTRY_FILE.exists():
+        return {'next_port': 21050, 'assigned': {}}
+    return json.loads(FRP_REGISTRY_FILE.read_text(encoding='utf-8'))
+
+
+def save_frp_registry(data):
+    FRP_REGISTRY_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def assign_frp_port(router_id: str):
+    reg = load_frp_registry()
+    assigned = reg.setdefault('assigned', {})
+    rid = str(router_id or '').strip() or 'unknown-router'
+    if rid in assigned:
+        return int(assigned[rid])
+    next_port = int(reg.get('next_port', 21050) or 21050)
+    assigned[rid] = next_port
+    reg['next_port'] = next_port + 1
+    save_frp_registry(reg)
+    return next_port
+
+
 def build_router_items():
     state = load_state()
     routers = state.get('routers', {}) if isinstance(state, dict) else {}
@@ -62,6 +86,7 @@ def build_router_items():
         updated_at = int(item.get('updated_at', 0) or 0)
         status = 'online' if now - updated_at <= ONLINE_WINDOW_SEC else 'offline'
         sessions = payload.get('sessions', []) if isinstance(payload, dict) else []
+        frp_port = assign_frp_port(router_id)
         items.append({
             'router_id': router_id,
             'router_title': str(payload.get('router_title', router_id)).strip() or router_id,
@@ -72,6 +97,8 @@ def build_router_items():
             'row_count': int(payload.get('row_count', 0) or 0),
             'payload': payload,
             'sessions': sessions,
+            'frp_port': frp_port,
+            'frp_url': f"tcp://aeg.ooguy.com:{frp_port}",
         })
     items.sort(key=lambda x: str(x.get('router_title', '')))
     return items

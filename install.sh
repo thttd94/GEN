@@ -30,12 +30,18 @@ cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
 [ -f "$SCRIPT_DIR/collector_config.json" ] && cp "$SCRIPT_DIR/collector_config.json" "$APP_DIR/collector_config.json"
 [ -f "$SCRIPT_DIR/reverse_tunnel_config.json" ] && cp "$SCRIPT_DIR/reverse_tunnel_config.json" "$APP_DIR/reverse_tunnel_config.json"
 [ -f "$SCRIPT_DIR/reverse_tunnel.sh" ] && cp "$SCRIPT_DIR/reverse_tunnel.sh" "$APP_DIR/reverse_tunnel.sh"
+[ -f "$SCRIPT_DIR/frpc_config.json" ] && cp "$SCRIPT_DIR/frpc_config.json" "$APP_DIR/frpc_config.json"
+[ -f "$SCRIPT_DIR/frpc_template.toml" ] && cp "$SCRIPT_DIR/frpc_template.toml" "$APP_DIR/frpc_template.toml"
+[ -f "$SCRIPT_DIR/frpc_setup.py" ] && cp "$SCRIPT_DIR/frpc_setup.py" "$APP_DIR/frpc_setup.py"
+[ -f "$SCRIPT_DIR/frpc_run.sh" ] && cp "$SCRIPT_DIR/frpc_run.sh" "$APP_DIR/frpc_run.sh"
+[ -f "$SCRIPT_DIR/frp_registry.json" ] && cp "$SCRIPT_DIR/frp_registry.json" "$APP_DIR/frp_registry.json"
 rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
 cp -r "$SCRIPT_DIR/static/." "$APP_DIR/static/"
 mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxtouch_jobs/tmp"
 chmod 755 "$APP_DIR/app.py"
 [ -f "$APP_DIR/reverse_tunnel.sh" ] && chmod 755 "$APP_DIR/reverse_tunnel.sh"
+[ -f "$APP_DIR/frpc_run.sh" ] && chmod 755 "$APP_DIR/frpc_run.sh"
 
 cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
 #!/bin/sh
@@ -74,6 +80,13 @@ if [ -f "$SCRIPT_DIR/reverse_tunnel_service.txt" ]; then
   chmod +x /etc/init.d/genrouter-reverse-tunnel
   /etc/init.d/genrouter-reverse-tunnel enable || true
   /etc/init.d/genrouter-reverse-tunnel restart || /etc/init.d/genrouter-reverse-tunnel start || true
+fi
+
+if [ -f "$SCRIPT_DIR/frpc_service.txt" ]; then
+  cp "$SCRIPT_DIR/frpc_service.txt" /etc/init.d/genrouter-frpc
+  chmod +x /etc/init.d/genrouter-frpc
+  /etc/init.d/genrouter-frpc enable || true
+  /etc/init.d/genrouter-frpc restart || /etc/init.d/genrouter-frpc start || true
 fi
 
 echo "[OK] Installed"
