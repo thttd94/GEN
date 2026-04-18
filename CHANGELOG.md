@@ -1,5 +1,9 @@
 # Changelog
 
+## v2026.04.18-16
+
+- proxy XXTouch remote assets (`js/`, `css/`, `mdui/`, `screen.js`, `xxtouch.png`) through router app so remote screen can load over domain instead of breaking on private asset paths
+
 ## v2026.04.18-15
 
 - add router-side XXTouch remote-screen proxy endpoint so remote iframe no longer points directly to private `192.15.x.x:46952`

@@ -2026,7 +2026,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         ensure_sessions_exist()
         path = urlparse(self.path).path
-        if path == '/api/xxtouch/remote-screen':
+        if path == '/api/xxtouch/remote-screen' or path.startswith('/api/xxtouch/remote-assets/'):
             try:
                 cfg = load_admanager_config()
                 ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
@@ -2036,10 +2036,24 @@ class Handler(BaseHTTPRequestHandler):
                 machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no})
                 if not machines:
                     return self._send_json({'ok': False, 'error': 'Không tìm thấy máy remote'}, 404)
-                target = f"http://{machines[0]['ip']}:{port}/screen.html"
+                remote_path = 'screen.html'
+                if path.startswith('/api/xxtouch/remote-assets/'):
+                    remote_path = path[len('/api/xxtouch/remote-assets/'):].lstrip('/') or 'screen.html'
+                target = f"http://{machines[0]['ip']}:{port}/{remote_path}"
                 with urllib.request.urlopen(target, timeout=15) as resp:
                     data = resp.read()
-                    content_type = resp.headers.get('Content-Type', 'text/html; charset=utf-8')
+                    content_type = resp.headers.get('Content-Type', mimetypes.guess_type(remote_path)[0] or 'application/octet-stream')
+                if remote_path.endswith('.html') or remote_path == 'screen.html':
+                    html = data.decode('utf-8', errors='ignore')
+                    html = html.replace('src="js/', f'src="/api/xxtouch/remote-assets/js/?machine={machine_no}&port={port}')
+                    html = html.replace('src="mdui/', f'src="/api/xxtouch/remote-assets/mdui/?machine={machine_no}&port={port}')
+                    html = html.replace('src="screen.js"', f'src="/api/xxtouch/remote-assets/screen.js?machine={machine_no}&port={port}')
+                    html = html.replace('href="mdui/', f'href="/api/xxtouch/remote-assets/mdui/?machine={machine_no}&port={port}')
+                    html = html.replace('href="css/', f'href="/api/xxtouch/remote-assets/css/?machine={machine_no}&port={port}')
+                    html = html.replace('src="/xxtouch.png"', f'src="/api/xxtouch/remote-assets/xxtouch.png?machine={machine_no}&port={port}')
+                    html = html.replace('href="./index.html"', f'href="/api/xxtouch/remote-assets/index.html?machine={machine_no}&port={port}')
+                    data = html.encode('utf-8')
+                    content_type = 'text/html; charset=utf-8'
                 self.send_response(200)
                 self.send_header('Content-Type', content_type)
                 self.send_header('Content-Length', str(len(data)))
@@ -2329,7 +2343,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not machines:
                     raise ValueError('Không tìm thấy máy để remote theo Gán IP')
                 machine = machines[0]
-                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html"})
+                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-assets/?machine={machine_no}&port={port}"})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}
