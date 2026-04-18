@@ -383,10 +383,20 @@ class PyGuiServerApp:
             self.current_session = sessions[idx]
             self.render_proxies()
 
+    def _selected_router(self):
+        sels = self.router_tree.selection()
+        if sels:
+            rid = str(sels[0])
+            for router in self.router_items:
+                if str(router.get('router_id', '')) == rid:
+                    return router
+        return self.current_router
+
     def _selected_remote_url(self):
-        if not self.current_router:
+        router = self._selected_router()
+        if not router:
             return ''
-        return str(self.current_router.get('frp_http_url', '')).strip()
+        return str(router.get('frp_http_url', '')).strip()
 
     def _current_proxy_rows(self):
         if not self.current_session:
