@@ -18,6 +18,7 @@ import base64
 import hashlib
 import os
 
+
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
 NOTES_FILE = BASE_DIR / 'notes.json'
@@ -1101,12 +1102,28 @@ def save_collector_config(cfg):
     return cfg
 
 
+def get_router_id_from_frpc_config():
+    try:
+        frpc = load_json(FRPC_CFG, {})
+        custom_domain = str(frpc.get('custom_domain', '')).strip().lower()
+        if custom_domain.startswith('router-') and '.aeg.ooguy.com' in custom_domain:
+            return custom_domain.split('.', 1)[0]
+    except Exception:
+        pass
+    return ''
+
+
 def get_router_id():
     cfg = load_collector_config()
     router_id = str(cfg.get('router_id', '')).strip()
+    frpc_router_id = get_router_id_from_frpc_config()
+    if frpc_router_id and router_id != frpc_router_id:
+        cfg['router_id'] = frpc_router_id
+        save_collector_config(cfg)
+        return frpc_router_id
     if router_id:
         return router_id
-    raw = f"{get_app_title_prefix()}|{socket.gethostname()}|{os.getpid()}"
+    raw = f"{get_app_title_prefix()}|{socket.gethostname()}"
     router_id = 'router-' + hashlib.md5(raw.encode('utf-8')).hexdigest()[:12]
     cfg['router_id'] = router_id
     save_collector_config(cfg)
