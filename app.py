@@ -1047,6 +1047,33 @@ def get_app_title_prefix():
     return value or 'Genrouter'
 
 
+def export_all_sessions_payload(include_hidden=True):
+    sessions = get_available_sessions(include_hidden=include_hidden)
+    session_items = []
+    total_rows = 0
+    for item in sessions:
+        session_id = str(item.get('session', '')).strip()
+        path = SESSION_FILES.get(session_id)
+        if not session_id or not path or not path.exists():
+            continue
+        rows = extract_rows(load_json(path), session=session_id)
+        total_rows += len(rows)
+        session_items.append({
+            'session': session_id,
+            'name': get_session_display_name(session_id),
+            'hidden': bool(item.get('hidden', False)),
+            'rows': rows,
+        })
+    return {
+        'ok': True,
+        'router_title': get_app_title_prefix(),
+        'exported_at': int(time.time()),
+        'session_count': len(session_items),
+        'row_count': total_rows,
+        'sessions': session_items,
+    }
+
+
 def set_app_title_prefix(value):
     state = load_session_state()
     state, meta = get_meta_section(state)
@@ -1942,6 +1969,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix()})
+        if path == '/api/pm/export-all':
+            include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
+            return self._send_json(export_all_sessions_payload(include_hidden=include_hidden))
         if path == '/api/admanager/config':
             cfg = load_admanager_config()
             return self._send_json({'ok': True, 'config': cfg})

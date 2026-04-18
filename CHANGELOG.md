@@ -1,5 +1,11 @@
 # Changelog
 
+## v2026.04.18-04
+
+- add `/api/pm/export-all` for remote export of all sessions and proxies per router
+- add `router_proxy_export_gui.py` to scan multiple routers and export aggregated proxy/session data
+- support remote collection by router URL instead of relying only on local LAN usage
+
 ## v2026.04.18-03
 
 - add `CHANGELOG.md` for release notes tracking
