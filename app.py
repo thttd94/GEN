@@ -15,6 +15,8 @@ import plistlib
 import re
 import threading
 import base64
+import hashlib
+import os
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
@@ -55,6 +57,7 @@ ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_g
 ADMANAGER_GUI_LOCAL_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui.local.json')
 ADMANAGER_REMOTE_DIR = '/private/var/mobile/Library/ADManager'
 ADMANAGER_FILE_RE = re.compile(r'^(?P<prefix>[^_]+_)(?P<date>\d{8})(?:_(?P<time_u>\d{6})|(?P<time>\d{6}))\.adbk$')
+COLLECTOR_CONFIG_FILE = BASE_DIR / 'collector_config.json'
 MAX_SESSION_COUNT = 5
 SESSION_FILES = {
     str(i): PRESET_DIR / f'session{i}.json'
@@ -1074,6 +1077,74 @@ def export_all_sessions_payload(include_hidden=True):
     }
 
 
+def load_collector_config():
+    cfg = {
+        'collector_url': '',
+        'router_id': '',
+        'enabled': False,
+        'push_interval_sec': 60,
+    }
+    try:
+        if COLLECTOR_CONFIG_FILE.exists():
+            data = load_json(COLLECTOR_CONFIG_FILE)
+            if isinstance(data, dict):
+                cfg.update(data)
+    except Exception:
+        pass
+    return cfg
+
+
+def save_collector_config(cfg):
+    save_json(COLLECTOR_CONFIG_FILE, cfg)
+    return cfg
+
+
+def get_router_id():
+    cfg = load_collector_config()
+    router_id = str(cfg.get('router_id', '')).strip()
+    if router_id:
+        return router_id
+    raw = f"{get_app_title_prefix()}|{socket.gethostname()}|{os.getpid()}"
+    router_id = 'router-' + hashlib.md5(raw.encode('utf-8')).hexdigest()[:12]
+    cfg['router_id'] = router_id
+    save_collector_config(cfg)
+    return router_id
+
+
+def push_export_to_collector_once():
+    cfg = load_collector_config()
+    collector_url = str(cfg.get('collector_url', '')).strip().rstrip('/')
+    if not collector_url or not cfg.get('enabled'):
+        return {'ok': False, 'error': 'collector disabled'}
+    payload = export_all_sessions_payload(include_hidden=True)
+    payload['router_id'] = get_router_id()
+    payload['router_title'] = get_app_title_prefix()
+    data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+    req = urllib.request.Request(
+        collector_url + '/api/collector/push',
+        data=data,
+        method='POST',
+        headers={'Content-Type': 'application/json; charset=utf-8'}
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read().decode('utf-8'))
+
+
+def collector_push_loop():
+    while True:
+        try:
+            cfg = load_collector_config()
+            interval = max(15, int(cfg.get('push_interval_sec', 60) or 60))
+            if cfg.get('enabled') and str(cfg.get('collector_url', '')).strip():
+                try:
+                    push_export_to_collector_once()
+                except Exception:
+                    pass
+            time.sleep(interval)
+        except Exception:
+            time.sleep(60)
+
+
 def set_app_title_prefix(value):
     state = load_session_state()
     state, meta = get_meta_section(state)
@@ -1972,6 +2043,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/pm/export-all':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             return self._send_json(export_all_sessions_payload(include_hidden=include_hidden))
+        if path == '/api/pm/collector-config':
+            return self._send_json({'ok': True, 'config': load_collector_config(), 'router_id': get_router_id()})
         if path == '/api/admanager/config':
             cfg = load_admanager_config()
             return self._send_json({'ok': True, 'config': cfg})
@@ -2415,6 +2488,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({'ok': True, 'results': check_proxy_batch(payload.get('items', []), session=str(payload.get('session', '1')) )})
             if path == '/api/pm/reboot-router':
                 return self._send_json(call_old_gui('/api/system/reboot', method='GET'))
+            if path == '/api/pm/collector-config':
+                cfg = load_collector_config()
+                cfg.update({
+                    'collector_url': str(payload.get('collector_url', cfg.get('collector_url', ''))).strip(),
+                    'router_id': str(payload.get('router_id', cfg.get('router_id', ''))).strip(),
+                    'enabled': bool(payload.get('enabled', cfg.get('enabled', False))),
+                    'push_interval_sec': int(payload.get('push_interval_sec', cfg.get('push_interval_sec', 60)) or 60),
+                })
+                save_collector_config(cfg)
+                return self._send_json({'ok': True, 'config': cfg, 'router_id': get_router_id()})
+            if path == '/api/pm/collector-push-now':
+                return self._send_json(push_export_to_collector_once())
             if path == '/api/pm/router-change-lan':
                 ip_lan = str(payload.get('ip_lan', '')).strip()
                 return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data={'ip_lan': ip_lan}))
@@ -2428,4 +2513,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     ensure_sessions_exist()
     ensure_xxtouch_workspace()
+    threading.Thread(target=collector_push_loop, daemon=True).start()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()

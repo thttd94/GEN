@@ -1,0 +1,6 @@
+{
+  "collector_url": "",
+  "router_id": "",
+  "enabled": false,
+  "push_interval_sec": 60
+}

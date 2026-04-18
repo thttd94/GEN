@@ -1,5 +1,13 @@
 # Changelog
 
+## v2026.04.18-05
+
+- add collector model for remote auto-discovery across routers on different networks
+- add `collector_server.py` to receive router push data centrally
+- add `collector_proxy_gui.py` to read all routers from collector without manual host entry per router
+- add router-side collector config and background push loop in `app.py`
+- keep rollback path via release tags and update/rollback scripts
+
 ## v2026.04.18-04
 
 - add `/api/pm/export-all` for remote export of all sessions and proxies per router
