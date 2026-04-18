@@ -61,6 +61,7 @@ def build_router_items():
         payload = item.get('payload', {}) if isinstance(item, dict) else {}
         updated_at = int(item.get('updated_at', 0) or 0)
         status = 'online' if now - updated_at <= ONLINE_WINDOW_SEC else 'offline'
+        sessions = payload.get('sessions', []) if isinstance(payload, dict) else []
         items.append({
             'router_id': router_id,
             'router_title': str(payload.get('router_title', router_id)).strip() or router_id,
@@ -70,6 +71,7 @@ def build_router_items():
             'session_count': int(payload.get('session_count', 0) or 0),
             'row_count': int(payload.get('row_count', 0) or 0),
             'payload': payload,
+            'sessions': sessions,
         })
     items.sort(key=lambda x: str(x.get('router_title', '')))
     return items
@@ -113,8 +115,11 @@ class PyGuiServerApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title('PY GUI Server - Router Center')
-        self.root.geometry('1660x880')
+        self.root.geometry('1660x900')
         self.server_started = False
+        self.router_items = []
+        self.current_router = None
+        self.current_session = None
         self._build_ui()
         self._load_config_into_ui()
         self.start_server()
@@ -146,25 +151,49 @@ class PyGuiServerApp:
         self.status_var = tk.StringVar(value='Sẵn sàng')
         ttk.Label(top, textvariable=self.status_var).grid(row=1, column=0, columnspan=10, sticky='w', pady=(8, 0))
 
-        cols = ('router_title', 'router_id', 'router_status', 'last_seen', 'remote_url', 'session_name', 'machine', 'proxy', 'status', 'note')
-        self.tree = ttk.Treeview(self.root, columns=cols, show='headings')
-        self.tree.pack(fill='both', expand=True, padx=10, pady=10)
-        headings = {
-            'router_title': 'Router Name',
-            'router_id': 'Router ID',
-            'router_status': 'Router State',
-            'last_seen': 'Last Seen',
-            'remote_url': 'Remote URL',
-            'session_name': 'Cấu hình',
-            'machine': 'Máy',
-            'proxy': 'Proxy',
-            'status': 'Status',
-            'note': 'Note',
-        }
-        widths = {'router_title': 170, 'router_id': 170, 'router_status': 90, 'last_seen': 100, 'remote_url': 250, 'session_name': 160, 'machine': 70, 'proxy': 320, 'status': 90, 'note': 220}
-        for col in cols:
-            self.tree.heading(col, text=headings[col])
-            self.tree.column(col, width=widths[col], anchor='w')
+        body = ttk.Panedwindow(self.root, orient='horizontal')
+        body.pack(fill='both', expand=True, padx=10, pady=10)
+
+        left = ttk.Frame(body, padding=6)
+        mid = ttk.Frame(body, padding=6)
+        right = ttk.Frame(body, padding=6)
+        body.add(left, weight=1)
+        body.add(mid, weight=1)
+        body.add(right, weight=3)
+
+        ttk.Label(left, text='Danh sách Router').pack(anchor='w')
+        self.router_tree = ttk.Treeview(left, columns=('title', 'state', 'last_seen', 'sessions'), show='headings', height=24)
+        self.router_tree.pack(fill='both', expand=True, pady=(6, 0))
+        for col, text, width in [
+            ('title', 'Router', 150),
+            ('state', 'State', 70),
+            ('last_seen', 'Last Seen', 80),
+            ('sessions', 'Cfg', 50),
+        ]:
+            self.router_tree.heading(col, text=text)
+            self.router_tree.column(col, width=width, anchor='w')
+        self.router_tree.bind('<<TreeviewSelect>>', self.on_router_select)
+
+        ttk.Label(mid, text='Cấu hình Router').pack(anchor='w')
+        self.session_tree = ttk.Treeview(mid, columns=('name', 'rows'), show='headings', height=24)
+        self.session_tree.pack(fill='both', expand=True, pady=(6, 0))
+        self.session_tree.heading('name', text='Cấu hình')
+        self.session_tree.heading('rows', text='Rows')
+        self.session_tree.column('name', width=180, anchor='w')
+        self.session_tree.column('rows', width=60, anchor='w')
+        self.session_tree.bind('<<TreeviewSelect>>', self.on_session_select)
+
+        ttk.Label(right, text='Toàn bộ Proxy trong cấu hình').pack(anchor='w')
+        self.proxy_tree = ttk.Treeview(right, columns=('machine', 'proxy', 'status', 'note'), show='headings', height=24)
+        self.proxy_tree.pack(fill='both', expand=True, pady=(6, 0))
+        for col, text, width in [
+            ('machine', 'Máy', 60),
+            ('proxy', 'Proxy', 360),
+            ('status', 'Status', 80),
+            ('note', 'Note', 180),
+        ]:
+            self.proxy_tree.heading(col, text=text)
+            self.proxy_tree.column(col, width=width, anchor='w')
 
     def _load_config_into_ui(self):
         cfg = load_config()
@@ -203,45 +232,122 @@ class PyGuiServerApp:
             self.root.after(10000, self._auto_refresh)
 
     def refresh(self, silent=False):
-        items = build_router_items()
-        rows = []
-        for router in items:
-            payload = router.get('payload', {}) or {}
-            router_title = str(router.get('router_title', '')).strip()
-            router_id = str(router.get('router_id', '')).strip()
-            router_status = str(router.get('status', '')).strip()
+        previous_router_id = self.current_router.get('router_id') if self.current_router else None
+        previous_session_name = self.current_session.get('name') if self.current_session else None
+
+        self.router_items = build_router_items()
+        self.router_tree.delete(*self.router_tree.get_children())
+        for router in self.router_items:
             last_seen = f"{int(router.get('last_seen_ago', 0) or 0)}s" if router.get('updated_at') else 'never'
-            remote_url = str(payload.get('remote_url', '')).strip()
-            for session in payload.get('sessions', []):
-                session_name = str(session.get('name', '')).strip()
-                for row in session.get('rows', []):
-                    rows.append((router_title, router_id, router_status, last_seen, remote_url, session_name, str(row.get('machine', '')).strip(), str(row.get('proxy', '')).strip(), str(row.get('status', '')).strip(), str(row.get('note', '')).strip()))
-        self.tree.delete(*self.tree.get_children())
-        for item in rows:
-            self.tree.insert('', 'end', values=item)
+            iid = router['router_id']
+            self.router_tree.insert('', 'end', iid=iid, values=(router['router_title'], router['status'], last_seen, len(router.get('sessions', []))))
+
+        self.current_router = None
+        if previous_router_id:
+            for router in self.router_items:
+                if router.get('router_id') == previous_router_id:
+                    self.current_router = router
+                    break
+        if self.current_router is None and self.router_items:
+            self.current_router = self.router_items[0]
+
+        if self.current_router:
+            try:
+                self.router_tree.selection_set(self.current_router['router_id'])
+                self.router_tree.focus(self.current_router['router_id'])
+            except Exception:
+                pass
+
+        self.render_sessions(previous_session_name=previous_session_name)
         if not silent:
-            self.status_var.set(f'Đã tải {len(rows)} dòng từ {len(items)} router')
+            self.status_var.set(f'Đã tải {len(self.router_items)} router')
+
+    def render_sessions(self, previous_session_name=None):
+        self.session_tree.delete(*self.session_tree.get_children())
+        self.proxy_tree.delete(*self.proxy_tree.get_children())
+        self.current_session = None
+        if not self.current_router:
+            return
+        sessions = self.current_router.get('sessions', []) or []
+        for idx, session in enumerate(sessions):
+            iid = f"session::{idx}"
+            rows = session.get('rows', []) or []
+            self.session_tree.insert('', 'end', iid=iid, values=(str(session.get('name', '')).strip(), len(rows)))
+
+        if sessions:
+            chosen = None
+            if previous_session_name:
+                for session in sessions:
+                    if str(session.get('name', '')).strip() == previous_session_name:
+                        chosen = session
+                        break
+            if chosen is None:
+                chosen = sessions[0]
+            self.current_session = chosen
+            selected_index = sessions.index(chosen)
+            iid = f"session::{selected_index}"
+            try:
+                self.session_tree.selection_set(iid)
+                self.session_tree.focus(iid)
+            except Exception:
+                pass
+            self.render_proxies()
+
+    def render_proxies(self):
+        self.proxy_tree.delete(*self.proxy_tree.get_children())
+        if not self.current_session:
+            return
+        rows = self.current_session.get('rows', []) or []
+        for idx, row in enumerate(rows):
+            self.proxy_tree.insert('', 'end', iid=f"proxy::{idx}", values=(
+                str(row.get('machine', '')).strip(),
+                str(row.get('proxy', '')).strip(),
+                str(row.get('status', '')).strip(),
+                str(row.get('note', '')).strip(),
+            ))
+
+    def on_router_select(self, event=None):
+        sels = self.router_tree.selection()
+        if not sels:
+            return
+        rid = sels[0]
+        for router in self.router_items:
+            if router.get('router_id') == rid:
+                self.current_router = router
+                break
+        self.render_sessions()
+
+    def on_session_select(self, event=None):
+        sels = self.session_tree.selection()
+        if not sels or not self.current_router:
+            return
+        iid = sels[0]
+        try:
+            idx = int(iid.split('::', 1)[1])
+        except Exception:
+            return
+        sessions = self.current_router.get('sessions', []) or []
+        if 0 <= idx < len(sessions):
+            self.current_session = sessions[idx]
+            self.render_proxies()
 
     def _selected_remote_url(self):
-        sels = self.tree.selection()
-        if not sels:
+        if not self.current_router:
             return ''
-        vals = self.tree.item(sels[0], 'values')
-        if len(vals) >= 5:
-            return str(vals[4]).strip()
-        return ''
+        payload = self.current_router.get('payload', {}) or {}
+        return str(payload.get('remote_url', '')).strip()
 
     def open_remote_url(self):
         url = self._selected_remote_url()
         if not url:
-            messagebox.showinfo('Thiếu URL', 'Dòng đang chọn chưa có remote_url')
+            messagebox.showinfo('Thiếu URL', 'Router đang chọn chưa có remote_url')
             return
         webbrowser.open(url)
 
     def copy_remote_url(self):
         url = self._selected_remote_url()
         if not url:
-            messagebox.showinfo('Thiếu URL', 'Dòng đang chọn chưa có remote_url')
+            messagebox.showinfo('Thiếu URL', 'Router đang chọn chưa có remote_url')
             return
         self.root.clipboard_clear()
         self.root.clipboard_append(url)

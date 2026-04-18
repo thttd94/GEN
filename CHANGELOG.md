@@ -1,5 +1,11 @@
 # Changelog
 
+## v2026.04.18-09
+
+- redesign `py_gui_server.py` UI into 3 levels: router list -> session list -> proxy list
+- compact router display so central GUI is easier to scan
+- selecting a router now shows its sessions, selecting a session shows all proxies inside it
+
 ## v2026.04.18-08
 
 - add `py_gui_server.py` as the final central app combining GUI and embedded router push server
