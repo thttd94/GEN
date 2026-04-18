@@ -25,10 +25,9 @@ def main():
     app = load_json(APP_CFG, {})
 
     router_id = str(app.get('router_id', '')).strip() or 'unknown-router'
-    custom_domain = str(frpc.get('custom_domain', '')).strip()
-    if not custom_domain:
-        suffix = str(frpc.get('domain_suffix', 'aeg.ooguy.com')).strip() or 'aeg.ooguy.com'
-        custom_domain = f"{router_id}.{suffix}"
+    suffix = str(frpc.get('domain_suffix', 'aeg.ooguy.com')).strip() or 'aeg.ooguy.com'
+    custom_domain = f"{router_id}.{suffix}"
+    if str(frpc.get('custom_domain', '')).strip() != custom_domain:
         frpc['custom_domain'] = custom_domain
         save_json(FRPC_CFG, frpc)
 

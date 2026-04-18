@@ -41,6 +41,7 @@ cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
 [ -f "$SCRIPT_DIR/frpc_setup.py" ] && cp "$SCRIPT_DIR/frpc_setup.py" "$APP_DIR/frpc_setup.py"
 [ -f "$SCRIPT_DIR/frpc_run.sh" ] && cp "$SCRIPT_DIR/frpc_run.sh" "$APP_DIR/frpc_run.sh"
 [ -f "$SCRIPT_DIR/frpc_boot_loop.sh" ] && cp "$SCRIPT_DIR/frpc_boot_loop.sh" "$APP_DIR/frpc_boot_loop.sh"
+[ -f "$SCRIPT_DIR/install_frpc_binary.sh" ] && cp "$SCRIPT_DIR/install_frpc_binary.sh" "$APP_DIR/install_frpc_binary.sh"
 [ -f "$SCRIPT_DIR/setup_data_disk.sh" ] && cp "$SCRIPT_DIR/setup_data_disk.sh" "$APP_DIR/setup_data_disk.sh"
 rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
@@ -50,7 +51,10 @@ chmod 755 "$APP_DIR/app.py"
 [ -f "$APP_DIR/reverse_tunnel.sh" ] && chmod 755 "$APP_DIR/reverse_tunnel.sh"
 [ -f "$APP_DIR/frpc_run.sh" ] && chmod 755 "$APP_DIR/frpc_run.sh"
 [ -f "$APP_DIR/frpc_boot_loop.sh" ] && chmod 755 "$APP_DIR/frpc_boot_loop.sh"
+[ -f "$APP_DIR/install_frpc_binary.sh" ] && chmod 755 "$APP_DIR/install_frpc_binary.sh"
 [ -f "$APP_DIR/setup_data_disk.sh" ] && chmod 755 "$APP_DIR/setup_data_disk.sh"
+
+[ ! -x "$APP_DIR/frpc" ] && [ -x "$APP_DIR/install_frpc_binary.sh" ] && "$APP_DIR/install_frpc_binary.sh" "$APP_DIR" || true
 
 cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
 #!/bin/sh
