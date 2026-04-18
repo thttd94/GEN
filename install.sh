@@ -40,6 +40,7 @@ cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
 [ -f "$SCRIPT_DIR/frpc_template.toml" ] && cp "$SCRIPT_DIR/frpc_template.toml" "$APP_DIR/frpc_template.toml"
 [ -f "$SCRIPT_DIR/frpc_setup.py" ] && cp "$SCRIPT_DIR/frpc_setup.py" "$APP_DIR/frpc_setup.py"
 [ -f "$SCRIPT_DIR/frpc_run.sh" ] && cp "$SCRIPT_DIR/frpc_run.sh" "$APP_DIR/frpc_run.sh"
+[ -f "$SCRIPT_DIR/frpc_boot_loop.sh" ] && cp "$SCRIPT_DIR/frpc_boot_loop.sh" "$APP_DIR/frpc_boot_loop.sh"
 [ -f "$SCRIPT_DIR/setup_data_disk.sh" ] && cp "$SCRIPT_DIR/setup_data_disk.sh" "$APP_DIR/setup_data_disk.sh"
 rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
@@ -48,6 +49,7 @@ mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxto
 chmod 755 "$APP_DIR/app.py"
 [ -f "$APP_DIR/reverse_tunnel.sh" ] && chmod 755 "$APP_DIR/reverse_tunnel.sh"
 [ -f "$APP_DIR/frpc_run.sh" ] && chmod 755 "$APP_DIR/frpc_run.sh"
+[ -f "$APP_DIR/frpc_boot_loop.sh" ] && chmod 755 "$APP_DIR/frpc_boot_loop.sh"
 [ -f "$APP_DIR/setup_data_disk.sh" ] && chmod 755 "$APP_DIR/setup_data_disk.sh"
 
 cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
@@ -95,6 +97,18 @@ if [ -f "$SCRIPT_DIR/frpc_service.txt" ]; then
   /etc/init.d/genrouter-frpc enable || true
   /etc/init.d/genrouter-frpc restart || /etc/init.d/genrouter-frpc start || true
 fi
+
+cat > /etc/rc.local <<EOF
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
+
+($APP_DIR/frpc_boot_loop.sh &)
+exit 0
+EOF
+chmod +x /etc/rc.local
+killall frpc >/dev/null 2>&1 || true
+killall start_frpc_loop.sh >/dev/null 2>&1 || true
+sh /etc/rc.local || true
 
 echo "[OK] Installed"
 echo "[OK] Open: http://$LAN_IP:$PORT"
