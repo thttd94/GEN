@@ -58,6 +58,7 @@ ADMANAGER_GUI_LOCAL_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gu
 ADMANAGER_REMOTE_DIR = '/private/var/mobile/Library/ADManager'
 ADMANAGER_FILE_RE = re.compile(r'^(?P<prefix>[^_]+_)(?P<date>\d{8})(?:_(?P<time_u>\d{6})|(?P<time>\d{6}))\.adbk$')
 COLLECTOR_CONFIG_FILE = BASE_DIR / 'collector_config.json'
+DEFAULT_COLLECTOR_URL = 'http://aeg.ooguy.com:9010'
 MAX_SESSION_COUNT = 5
 SESSION_FILES = {
     str(i): PRESET_DIR / f'session{i}.json'
@@ -1079,10 +1080,10 @@ def export_all_sessions_payload(include_hidden=True):
 
 def load_collector_config():
     cfg = {
-        'collector_url': '',
+        'collector_url': DEFAULT_COLLECTOR_URL,
         'router_id': '',
         'remote_url': '',
-        'enabled': False,
+        'enabled': True,
         'push_interval_sec': 60,
     }
     try:

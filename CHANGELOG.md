@@ -1,5 +1,12 @@
 # Changelog
 
+## v2026.04.18-07
+
+- set default collector/server URL to `http://aeg.ooguy.com:9010`
+- enable router client push by default after install
+- default central GUI to read from `aeg.ooguy.com:9010`
+- align naming toward `PY GUI Server` as the router center
+
 ## v2026.04.18-06
 
 - add `remote_url` support in collector config and router push payload

@@ -12,13 +12,13 @@ from tkinter import ttk, messagebox
 
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_FILE = BASE_DIR / 'collector_proxy_gui_config.json'
-DEFAULT_COLLECTOR = 'http://127.0.0.1:9010'
+DEFAULT_COLLECTOR = 'http://aeg.ooguy.com:9010'
 
 
 class CollectorProxyGui:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title('Collector Proxy GUI')
+        self.root.title('PY GUI Server - Router Center')
         self.root.geometry('1560x840')
         self.router_index = {}
         self._build_ui()
