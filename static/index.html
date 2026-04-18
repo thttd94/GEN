@@ -185,7 +185,10 @@
       <div class="panel">
         <div class="meta">
           <div class="meta-left session-meta"><b>XXTOUCH JOBS</b></div>
-          <div class="meta-center status-stack"><span class="status adm-status" id="admStatus">Sẵn sàng</span><div class="adm-log-muted" id="admStatusHint">Chưa có thao tác</div></div>
+          <div class="meta-center" style="display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center;">
+            <div id="admMachineNote" class="sub" style="font-weight:800; color:#1d4ed8;">Máy theo Gán IP: đang nạp...</div>
+            <div class="status-stack"><span class="status adm-status" id="admStatus">Sẵn sàng</span><div class="adm-log-muted" id="admStatusHint">Chưa có thao tác</div></div>
+          </div>
           <div class="meta-right"><div class="sub" id="admCountLabel">0 máy</div></div>
         </div>
         <div style="padding:14px; display:grid; gap:12px; background:#f8fafc; border-bottom:1px solid #e5e7eb;">
@@ -376,6 +379,8 @@
     let admRemoteVisible = false;
     let admRemoteMachines = [];
     let admRemoteIndex = 0;
+    let admMachineNote = '';
+    let admMachineIndexes = [];
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
     function renderAppTitle() {
@@ -793,8 +798,8 @@
       for (const line of lines) {
         const item = parseBulkLine(line);
         if (!item) continue;
-        const tag = `proxy_${item.x}`;
-        const row = getVisibleRows().find(r => r.tag === tag);
+        const machineText = String(item.x || '').trim();
+        const row = getVisibleRows().find(r => String(r.machine || '').trim() === machineText);
         if (!row) continue;
         row.proxy = item.proxy.trim();
         changed++;
@@ -970,6 +975,7 @@
       currentSession = String(session);
       currentRows = applyDraftToRows(cloneRows(data.rows || []), session);
       render();
+      if (admConfig) admInit();
       setStatus('Đang mở ' + sessionNameOf(currentSession));
     }
 
@@ -1085,6 +1091,69 @@
         machineList: document.getElementById('admMachineList').value,
         remoteMachine: document.getElementById('admRemoteMachine').value,
       };
+    }
+    function admSetMachineNote(note){
+      admMachineNote = String(note || '').trim() || 'Chưa có dữ liệu Gán IP';
+      const el = document.getElementById('admMachineNote');
+      if (el) el.textContent = `Máy theo Gán IP: ${admMachineNote}`;
+    }
+    function admParseMachineTokens(raw){
+      const text = String(raw || '').trim();
+      if (!text) return [];
+      const out = [];
+      const seen = new Set();
+      const parts = text.split(',').map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (m) {
+          let a = Number(m[1]);
+          let b = Number(m[2]);
+          if (a > b) [a, b] = [b, a];
+          for (let i = a; i <= b; i++) {
+            if (!seen.has(i)) {
+              seen.add(i);
+              out.push(i);
+            }
+          }
+          continue;
+        }
+        if (/^\d+$/.test(part)) {
+          const n = Number(part);
+          if (!seen.has(n)) {
+            seen.add(n);
+            out.push(n);
+          }
+        }
+      }
+      return out;
+    }
+    function admGetInvalidMachinesForState(state){
+      const available = new Set((admMachineIndexes || []).map(Number));
+      if (!available.size) return [];
+      const mode = String(state?.machineMode || 'all').trim().toLowerCase();
+      if (mode === 'all') return [];
+      const raw = mode === 'group' ? state.machineGroup : state.machineList;
+      const selected = admParseMachineTokens(raw);
+      return selected.filter(n => !available.has(Number(n)));
+    }
+    function admValidateMachineState(state, label='Chọn máy'){
+      const invalid = admGetInvalidMachinesForState(state);
+      if (!invalid.length) return { ok:true, invalid:[] };
+      const msg = `Máy này không nằm trong router này: ${invalid.join(', ')}. Dải hợp lệ: ${admMachineNote || 'không rõ'}`;
+      admSetStatus(msg);
+      admLog(`[ERR] ${label}: ${msg}`);
+      return { ok:false, invalid, message: msg };
+    }
+    function admValidateRemoteInput(raw){
+      const available = new Set((admMachineIndexes || []).map(Number));
+      const selected = admParseMachineTokens(raw);
+      if (!selected.length) return { ok:false, message:'Phải nhập số máy để remote' };
+      const invalid = selected.filter(n => !available.has(Number(n)));
+      if (!invalid.length) return { ok:true, invalid:[] };
+      const msg = `Máy này không nằm trong router này: ${invalid.join(', ')}. Dải hợp lệ: ${admMachineNote || 'không rõ'}`;
+      admSetStatus(msg);
+      admLog(`[ERR] REMOTE: ${msg}`);
+      return { ok:false, invalid, message: msg };
     }
     function admSelectedMachineText(){
       const s = admState();
@@ -1302,16 +1371,18 @@
     async function admInit(){
       const data = await fetchJSON('/api/admanager/config');
       admConfig = data.config || {};
+      admMachineIndexes = Array.isArray(data.machine_indexes) ? data.machine_indexes.map(Number) : [];
       const ui = admConfig.uiState || {};
       const routersObj = admConfig.routers || {};
       const routerKeys = Object.keys(routersObj);
       admApplySavedMachineState(ui);
       const remoteInput = document.getElementById('admRemoteMachine');
       if (remoteInput) remoteInput.value = ui.remoteMachine || '';
+      admSetMachineNote(data.machine_note || 'Chưa có dữ liệu Gán IP');
       admSetStatus('Sẵn sàng');
       admClearLog();
       admLog(`Đã nạp config - ${Math.max(routerKeys.length, 0)} router`);
-      admLog('Map máy đang lấy theo Gán IP');
+      admLog(`Map máy đang lấy theo Gán IP: ${admMachineNote}`);
     }
     async function admSaveConfig(){
       const state = admState();
@@ -1348,6 +1419,11 @@
     async function admScanDevices(){
       if (admScanBusy) return;
       const state = admState();
+      const validated = admValidateMachineState(state, 'SCAN');
+      if (!validated.ok) {
+        admLastScanKey = '';
+        return;
+      }
       const scanKey = JSON.stringify({mode: state.machineMode, group: state.machineGroup, list: state.machineList});
       if (scanKey === admLastScanKey && admInfoRows.length) {
         admSetStatus('Giữ kết quả scan trước');
@@ -1390,6 +1466,8 @@
     }
     async function admRunSimpleAction(action){
       const label = admActionLabel(action);
+      const validated = admValidateMachineState(admState(), label);
+      if (!validated.ok) return;
       admClearLog();
       admLog(`Bắt đầu ${label}`);
       admSetStatus(`Đang chạy ${label}`);
@@ -1425,6 +1503,11 @@
         return;
       }
       const rawMachine = String(document.getElementById('admRemoteMachine').value || '').trim();
+      const remoteValidated = admValidateRemoteInput(rawMachine);
+      if (!remoteValidated.ok) {
+        if (!rawMachine) admSetStatus(remoteValidated.message || 'Phải nhập số máy để remote');
+        return;
+      }
       const machines = admParseRemoteMachines(rawMachine);
       if (!machines.length) {
         admSetStatus('Phải nhập số máy để remote');
@@ -1439,7 +1522,7 @@
       } catch (e) {
         admLog(`[ERR] remote: ${e.message}`);
         admSetRemoteVisible(false);
-        admSetStatus('Lỗi remote');
+        admSetStatus(e.message || 'Lỗi remote');
       }
     }
 

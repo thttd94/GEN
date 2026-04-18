@@ -486,6 +486,65 @@ def admanager_get_machine_ip_pairs(router_obj=None, router_key=''):
     return idx_ip
 
 
+def admanager_machine_note_text(router_obj=None, router_key=''):
+    idx_ip = admanager_get_machine_ip_pairs(router_obj, router_key=router_key)
+    indexes = sorted({int(i) for i, _ in idx_ip})
+    if not indexes:
+        return 'Chưa có dữ liệu Gán IP'
+    ranges = []
+    start = prev = indexes[0]
+    for cur in indexes[1:]:
+        if cur == prev + 1:
+            prev = cur
+            continue
+        ranges.append(f'{start}-{prev}' if start != prev else str(start))
+        start = prev = cur
+    ranges.append(f'{start}-{prev}' if start != prev else str(start))
+    return ', '.join(ranges)
+
+
+def admanager_parse_machine_tokens(raw_text):
+    chosen = set()
+    for tok in re.split(r'\s*,\s*', str(raw_text or '').strip()):
+        tok = tok.strip()
+        if not tok:
+            continue
+        if '-' in tok:
+            try:
+                a, b = tok.split('-', 1)
+                lo, hi = int(a), int(b)
+                if lo > hi:
+                    lo, hi = hi, lo
+                for i in range(lo, hi + 1):
+                    chosen.add(i)
+            except Exception:
+                continue
+        elif tok.isdigit():
+            chosen.add(int(tok))
+    return chosen
+
+
+def admanager_validate_machine_selection(router_key, router_obj, machine_mode, machine_range, machine_list):
+    idx_ip = admanager_get_machine_ip_pairs(router_obj, router_key=router_key)
+    available = sorted({int(i) for i, _ in idx_ip})
+    available_set = set(available)
+    mode = str(machine_mode or 'all').strip().lower()
+    raw = str(machine_range if mode in ('range', 'group') else machine_list or '').strip()
+    if mode == 'all':
+        selected = set(available_set)
+    else:
+        selected = admanager_parse_machine_tokens(raw)
+    invalid = sorted(i for i in selected if i not in available_set)
+    return {
+        'available': available,
+        'selected': sorted(selected),
+        'invalid': invalid,
+        'note': admanager_machine_note_text(router_obj, router_key=router_key),
+        'raw': raw,
+        'mode': mode,
+    }
+
+
 def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range, machine_list):
     idx_ip = admanager_get_machine_ip_pairs(router_obj, router_key=router_key)
 
@@ -699,6 +758,19 @@ def xxtouch_get_selected_machines(cfg: dict, state: dict):
         out.append({'router': '', 'index': machine['index'], 'ip': machine['ip'], 'label': machine['label']})
     out.sort(key=lambda x: x['index'])
     return out
+
+
+def xxtouch_get_router_machine_context(cfg: dict, state: dict):
+    requested_router = str((state or {}).get('router') or ((cfg.get('uiState') or {}).get('router')) or '').strip()
+    router = (cfg.get('routers') or {}).get(requested_router) if isinstance(cfg.get('routers'), dict) and requested_router else {}
+    note = admanager_machine_note_text(router if isinstance(router, dict) else {}, router_key=requested_router)
+    available = [i for i, _ in admanager_get_machine_ip_pairs(router if isinstance(router, dict) else {}, router_key=requested_router)]
+    return {
+        'router': requested_router,
+        'router_obj': router if isinstance(router, dict) else {},
+        'note': note,
+        'available': available,
+    }
 
 
 def xxtouch_post_json(ip, port, path, payload=None, timeout=20):
@@ -2111,7 +2183,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'config': load_collector_config(), 'router_id': get_router_id()})
         if path == '/api/admanager/config':
             cfg = load_admanager_config()
-            return self._send_json({'ok': True, 'config': cfg})
+            router_ctx = xxtouch_get_router_machine_context(cfg, cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {})
+            return self._send_json({'ok': True, 'config': cfg, 'machine_note': router_ctx.get('note', ''), 'machine_indexes': router_ctx.get('available', [])})
         if path == '/api/pm/xxtouch/workspace':
             ensure_xxtouch_workspace()
             return self._send_json({
@@ -2278,6 +2351,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/xxtouch/action':
                 cfg = load_admanager_config()
                 state = payload if isinstance(payload, dict) else {}
+                router_ctx = xxtouch_get_router_machine_context(cfg, state)
+                validation = admanager_validate_machine_selection(router_ctx.get('router', ''), router_ctx.get('router_obj', {}), state.get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all', state.get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '', state.get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
+                if validation.get('invalid'):
+                    invalid_text = ', '.join(str(x) for x in validation.get('invalid', []))
+                    return self._send_json({'ok': False, 'error': f'Máy này không nằm trong router này: {invalid_text}. Dải hợp lệ: {validation.get("note")}'}, 400)
                 ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
                 port = str(state.get('port') or ui.get('port') or '46952').strip()
                 action = str(state.get('action') or '').strip()
@@ -2360,14 +2438,19 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/xxtouch/remote-link':
                 cfg = load_admanager_config()
                 state = payload if isinstance(payload, dict) else {}
+                router_ctx = xxtouch_get_router_machine_context(cfg, state)
                 ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
                 port = str(state.get('port') or ui.get('port') or '46952').strip()
                 machine_no = str(state.get('machine') or '').strip()
-                machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no})
+                remote_validation = admanager_validate_machine_selection(router_ctx.get('router', ''), router_ctx.get('router_obj', {}), 'list', '', machine_no)
+                if remote_validation.get('invalid'):
+                    invalid_text = ', '.join(str(x) for x in remote_validation.get('invalid', []))
+                    raise ValueError(f'Máy này không nằm trong router này: {invalid_text}. Dải hợp lệ: {remote_validation.get("note")}')
+                machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no, 'router': router_ctx.get('router', '')})
                 if not machines:
                     raise ValueError('Không tìm thấy máy để remote theo Gán IP')
                 machine = machines[0]
-                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-assets/?machine={machine_no}&port={port}"})
+                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-assets/?machine={machine_no}&port={port}", 'machine_note': router_ctx.get('note', '')})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}
