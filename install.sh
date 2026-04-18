@@ -24,6 +24,12 @@ LAN_CIDR="$(ip -4 -o addr show br-lan 2>/dev/null | awk '{print $4}' | head -n1)
 
 mkdir -p "$APP_DIR"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if [ -f "$SCRIPT_DIR/setup_data_disk.sh" ]; then
+  echo "[INFO] Checking data disk..."
+  sh "$SCRIPT_DIR/setup_data_disk.sh" /dev/nvme0n1 || echo "[WARN] setup_data_disk.sh skipped/failed, continue install"
+fi
+
 cp "$SCRIPT_DIR/app.py" "$APP_DIR/app.py"
 cp "$SCRIPT_DIR/admanager_gui_config.json" "$APP_DIR/admanager_gui_config.json"
 cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
@@ -35,6 +41,7 @@ cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
 [ -f "$SCRIPT_DIR/frpc_setup.py" ] && cp "$SCRIPT_DIR/frpc_setup.py" "$APP_DIR/frpc_setup.py"
 [ -f "$SCRIPT_DIR/frpc_run.sh" ] && cp "$SCRIPT_DIR/frpc_run.sh" "$APP_DIR/frpc_run.sh"
 [ -f "$SCRIPT_DIR/frp_registry.json" ] && cp "$SCRIPT_DIR/frp_registry.json" "$APP_DIR/frp_registry.json"
+[ -f "$SCRIPT_DIR/setup_data_disk.sh" ] && cp "$SCRIPT_DIR/setup_data_disk.sh" "$APP_DIR/setup_data_disk.sh"
 rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
 cp -r "$SCRIPT_DIR/static/." "$APP_DIR/static/"
@@ -42,6 +49,7 @@ mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxto
 chmod 755 "$APP_DIR/app.py"
 [ -f "$APP_DIR/reverse_tunnel.sh" ] && chmod 755 "$APP_DIR/reverse_tunnel.sh"
 [ -f "$APP_DIR/frpc_run.sh" ] && chmod 755 "$APP_DIR/frpc_run.sh"
+[ -f "$APP_DIR/setup_data_disk.sh" ] && chmod 755 "$APP_DIR/setup_data_disk.sh"
 
 cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
 #!/bin/sh

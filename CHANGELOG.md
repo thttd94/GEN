@@ -1,5 +1,9 @@
 # Changelog
 
+## v2026.04.18-13
+
+- integrate `setup_data_disk.sh` into `install.sh` so router install auto-checks and auto-creates `/data` when SSD space is still unallocated, while skipping safely if already prepared
+
 ## v2026.04.18-12
 
 - add `setup_data_disk.sh` to create and mount a reusable `/data` partition on x86 routers with unallocated SSD space
