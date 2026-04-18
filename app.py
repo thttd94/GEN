@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urlparse, urlencode, unquote
+from urllib.parse import urlparse, urlencode, unquote, parse_qs
 import mimetypes
 import json
 import shutil
@@ -2026,6 +2026,29 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         ensure_sessions_exist()
         path = urlparse(self.path).path
+        if path == '/api/xxtouch/remote-screen':
+            try:
+                cfg = load_admanager_config()
+                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+                params = dict(parse_qs(urlparse(self.path).query))
+                machine_no = str((params.get('machine') or [''])[0]).strip()
+                port = str((params.get('port') or [ui.get('port') or '46952'])[0]).strip()
+                machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no})
+                if not machines:
+                    return self._send_json({'ok': False, 'error': 'Không tìm thấy máy remote'}, 404)
+                target = f"http://{machines[0]['ip']}:{port}/screen.html"
+                with urllib.request.urlopen(target, timeout=15) as resp:
+                    data = resp.read()
+                    content_type = resp.headers.get('Content-Type', 'text/html; charset=utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', content_type)
+                self.send_header('Content-Length', str(len(data)))
+                self._send_no_cache_headers()
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as e:
+                return self._send_json({'ok': False, 'error': f'Remote screen lỗi: {e}'}, 502)
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/xxtouch' or path.startswith('/xxtouch/'):
@@ -2305,7 +2328,8 @@ class Handler(BaseHTTPRequestHandler):
                 machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no})
                 if not machines:
                     raise ValueError('Không tìm thấy máy để remote theo Gán IP')
-                return self._send_json({'ok': True, 'url': f"http://{machines[0]['ip']}:{port}/screen.html", 'machine': machines[0]})
+                machine = machines[0]
+                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html"})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}

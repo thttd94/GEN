@@ -1,5 +1,9 @@
 # Changelog
 
+## v2026.04.18-15
+
+- add router-side XXTouch remote-screen proxy endpoint so remote iframe no longer points directly to private `192.15.x.x:46952`
+
 ## v2026.04.18-14
 
 - switch FRP client scaffolding from tcp remote-port mode to HTTP subdomain mode
