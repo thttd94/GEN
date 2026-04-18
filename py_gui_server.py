@@ -192,8 +192,8 @@ class PyGuiServerApp:
 
         ttk.Button(top, text='Lưu cấu hình', command=self.save_ui_config).grid(row=0, column=6, padx=6)
         ttk.Button(top, text='Làm mới', command=self.refresh).grid(row=0, column=7, padx=6)
-        ttk.Button(top, text='Mở 9001', command=self.open_remote_url).grid(row=0, column=8, padx=6)
-        ttk.Button(top, text='Copy URL', command=self.copy_remote_url).grid(row=0, column=9, padx=6)
+        ttk.Button(top, text='Mở FRP', command=self.open_remote_url).grid(row=0, column=8, padx=6)
+        ttk.Button(top, text='Copy FRP', command=self.copy_remote_url).grid(row=0, column=9, padx=6)
         top.columnconfigure(5, weight=1)
 
         self.status_var = tk.StringVar(value='Sẵn sàng')
@@ -393,17 +393,20 @@ class PyGuiServerApp:
     def _selected_router(self):
         sels = self.router_tree.selection()
         if sels:
-            rid = str(sels[0])
+            rid = str(sels[0]).strip()
             for router in self.router_items:
-                if str(router.get('router_id', '')) == rid:
+                if str(router.get('router_id', '')).strip() == rid:
                     return router
-        return self.current_router
+        return None
 
     def _selected_remote_url(self):
         router = self._selected_router()
         if not router:
             return ''
-        return str(router.get('frp_http_url', '')).strip()
+        rid = str(router.get('router_id', '')).strip()
+        if not rid:
+            return ''
+        return frp_http_url_for_router(rid)
 
     def _current_proxy_rows(self):
         if not self.current_session:
@@ -438,20 +441,25 @@ class PyGuiServerApp:
         self._copy_text(text, 'Đã copy toàn bộ Proxy', 'Cấu hình hiện tại chưa có proxy để copy')
 
     def open_remote_url(self):
+        router = self._selected_router()
         url = self._selected_remote_url()
         if not url:
-            messagebox.showinfo('Thiếu URL', 'Router đang chọn chưa có remote_url')
+            messagebox.showinfo('Thiếu URL', 'Router đang chọn chưa có FRP URL')
             return
         webbrowser.open(url)
+        rid = str((router or {}).get('router_id', '')).strip()
+        self.status_var.set(f'Mở FRP: {rid} -> {url}')
 
     def copy_remote_url(self):
+        router = self._selected_router()
         url = self._selected_remote_url()
         if not url:
-            messagebox.showinfo('Thiếu URL', 'Router đang chọn chưa có remote_url')
+            messagebox.showinfo('Thiếu URL', 'Router đang chọn chưa có FRP URL')
             return
         self.root.clipboard_clear()
         self.root.clipboard_append(url)
-        self.status_var.set(f'Đã copy remote URL: {url}')
+        rid = str((router or {}).get('router_id', '')).strip()
+        self.status_var.set(f'Copy FRP: {rid} -> {url}')
 
 
 if __name__ == '__main__':
