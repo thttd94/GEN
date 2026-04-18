@@ -210,10 +210,11 @@ class PyGuiServerApp:
         body.add(right, weight=3)
 
         ttk.Label(left, text='Danh sách Router').pack(anchor='w')
-        self.router_tree = ttk.Treeview(left, columns=('title', 'state', 'last_seen', 'sessions'), show='headings', height=24)
+        self.router_tree = ttk.Treeview(left, columns=('title', 'router_id', 'state', 'last_seen', 'sessions'), show='headings', height=24)
         self.router_tree.pack(fill='both', expand=True, pady=(6, 0))
         for col, text, width in [
-            ('title', 'Router', 150),
+            ('title', 'Router', 120),
+            ('router_id', 'FRP / Router ID', 220),
             ('state', 'State', 70),
             ('last_seen', 'Last Seen', 80),
             ('sessions', 'Cfg', 50),
@@ -292,7 +293,13 @@ class PyGuiServerApp:
         for router in self.router_items:
             last_seen = f"{int(router.get('last_seen_ago', 0) or 0)}s" if router.get('updated_at') else 'never'
             iid = router['router_id']
-            self.router_tree.insert('', 'end', iid=iid, values=(router['router_title'], router['status'], last_seen, len(router.get('sessions', []))))
+            self.router_tree.insert('', 'end', iid=iid, values=(
+                router['router_title'],
+                str(router.get('router_id', '')),
+                router['status'],
+                last_seen,
+                len(router.get('sessions', [])),
+            ))
 
         self.current_router = None
         if previous_router_id:
@@ -444,7 +451,7 @@ class PyGuiServerApp:
             return
         self.root.clipboard_clear()
         self.root.clipboard_append(url)
-        self.status_var.set('Đã copy remote URL')
+        self.status_var.set(f'Đã copy remote URL: {url}')
 
 
 if __name__ == '__main__':
