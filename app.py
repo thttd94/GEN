@@ -1081,6 +1081,7 @@ def load_collector_config():
     cfg = {
         'collector_url': '',
         'router_id': '',
+        'remote_url': '',
         'enabled': False,
         'push_interval_sec': 60,
     }
@@ -1119,6 +1120,7 @@ def push_export_to_collector_once():
     payload = export_all_sessions_payload(include_hidden=True)
     payload['router_id'] = get_router_id()
     payload['router_title'] = get_app_title_prefix()
+    payload['remote_url'] = str(cfg.get('remote_url', '')).strip()
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
     req = urllib.request.Request(
         collector_url + '/api/collector/push',
@@ -2493,6 +2495,7 @@ class Handler(BaseHTTPRequestHandler):
                 cfg.update({
                     'collector_url': str(payload.get('collector_url', cfg.get('collector_url', ''))).strip(),
                     'router_id': str(payload.get('router_id', cfg.get('router_id', ''))).strip(),
+                    'remote_url': str(payload.get('remote_url', cfg.get('remote_url', ''))).strip(),
                     'enabled': bool(payload.get('enabled', cfg.get('enabled', False))),
                     'push_interval_sec': int(payload.get('push_interval_sec', cfg.get('push_interval_sec', 60)) or 60),
                 })

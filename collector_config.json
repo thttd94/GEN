@@ -1,6 +1,7 @@
 {
   "collector_url": "",
   "router_id": "",
+  "remote_url": "",
   "enabled": false,
   "push_interval_sec": 60
 }

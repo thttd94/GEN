@@ -4,6 +4,7 @@
 import json
 import threading
 import urllib.request
+import webbrowser
 from pathlib import Path
 
 import tkinter as tk
@@ -18,7 +19,8 @@ class CollectorProxyGui:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title('Collector Proxy GUI')
-        self.root.geometry('1440x820')
+        self.root.geometry('1560x840')
+        self.router_index = {}
         self._build_ui()
         self._load_config()
 
@@ -29,22 +31,25 @@ class CollectorProxyGui:
         self.collector_var = tk.StringVar(value=DEFAULT_COLLECTOR)
         ttk.Entry(top, textvariable=self.collector_var, width=50).pack(side='left', padx=6)
         ttk.Button(top, text='Làm mới', command=self.refresh).pack(side='left')
+        ttk.Button(top, text='Mở 9001', command=self.open_remote_url).pack(side='left', padx=6)
+        ttk.Button(top, text='Copy URL', command=self.copy_remote_url).pack(side='left')
         self.status_var = tk.StringVar(value='Sẵn sàng')
         ttk.Label(top, textvariable=self.status_var).pack(side='left', padx=10)
 
-        cols = ('router_title', 'router_id', 'session_name', 'machine', 'proxy', 'status', 'note')
+        cols = ('router_title', 'router_id', 'remote_url', 'session_name', 'machine', 'proxy', 'status', 'note')
         self.tree = ttk.Treeview(self.root, columns=cols, show='headings')
         self.tree.pack(fill='both', expand=True, padx=10, pady=10)
         headings = {
             'router_title': 'Router Name',
             'router_id': 'Router ID',
+            'remote_url': 'Remote URL',
             'session_name': 'Cấu hình',
             'machine': 'Máy',
             'proxy': 'Proxy',
             'status': 'Status',
             'note': 'Note',
         }
-        widths = {'router_title': 180, 'router_id': 180, 'session_name': 160, 'machine': 70, 'proxy': 340, 'status': 90, 'note': 240}
+        widths = {'router_title': 170, 'router_id': 170, 'remote_url': 250, 'session_name': 160, 'machine': 70, 'proxy': 320, 'status': 90, 'note': 220}
         for col in cols:
             self.tree.heading(col, text=headings[col])
             self.tree.column(col, width=widths[col], anchor='w')
@@ -72,15 +77,19 @@ class CollectorProxyGui:
             with urllib.request.urlopen(req, timeout=20) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
             rows = []
+            router_index = {}
             for router in data.get('routers', []):
                 router_title = str(router.get('router_title', '')).strip()
                 router_id = str(router.get('router_id', '')).strip()
                 payload = router.get('payload', {}) or {}
+                remote_url = str(payload.get('remote_url', '')).strip()
+                router_index[router_id] = {'router_title': router_title, 'remote_url': remote_url}
                 for session in payload.get('sessions', []):
                     session_name = str(session.get('name', '')).strip()
                     for row in session.get('rows', []):
-                        rows.append((router_title, router_id, session_name, str(row.get('machine', '')).strip(), str(row.get('proxy', '')).strip(), str(row.get('status', '')).strip(), str(row.get('note', '')).strip()))
+                        rows.append((router_title, router_id, remote_url, session_name, str(row.get('machine', '')).strip(), str(row.get('proxy', '')).strip(), str(row.get('status', '')).strip(), str(row.get('note', '')).strip()))
             def update():
+                self.router_index = router_index
                 self.tree.delete(*self.tree.get_children())
                 for item in rows:
                     self.tree.insert('', 'end', values=item)
@@ -89,6 +98,31 @@ class CollectorProxyGui:
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror('Lỗi collector', str(e)))
             self.root.after(0, lambda: self.status_var.set('Lỗi tải collector'))
+
+    def _selected_remote_url(self):
+        sels = self.tree.selection()
+        if not sels:
+            return ''
+        vals = self.tree.item(sels[0], 'values')
+        if len(vals) >= 3:
+            return str(vals[2]).strip()
+        return ''
+
+    def open_remote_url(self):
+        url = self._selected_remote_url()
+        if not url:
+            messagebox.showinfo('Thiếu URL', 'Dòng đang chọn chưa có remote_url')
+            return
+        webbrowser.open(url)
+
+    def copy_remote_url(self):
+        url = self._selected_remote_url()
+        if not url:
+            messagebox.showinfo('Thiếu URL', 'Dòng đang chọn chưa có remote_url')
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(url)
+        self.status_var.set('Đã copy remote URL')
 
 
 if __name__ == '__main__':

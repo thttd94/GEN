@@ -1,5 +1,11 @@
 # Changelog
 
+## v2026.04.18-06
+
+- add `remote_url` support in collector config and router push payload
+- upgrade `collector_proxy_gui.py` with `Mở 9001` and `Copy URL` actions
+- show remote URL in collector GUI so each discovered router can be opened directly from the central tool
+
 ## v2026.04.18-05
 
 - add collector model for remote auto-discovery across routers on different networks
