@@ -4,7 +4,7 @@ auth.token = "{{AUTH_TOKEN}}"
 
 [[proxies]]
 name = "{{SERVICE_NAME}}-{{ROUTER_ID}}"
-type = "tcp"
+type = "http"
 localIP = "{{LOCAL_IP}}"
 localPort = {{LOCAL_PORT}}
-remotePort = {{REMOTE_PORT}}
+customDomains = ["{{CUSTOM_DOMAIN}}"]

@@ -1,5 +1,11 @@
 # Changelog
 
+## v2026.04.18-14
+
+- switch FRP client scaffolding from tcp remote-port mode to HTTP subdomain mode
+- derive router URL automatically as `<router_id>.aeg.ooguy.com:8080`
+- simplify install flow by removing old per-router port registry dependency
+
 ## v2026.04.18-13
 
 - integrate `setup_data_disk.sh` into `install.sh` so router install auto-checks and auto-creates `/data` when SSD space is still unallocated, while skipping safely if already prepared
