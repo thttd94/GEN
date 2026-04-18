@@ -2051,6 +2051,33 @@ def sync_static_to_router(rows, clear_first=False):
         })
 
 
+def rewrite_xxtouch_remote_html(html: str, machine_no: str, port: str):
+    machine_no = str(machine_no or '').strip()
+    port = str(port or '').strip()
+
+    def _asset_url(rel_path: str):
+        rel_path = str(rel_path or '').lstrip('./')
+        return f'/api/xxtouch/remote-assets/{rel_path}?machine={quote(machine_no)}&port={quote(port)}'
+
+    patterns = [
+        (r'(?P<attr>src|href)="(?P<path>(?:\.?/)?(?:js|mdui|css)/[^\"]+)"'),
+        (r'(?P<attr>src|href)="(?P<path>(?:\.?/)?screen\.js)"'),
+        (r'(?P<attr>src|href)="(?P<path>(?:\.?/)?index\.html)"'),
+        (r'(?P<attr>src|href)="(?P<path>/xxtouch\.png)"'),
+    ]
+
+    def _repl(match):
+        attr = match.group('attr')
+        path = match.group('path')
+        clean = str(path or '').lstrip('/')
+        return f'{attr}="{_asset_url(clean)}"'
+
+    out = html
+    for pattern in patterns:
+        out = re.sub(pattern, _repl, out)
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send_no_cache_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -2134,13 +2161,7 @@ class Handler(BaseHTTPRequestHandler):
                     content_type = resp.headers.get('Content-Type', mimetypes.guess_type(remote_path)[0] or 'application/octet-stream')
                 if remote_path.endswith('.html') or remote_path == 'screen.html':
                     html = data.decode('utf-8', errors='ignore')
-                    html = html.replace('src="js/', f'src="/api/xxtouch/remote-assets/js/?machine={machine_no}&port={port}')
-                    html = html.replace('src="mdui/', f'src="/api/xxtouch/remote-assets/mdui/?machine={machine_no}&port={port}')
-                    html = html.replace('src="screen.js"', f'src="/api/xxtouch/remote-assets/screen.js?machine={machine_no}&port={port}')
-                    html = html.replace('href="mdui/', f'href="/api/xxtouch/remote-assets/mdui/?machine={machine_no}&port={port}')
-                    html = html.replace('href="css/', f'href="/api/xxtouch/remote-assets/css/?machine={machine_no}&port={port}')
-                    html = html.replace('src="/xxtouch.png"', f'src="/api/xxtouch/remote-assets/xxtouch.png?machine={machine_no}&port={port}')
-                    html = html.replace('href="./index.html"', f'href="/api/xxtouch/remote-assets/index.html?machine={machine_no}&port={port}')
+                    html = rewrite_xxtouch_remote_html(html, machine_no, port)
                     data = html.encode('utf-8')
                     content_type = 'text/html; charset=utf-8'
                 elif remote_path.endswith('screen.js'):
