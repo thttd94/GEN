@@ -1,5 +1,12 @@
 # Changelog
 
+## v2026.04.18-10
+
+- add reverse SSH tunnel scaffold for Genrouter outbound remote access
+- add `reverse_tunnel.sh`, `reverse_tunnel_config.json`, and init service template
+- extend `install.sh` to deploy and enable reverse tunnel service when configured
+- keep site-side requirement minimal by relying on router outbound connectivity
+
 ## v2026.04.18-09
 
 - redesign `py_gui_server.py` UI into 3 levels: router list -> session list -> proxy list
