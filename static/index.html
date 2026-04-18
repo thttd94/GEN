@@ -243,21 +243,34 @@
         </div>
         <div id="admRemoteWrap" onclick="if(event.target===this) admSetRemoteVisible(false)" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(17,24,39,.72); padding:24px;">
           <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
-            <div style="position:relative; width:min(620px, 98vw); height:min(86vh, 860px); overflow:visible; background:transparent; border-radius:18px;">
-              <button class="btn" type="button" onclick="admSetRemoteVisible(false)" style="position:absolute; top:8px; right:8px; z-index:5; min-width:40px; width:40px; height:40px; padding:0; border-radius:999px; background:rgba(17,24,39,.92); color:#fff; border:2px solid rgba(255,255,255,.95); box-shadow:0 8px 20px rgba(0,0,0,.35);">✕</button>
-              <button class="btn apply" type="button" id="admRemotePrevBtn" onclick="admStepRemote(-1)" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); z-index:4; min-width:58px; width:58px; height:58px; padding:0; border-radius:999px; box-shadow:0 10px 24px rgba(0,0,0,.28);">←</button>
-              <button class="btn apply" type="button" id="admRemoteNextBtn" onclick="admStepRemote(1)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); z-index:4; min-width:58px; width:58px; height:58px; padding:0; border-radius:999px; box-shadow:0 10px 24px rgba(0,0,0,.28);">→</button>
-              <div style="display:grid; grid-template-rows:auto 1fr auto; gap:12px; width:100%; height:100%; justify-items:center;">
-                <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; gap:6px; min-height:58px; padding-top:4px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.35);">
-                  <span id="admRemoteTitle" style="display:inline-flex; align-items:center; justify-content:center; min-width:150px; min-height:38px; padding:0 18px; border-radius:999px; background:rgba(17,24,39,.92); border:1px solid rgba(255,255,255,.2); font-weight:900; font-size:20px; letter-spacing:.4px; box-shadow:0 10px 24px rgba(0,0,0,.26);">MÁY 1</span>
-                  <span id="admRemotePager" style="display:inline-flex; align-items:center; justify-content:center; min-width:84px; min-height:28px; padding:0 12px; border-radius:999px; background:rgba(17,24,39,.76); color:#fff; font-weight:700;">1/1</span>
+            <div style="position:relative; width:min(980px, 98vw); height:min(88vh, 920px); overflow:visible; background:transparent; border-radius:18px;">
+              <button class="btn" type="button" onclick="admSetRemoteVisible(false)" style="position:absolute; top:8px; right:8px; z-index:6; min-width:40px; width:40px; height:40px; padding:0; border-radius:999px; background:rgba(17,24,39,.92); color:#fff; border:2px solid rgba(255,255,255,.95); box-shadow:0 8px 20px rgba(0,0,0,.35);">✕</button>
+              <div style="display:grid; grid-template-rows:auto 1fr; gap:14px; width:100%; height:100%;">
+                <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; gap:4px; min-height:58px; padding-top:4px; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.35);">
+                  <span id="admRemoteTitle" style="display:inline-flex; align-items:center; justify-content:center; min-width:170px; min-height:42px; padding:0 20px; border-radius:999px; background:rgba(17,24,39,.92); border:1px solid rgba(255,255,255,.2); font-weight:900; font-size:20px; letter-spacing:.4px; box-shadow:0 10px 24px rgba(0,0,0,.26);">MÁY 1</span>
+                  <span id="admRemoteSubTitle" style="display:inline-flex; align-items:center; justify-content:center; min-height:22px; padding:0 10px; border-radius:999px; background:rgba(17,24,39,.55); color:#dbeafe; font-weight:700; font-size:12px;">Đang xem remote máy 1</span>
                 </div>
-                <div style="display:flex; justify-content:center; align-items:center; min-height:0; width:100%; padding:0 74px; box-sizing:border-box;">
-                  <div style="width:min(420px, calc(98vw - 180px)); height:min(76vh, 770px); overflow:hidden; border-radius:18px; background:#111827; box-shadow:0 16px 40px rgba(0,0,0,.35);">
-                    <iframe id="admRemoteFrame" src="about:blank" loading="lazy" referrerpolicy="no-referrer" style="width:1280px; height:820px; border:none; background:#fff; margin-left:-548px; margin-top:-64px;"></iframe>
+                <div style="display:grid; grid-template-columns:minmax(340px, 1fr) 180px; gap:16px; align-items:stretch; min-height:0;">
+                  <div style="display:flex; flex-direction:column; min-height:0; background:#111827; border-radius:18px; box-shadow:0 16px 40px rgba(0,0,0,.35); overflow:hidden;">
+                    <div style="display:flex; justify-content:center; align-items:center; padding:12px 16px; background:#0f172a; color:#fff; font-weight:800;">REMOTE ĐANG MỞ</div>
+                    <div style="display:flex; justify-content:center; align-items:center; min-height:0; flex:1; padding:10px; background:#0b1220;">
+                      <div style="width:min(420px, 100%); height:min(76vh, 770px); overflow:hidden; border-radius:18px; background:#111827; box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);">
+                        <iframe id="admRemoteFrame" src="about:blank" loading="lazy" referrerpolicy="no-referrer" style="width:1280px; height:820px; border:none; background:#fff; margin-left:-548px; margin-top:-64px;"></iframe>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="display:flex; flex-direction:column; min-height:0; background:#0b0b0b; border-radius:18px; padding:12px 10px; box-shadow:0 16px 40px rgba(0,0,0,.35);">
+                    <div style="display:flex; justify-content:center; margin-bottom:10px;">
+                      <span style="display:inline-flex; align-items:center; justify-content:center; min-width:108px; height:34px; padding:0 12px; background:#fff; color:#111827; border-radius:6px; font-weight:900; letter-spacing:.5px;">CHỌN MÁY</span>
+                    </div>
+                    <div id="admRemoteMachineGrid" style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px 8px; align-content:start; justify-content:stretch; min-height:0; flex:1; overflow:auto; padding:6px 4px 10px 4px;"></div>
+                    <div style="display:grid; grid-template-columns:44px 1fr 44px; gap:8px; align-items:center; margin-top:8px;">
+                      <button class="btn apply" type="button" id="admRemotePagePrevBtn" onclick="admStepRemotePage(-1)" style="min-width:44px; width:44px; height:36px; padding:0; border-radius:8px;">←</button>
+                      <span id="admRemotePager" style="display:inline-flex; align-items:center; justify-content:center; width:100%; min-height:36px; border-radius:8px; background:#fff; color:#111827; font-weight:800;">1/1</span>
+                      <button class="btn apply" type="button" id="admRemotePageNextBtn" onclick="admStepRemotePage(1)" style="min-width:44px; width:44px; height:36px; padding:0; border-radius:8px;">→</button>
+                    </div>
                   </div>
                 </div>
-                <div style="display:flex; justify-content:center; align-items:center; min-height:14px;"></div>
               </div>
             </div>
           </div>
@@ -1155,13 +1168,44 @@
       const total = admRemoteMachines.length;
       const current = total ? admRemoteMachines[admRemoteIndex] : '';
       const title = document.getElementById('admRemoteTitle');
+      const subTitle = document.getElementById('admRemoteSubTitle');
       const pager = document.getElementById('admRemotePager');
-      const prevBtn = document.getElementById('admRemotePrevBtn');
-      const nextBtn = document.getElementById('admRemoteNextBtn');
+      const pagePrevBtn = document.getElementById('admRemotePagePrevBtn');
+      const pageNextBtn = document.getElementById('admRemotePageNextBtn');
+      const grid = document.getElementById('admRemoteMachineGrid');
+      const pageSize = 64;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const currentPage = total ? Math.floor(admRemoteIndex / pageSize) + 1 : 1;
+      const start = (currentPage - 1) * pageSize;
+      const end = Math.min(start + pageSize, total);
       if (title) title.textContent = current ? `MÁY ${current}` : 'REMOTE';
-      if (pager) pager.textContent = total ? `${admRemoteIndex + 1}/${total}` : '0/0';
-      if (prevBtn) prevBtn.disabled = total <= 1 || admRemoteIndex <= 0;
-      if (nextBtn) nextBtn.disabled = total <= 1 || admRemoteIndex >= total - 1;
+      if (subTitle) subTitle.textContent = current ? `Đang xem remote máy ${current}` : 'Chưa chọn máy';
+      if (pager) pager.textContent = `${currentPage}/${totalPages}`;
+      if (pagePrevBtn) pagePrevBtn.disabled = currentPage <= 1;
+      if (pageNextBtn) pageNextBtn.disabled = currentPage >= totalPages;
+      if (grid) {
+        const items = admRemoteMachines.slice(start, end).map((machine, idx) => {
+          const realIndex = start + idx;
+          const active = realIndex === admRemoteIndex;
+          return `<button class="btn" type="button" onclick="admLoadRemoteAt(${realIndex})" style="min-width:0; width:100%; height:32px; padding:0 4px; border-radius:4px; border:2px solid ${active ? '#22c55e' : '#e5e7eb'}; background:${active ? '#dcfce7' : '#ffffff'}; color:#111827; font-weight:800; box-shadow:${active ? '0 0 0 1px rgba(34,197,94,.25)' : 'none'};">${machine}</button>`;
+        });
+        grid.innerHTML = items.join('');
+      }
+    }
+    async function admStepRemotePage(step){
+      if (!admRemoteMachines.length) return;
+      const pageSize = 64;
+      const currentPage = Math.floor(admRemoteIndex / pageSize);
+      const totalPages = Math.ceil(admRemoteMachines.length / pageSize);
+      const nextPage = currentPage + Number(step || 0);
+      if (nextPage < 0 || nextPage >= totalPages) return;
+      const nextIndex = nextPage * pageSize;
+      try {
+        await admLoadRemoteAt(nextIndex);
+      } catch (e) {
+        admLog(`[ERR] remote page: ${e.message}`);
+        admSetStatus('Lỗi chuyển trang remote');
+      }
     }
     async function admLoadRemoteAt(index){
       if (!admRemoteMachines.length) return;
