@@ -2109,7 +2109,10 @@ def xxtouch_fetch_remote_asset(target: str, remote_path: str, timeout=15):
         chunks = []
         total = 0
         while True:
-            chunk = resp.read(min(64 * 1024, max_bytes - total))
+            remain = max_bytes - total
+            if remain <= 0:
+                break
+            chunk = resp.read(min(64 * 1024, remain))
             if not chunk:
                 break
             chunks.append(chunk)
@@ -2117,6 +2120,37 @@ def xxtouch_fetch_remote_asset(target: str, remote_path: str, timeout=15):
             if total >= max_bytes:
                 break
         return b''.join(chunks), content_type
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def xxtouch_proxy_target(cfg, machine_no: str, port: str):
+    machine_no = str(machine_no or '').strip()
+    port = str(port or '').strip() or '46952'
+    machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no})
+    if not machines:
+        raise ValueError('Không tìm thấy máy remote')
+    target_ip = str(machines[0].get('ip') or '').strip()
+    if not target_ip:
+        raise ValueError('IP máy remote không hợp lệ')
+    return machines[0], target_ip, port
+
+
+def xxtouch_forward_post(ip: str, port: str, remote_path: str, body: bytes, content_type: str, timeout=20):
+    conn = http.client.HTTPConnection(str(ip).strip(), int(port), timeout=timeout)
+    try:
+        headers = {'Connection': 'close'}
+        if content_type:
+            headers['Content-Type'] = content_type
+        conn.request('POST', remote_path, body=body or b'', headers=headers)
+        resp = conn.getresponse()
+        data = resp.read()
+        resp_ct = resp.getheader('Content-Type') or 'application/json; charset=utf-8'
+        status = int(getattr(resp, 'status', 200) or 200)
+        return status, data, resp_ct
     finally:
         try:
             conn.close()
@@ -2195,9 +2229,7 @@ class Handler(BaseHTTPRequestHandler):
                 params = dict(parse_qs(urlparse(self.path).query))
                 machine_no = str((params.get('machine') or [''])[0]).strip()
                 port = str((params.get('port') or [ui.get('port') or '46952'])[0]).strip()
-                machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no})
-                if not machines:
-                    return self._send_json({'ok': False, 'error': 'Không tìm thấy máy remote'}, 404)
+                _machine, target_ip, port = xxtouch_proxy_target(cfg, machine_no, port)
                 remote_path = 'screen.html'
                 asset_prefix = '/api/xxtouch/remote-proxy/'
                 if path.startswith('/api/xxtouch/remote-assets/'):
@@ -2206,9 +2238,6 @@ class Handler(BaseHTTPRequestHandler):
                 elif path.startswith('/api/xxtouch/remote-proxy/'):
                     remote_path = path[len('/api/xxtouch/remote-proxy/'):].lstrip('/') or 'screen.html'
                     asset_prefix = '/api/xxtouch/remote-proxy/'
-                target_ip = str(machines[0].get('ip') or '').strip()
-                if not target_ip:
-                    return self._send_json({'ok': False, 'error': 'IP máy remote không hợp lệ'}, 400)
                 target = f"http://{target_ip}:{port}/{remote_path}"
                 data, content_type = xxtouch_fetch_remote_asset(target, remote_path, timeout=15)
                 if remote_path.endswith('.html') or remote_path == 'screen.html':
@@ -2220,6 +2249,7 @@ class Handler(BaseHTTPRequestHandler):
                     html = html.replace('href="css/', f'href="{asset_prefix}css/')
                     html = html.replace('src="/xxtouch.png"', f'src="{asset_prefix}xxtouch.png')
                     html = html.replace('href="./index.html"', f'href="{asset_prefix}index.html')
+                    html = html.replace('src="snapshot?', f'src="{asset_prefix}snapshot?')
                     sep = '&' if '?' in asset_prefix else '?'
                     html = html.replace(f'{asset_prefix}js/', f'{asset_prefix}js/{sep}machine={quote(machine_no)}&port={quote(port)}')
                     html = html.replace(f'{asset_prefix}mdui/', f'{asset_prefix}mdui/{sep}machine={quote(machine_no)}&port={quote(port)}')
@@ -2227,13 +2257,15 @@ class Handler(BaseHTTPRequestHandler):
                     html = html.replace(f'{asset_prefix}css/', f'{asset_prefix}css/{sep}machine={quote(machine_no)}&port={quote(port)}')
                     html = html.replace(f'{asset_prefix}xxtouch.png', f'{asset_prefix}xxtouch.png{sep}machine={quote(machine_no)}&port={quote(port)}')
                     html = html.replace(f'{asset_prefix}index.html', f'{asset_prefix}index.html{sep}machine={quote(machine_no)}&port={quote(port)}')
+                    html = html.replace(f'{asset_prefix}snapshot?', f'{asset_prefix}snapshot?machine={quote(machine_no)}&port={quote(port)}&')
                     data = html.encode('utf-8')
                     content_type = 'text/html; charset=utf-8'
                 elif remote_path.endswith('screen.js'):
                     js = data.decode('utf-8', errors='ignore')
                     js = js.replace('"ws://" + document.domain + ":46968"', f'"ws://{target_ip}:46968"')
-                    js = js.replace('$.post("/write_file"', f'$.post("http://{target_ip}:{port}/write_file"')
-                    js = js.replace('$.post("/command_spawn"', f'$.post("http://{target_ip}:{port}/command_spawn"')
+                    js = js.replace('$.post("/write_file"', f'$.post("/api/xxtouch/remote-proxy/write_file?machine={quote(machine_no)}&port={quote(port)}"')
+                    js = js.replace('$.post("/command_spawn"', f'$.post("/api/xxtouch/remote-proxy/command_spawn?machine={quote(machine_no)}&port={quote(port)}"')
+                    js = js.replace('"snapshot?ext=', f'"/api/xxtouch/remote-proxy/snapshot?machine={quote(machine_no)}&port={quote(port)}&ext=')
                     data = js.encode('utf-8')
                     content_type = 'application/javascript; charset=utf-8'
                 self.send_response(200)
@@ -2295,6 +2327,28 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         ensure_sessions_exist()
         path = urlparse(self.path).path
+        if path.startswith('/api/xxtouch/remote-proxy/'):
+            try:
+                cfg = load_admanager_config()
+                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+                params = dict(parse_qs(urlparse(self.path).query))
+                machine_no = str((params.get('machine') or [''])[0]).strip()
+                port = str((params.get('port') or [ui.get('port') or '46952'])[0]).strip()
+                _machine, target_ip, port = xxtouch_proxy_target(cfg, machine_no, port)
+                remote_path = '/' + path[len('/api/xxtouch/remote-proxy/'):].lstrip('/')
+                length = int(self.headers.get('Content-Length', '0') or '0')
+                raw_body = self.rfile.read(length) if length else b''
+                content_type = str(self.headers.get('Content-Type') or '').strip()
+                status, data, resp_ct = xxtouch_forward_post(target_ip, port, remote_path, raw_body, content_type, timeout=20)
+                self.send_response(status)
+                self.send_header('Content-Type', resp_ct)
+                self.send_header('Content-Length', str(len(data)))
+                self._send_no_cache_headers()
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as e:
+                return self._send_json({'ok': False, 'error': f'Remote proxy POST lỗi: {e}'}, 502)
         length = int(self.headers.get('Content-Length', '0') or '0')
         body = self.rfile.read(length) if length else b'{}'
         payload = json.loads(body.decode('utf-8') or '{}')
