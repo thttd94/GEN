@@ -1361,6 +1361,19 @@
       if (frame) frame.src = String(data.url || 'about:blank');
       admSetStatus(`Đang hiện REMOTE máy ${machine}`);
     }
+    function admRemoteKeyHandler(ev){
+      if (!admRemoteVisible) return;
+      const tag = String(ev.target?.tagName || '').toUpperCase();
+      const editable = ev.target?.isContentEditable || ['INPUT','TEXTAREA','SELECT'].includes(tag);
+      if (editable) return;
+      if (ev.key === 'ArrowLeft') {
+        ev.preventDefault();
+        admStepRemote(-1);
+      } else if (ev.key === 'ArrowRight') {
+        ev.preventDefault();
+        admStepRemote(1);
+      }
+    }
     async function admStepRemote(step){
       if (!admRemoteMachines.length) return;
       const nextIndex = admRemoteIndex + Number(step || 0);
@@ -1621,6 +1634,7 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') admPersistUiStateSync();
     });
+    document.addEventListener('keydown', admRemoteKeyHandler);
   </script>
 </body>
 </html>
