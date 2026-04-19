@@ -166,9 +166,9 @@
             <tr>
               <th style="width:60px;">#</th>
               <th style="width:170px;">MAC</th>
-              <th style="width:135px;">IP</th>
+              <th style="width:135px; cursor:pointer; user-select:none;" onclick="sortProxyManagerRows('ip')">IP ↑↓</th>
               <th style="width:95px;">Status</th>
-              <th style="width:90px;">MÁY</th>
+              <th style="width:90px; cursor:pointer; user-select:none;" onclick="sortProxyManagerRows('machine')">MÁY ↑↓</th>
               <th class="proxy-cell">Proxy</th>
               <th class="note-cell">Note</th>
               <th style="width:190px;">
@@ -405,7 +405,30 @@
       return [...new Set((currentRows || []).map(r => Number(String(r?.machine || '').trim())).filter(Number.isFinite))].sort((a,b)=>a-b);
     }
 
+    let proxyManagerSortKey = '';
+    let proxyManagerSortDir = 1;
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    function compareProxyIp(a, b){
+      const pa = String(a || '').trim().split('.').map(v => Number(v));
+      const pb = String(b || '').trim().split('.').map(v => Number(v));
+      const va = pa.length === 4 && pa.every(Number.isFinite) ? (((pa[0]*256)+pa[1])*256+pa[2])*256+pa[3] : String(a || '').trim().toLowerCase();
+      const vb = pb.length === 4 && pb.every(Number.isFinite) ? (((pb[0]*256)+pb[1])*256+pb[2])*256+pb[3] : String(b || '').trim().toLowerCase();
+      if (va < vb) return -1;
+      if (va > vb) return 1;
+      return 0;
+    }
+    function sortProxyManagerRows(key){
+      if (proxyManagerSortKey === key) proxyManagerSortDir *= -1;
+      else { proxyManagerSortKey = key; proxyManagerSortDir = 1; }
+      currentRows = [...currentRows].sort((a, b) => {
+        let cmp = 0;
+        if (key === 'ip') cmp = compareProxyIp(a?.ip, b?.ip);
+        else if (key === 'machine') cmp = (Number(a?.machine || 0) - Number(b?.machine || 0));
+        if (cmp === 0) cmp = compareProxyIp(a?.ip, b?.ip);
+        return cmp * proxyManagerSortDir;
+      });
+      render();
+    }
     function proxyMachineNoteText(){
       const nums = [...new Set((currentRows || []).map(r => Number(String(r?.machine || '').trim())).filter(Number.isFinite))].sort((a,b)=>a-b);
       if (!nums.length) return 'Máy trong router này: chưa có dữ liệu';
