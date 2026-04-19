@@ -53,6 +53,7 @@ XXTOUCH_WORK_DIR = BASE_DIR / 'xxtouch_jobs'
 XXTOUCH_DATA_DIR = XXTOUCH_WORK_DIR / 'data'
 XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
 XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
+NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'nurture_tiktok_v35.lua'
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
 ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui_config.json')
@@ -1064,6 +1065,11 @@ LUA'''
         xxtouch_spawn_checked(ip, port, quit_script, timeout=40)
         logs.append(f'[{label}] đóng ứng dụng ok')
         return True, logs
+    if action == 'nurture_tiktok':
+        nurture_script = NURTURE_TIKTOK_SCRIPT_FILE.read_text(encoding='utf-8')
+        xxtouch_spawn_checked(ip, port, f"lua - <<'LUA'\n{nurture_script}\nLUA", timeout=14400)
+        logs.append(f'[{label}] nuôi phôi TikTok ok')
+        return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
     return False, logs
 
@@ -1078,6 +1084,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'remove_tiktok': 'Gỡ app TIKTOK',
         'install_tiktok': 'Cài app TIKTOK',
         'quit_apps': 'Đóng ứng dụng',
+        'nurture_tiktok': 'Nuôi phôi TikTok',
         'send_files': 'Gửi file',
     }
     success_label_map = {
@@ -1089,6 +1096,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'remove_tiktok': 'gỡ app TIKTOK thành công',
         'install_tiktok': 'cài app TIKTOK thành công',
         'quit_apps': 'đóng ứng dụng thành công',
+        'nurture_tiktok': 'nuôi phôi TikTok thành công',
         'send_files': 'gửi file thành công',
     }
     fail_label_map = {
@@ -1100,6 +1108,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'remove_tiktok': 'chưa gỡ được app TIKTOK',
         'install_tiktok': 'chưa cài được app TIKTOK',
         'quit_apps': 'chưa đóng được',
+        'nurture_tiktok': 'chưa nuôi phôi được TikTok',
         'send_files': 'chưa gửi được file',
     }
     success_label = success_label_map.get(action, f'{action_label_map.get(action, action)} thành công')

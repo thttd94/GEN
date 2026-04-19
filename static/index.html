@@ -238,7 +238,7 @@
                 </select>
               </div>
               <div style="display:grid; gap:14px; max-width:220px;">
-                <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi')">Nuôi Phôi</button>
+                <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi','nurture_tiktok')">Nuôi Phôi</button>
                 <button class="btn apply" onclick="admRunGroup3Action('Chạy Event Video 180')">Chạy Event Video 180</button>
                 <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD 20p')">Chạy Event DD 20p</button>
                 <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD hằng ngày')">Chạy Event DD hằng ngày</button>
@@ -1464,12 +1464,20 @@
       admSetStatus('Đang phát triển');
       admLog(`[DEV] ${name}: đang phát triển`);
     }
-    function admRunGroup3Action(name){
+    async function admRunGroup3Action(name, action=''){
       const appValue = document.getElementById('admGroup3App')?.value || 'tiktok_lite';
       const appLabel = appValue === 'tiktok' ? 'TikTok' : 'TikTok Lite';
+      admPersistUiState();
+      if (action === 'nurture_tiktok') {
+        if (appValue !== 'tiktok') {
+          admSetStatus('Nuôi Phôi hiện chỉ chạy cho TikTok');
+          admLog(`[DEV] ${name}: chỉ hỗ trợ TikTok`);
+          return;
+        }
+        return admRunSimpleAction(action);
+      }
       admSetStatus(`Đã chọn ${appLabel} cho nhóm 3`);
       admLog(`[DEV] ${name}: đang chọn app ${appLabel}`);
-      admPersistUiState();
     }
     async function admInit(){
       const data = await fetchJSON('/api/admanager/config');
