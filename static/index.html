@@ -226,6 +226,7 @@
                 <button class="btn apply" onclick="admRunSimpleAction('remove_tiktok')">Gỡ app TIKTOK</button>
                 <button class="btn apply" onclick="admRunSimpleAction('install_tiktok')">Cài app TIKTOK</button>
                 <button class="btn apply" onclick="admMarkDeveloping('cài app TIKTOK LITE')">Cài app TIKTOK LITE</button>
+                <button class="btn apply" onclick="admRunSimpleAction('quit_apps')">Đóng Ứng Dụng</button>
               </div>
             </div>
             <div style="border:2px solid #d1d5db; border-radius:10px; padding:18px; min-height:240px; background:#fff;">
@@ -1115,6 +1116,7 @@
         clear_app: 'Clear App',
         remove_tiktok_lite: 'Gỡ TikTok Lite',
         install_tiktok: 'Cài TikTok',
+        quit_apps: 'Đóng Ứng Dụng',
       };
       return map[action] || String(action || '').trim() || 'Action';
     }
