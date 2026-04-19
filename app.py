@@ -2613,11 +2613,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not machines:
                     raise ValueError('Không tìm thấy máy để remote theo Gán IP')
                 machine = machines[0]
-                remote_online = get_xxtouch_remote_online_info()
-                remote_http_url = str(remote_online.get('http_url') or '').rstrip('/')
-                remote_ws_url = str(remote_online.get('ws_url') or '').strip()
-                remote_public_url = f"{remote_http_url}/screen.html?machine={machine_no}&port={port}" if remote_http_url else ''
-                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'proxy_url': f"/api/xxtouch/remote-proxy/screen.html?machine={machine_no}&port={port}", 'public_url': remote_public_url, 'public_ws_url': remote_ws_url, 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-proxy/?machine={machine_no}&port={port}", 'machine_note': router_ctx.get('note', '')})
+                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-assets/?machine={machine_no}&port={port}", 'machine_note': router_ctx.get('note', '')})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}

@@ -1310,8 +1310,7 @@
       await new Promise(r => setTimeout(r, 120));
       const data = await fetchJSON('/api/xxtouch/remote-link', {method:'POST', body: JSON.stringify({...admState(), machine})});
       if (!data.url) throw new Error('Không lấy được link remote');
-      const remoteUrl = String(data.proxy_url || data.url || 'about:blank');
-      if (frame) frame.src = remoteUrl;
+      if (frame) frame.src = String(data.url || 'about:blank');
       admSetStatus(`Đang hiện REMOTE máy ${machine}`);
     }
     async function admStepRemote(step){
