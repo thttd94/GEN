@@ -2551,7 +2551,7 @@ class Handler(BaseHTTPRequestHandler):
                             except Exception as e:
                                 logs.append(f"[{m['label']}] lỗi gửi file: {e}")
                     else:
-                        max_workers = min(8, len(machines))
+                        max_workers = max(1, len(machines))
                         with ThreadPoolExecutor(max_workers=max_workers) as ex:
                             future_map = {ex.submit(xxtouch_send_files_to_machine, m, port, files, '/var/mobile/Media/1ferver/lua/examples'): m for m in machines}
                             ordered_results = []
@@ -2583,7 +2583,7 @@ class Handler(BaseHTTPRequestHandler):
                         except Exception as e:
                             logs.append(f"[{m['label']}] lỗi: {e}")
                 else:
-                    max_workers = min(16, len(machines))
+                    max_workers = max(1, len(machines))
                     with ThreadPoolExecutor(max_workers=max_workers) as ex:
                         future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action): m for m in machines}
                         ordered_results = []
