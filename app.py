@@ -1067,6 +1067,50 @@ LUA'''
     logs.append(f'[{label}] action chưa hỗ trợ')
     return False, logs
 
+def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_indexes):
+    total = len(machines or [])
+    action_label_map = {
+        'reboot': 'Reboot',
+        'home': 'Home',
+        'lock_home': 'Lock Home',
+        'clear_app': 'Clear App',
+        'remove_tiktok_lite': 'Gỡ app TIKTOK LITE',
+        'remove_tiktok': 'Gỡ app TIKTOK',
+        'install_tiktok': 'Cài app TIKTOK',
+        'quit_apps': 'Đóng ứng dụng',
+        'send_files': 'Gửi file',
+    }
+    success_label_map = {
+        'reboot': 'reboot thành công',
+        'home': 'home thành công',
+        'lock_home': 'lock home thành công',
+        'clear_app': 'clear app thành công',
+        'remove_tiktok_lite': 'gỡ app TIKTOK LITE thành công',
+        'remove_tiktok': 'gỡ app TIKTOK thành công',
+        'install_tiktok': 'cài app TIKTOK thành công',
+        'quit_apps': 'đóng ứng dụng thành công',
+        'send_files': 'gửi file thành công',
+    }
+    fail_label_map = {
+        'reboot': 'chưa reboot được',
+        'home': 'chưa home được',
+        'lock_home': 'chưa lock home được',
+        'clear_app': 'chưa clear app được',
+        'remove_tiktok_lite': 'chưa gỡ được app TIKTOK LITE',
+        'remove_tiktok': 'chưa gỡ được app TIKTOK',
+        'install_tiktok': 'chưa cài được app TIKTOK',
+        'quit_apps': 'chưa đóng được',
+        'send_files': 'chưa gửi được file',
+    }
+    success_label = success_label_map.get(action, f'{action_label_map.get(action, action)} thành công')
+    failed_indexes = [str(int(x)) for x in (failed_indexes or []) if str(x).strip()]
+    if not failed_indexes:
+        return f'{success_label.capitalize()} cho {ok_count}/{total}'
+    fail_count = len(failed_indexes)
+    fail_label = fail_label_map.get(action, f'chưa chạy được {action_label_map.get(action, action)}')
+    return f'{success_label.capitalize()} cho {ok_count}/{total}. {fail_count} máy lỗi {fail_label}: {", ".join(failed_indexes)}'
+
+
 def load_notes():
     if not NOTES_FILE.exists():
         return {}
@@ -2572,7 +2616,12 @@ class Handler(BaseHTTPRequestHandler):
                             logs.extend(item['lines'])
                             if item['ok']:
                                 ok_count += 1
-                    return self._send_json({'ok': True, 'logs': logs, 'message': f'send_files: xong {ok_count}/{len(machines)} máy'})
+                    failed_indexes = [int(m.get('index') or 0) for m in machines if int(m.get('index') or 0) not in {int(mm.get('index') or 0) for mm in machines[:0]}]
+                    failed_indexes = []
+                    for m in machines:
+                        pass
+                    return self._send_json({'ok': True, 'logs': logs, 'message': xxtouch_build_action_summary('send_files', machines, ok_count, failed_indexes)})
+                failed_indexes = []
                 if len(machines) <= 1:
                     for m in machines:
                         try:
@@ -2580,8 +2629,11 @@ class Handler(BaseHTTPRequestHandler):
                             logs.extend(lines)
                             if ok:
                                 ok_count += 1
+                            else:
+                                failed_indexes.append(int(m.get('index') or 0))
                         except Exception as e:
                             logs.append(f"[{m['label']}] lỗi: {e}")
+                            failed_indexes.append(int(m.get('index') or 0))
                 else:
                     max_workers = max(1, len(machines))
                     with ThreadPoolExecutor(max_workers=max_workers) as ex:
@@ -2604,7 +2656,9 @@ class Handler(BaseHTTPRequestHandler):
                         logs.extend(item['lines'])
                         if item['ok']:
                             ok_count += 1
-                return self._send_json({'ok': True, 'logs': logs, 'message': f'{action}: xong {ok_count}/{len(machines)} máy'})
+                        else:
+                            failed_indexes.append(int(item.get('index') or 0))
+                return self._send_json({'ok': True, 'logs': logs, 'message': xxtouch_build_action_summary(action, machines, ok_count, failed_indexes)})
             if path == '/api/xxtouch/remote-link':
                 cfg = load_admanager_config()
                 state = payload if isinstance(payload, dict) else {}
