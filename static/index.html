@@ -1527,21 +1527,24 @@
       admClearLog();
       admLog(`Máy: ${admSelectedMachineText()}`);
       try {
+        const summarizeScanRows = (rows) => {
+          const grouped = new Map();
+          (rows || []).forEach(r => {
+            const reason = String(r?.error || 'unknown').trim() || 'unknown';
+            if (!grouped.has(reason)) grouped.set(reason, []);
+            grouped.get(reason).push(String(r?.index || '').trim());
+          });
+          return Array.from(grouped.entries()).map(([reason, indexes]) => `${reason}: ${indexes.join(', ')}`);
+        };
         const data = await fetchJSON('/api/xxtouch/scan-devices', {method:'POST', body: JSON.stringify(state)});
         admInfoRows = data.rows || [];
         admRenderInfo();
         const onlineRows = admInfoRows.filter(r => r.status === 'online');
         const waitingRows = admInfoRows.filter(r => r.status === 'waiting');
         const offlineRows = admInfoRows.filter(r => !['online','waiting'].includes(r.status));
-        const onlineText = onlineRows.map(r => `${r.index} → ${r.ip}`).join(', ') || 'không có';
-        const waitingText = waitingRows.map(r => `${r.index} → ${r.ip} (${String(r.error || 'đang scan').trim()})`).join(', ') || 'không có';
-        const offlineText = offlineRows.map(r => {
-          const reason = String(r.error || '').trim();
-          return reason ? `${r.index} → ${r.ip} (${reason})` : `${r.index} → ${r.ip}`;
-        }).join(', ') || 'không có';
-        admLog(`Online: ${onlineText}`);
-        if (waitingRows.length) admLog(`Đang scan: ${waitingText}`);
-        admLog(`Offline: ${offlineText}`);
+        admLog(`Online: ${onlineRows.length} máy`);
+        summarizeScanRows(waitingRows).forEach(line => admLog(`Đang scan >> ${line}`));
+        summarizeScanRows(offlineRows).forEach(line => admLog(`Offline >> ${line}`));
         admSetStatus(`Online ${onlineRows.length} / Waiting ${waitingRows.length} / Offline ${offlineRows.length}`);
       } catch (e) {
         admInfoRows = [];
