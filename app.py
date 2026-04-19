@@ -2,6 +2,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse, urlencode, unquote, parse_qs
+import http.client
 import mimetypes
 import json
 import shutil
@@ -576,6 +577,9 @@ def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range,
     prefix = router_obj.get('machinePrefix') or (router_key + '-may')
     out = []
     for i, ip in idx_ip:
+        ip = str(ip or '').strip()
+        if not ip:
+            continue
         if i in chosen_idx:
             out.append({'index': i, 'ip': ip, 'label': f'{prefix}{i:02d}'})
     return out
@@ -2078,6 +2082,48 @@ def rewrite_xxtouch_remote_html(html: str, machine_no: str, port: str):
     return out
 
 
+def xxtouch_fetch_remote_asset(target: str, remote_path: str, timeout=15):
+    parsed = urlparse(target)
+    host = parsed.hostname or ''
+    port = int(parsed.port or 80)
+    path = parsed.path or '/'
+    if parsed.query:
+        path += '?' + parsed.query
+    conn = http.client.HTTPConnection(host, port, timeout=timeout)
+    try:
+        conn.request('GET', path, headers={'Connection': 'close', 'User-Agent': 'proxy-manager-xxtouch/1.0'})
+        resp = conn.getresponse()
+        content_type = resp.getheader('Content-Type') or mimetypes.guess_type(remote_path)[0] or 'application/octet-stream'
+        remote_lower = str(remote_path or '').lower()
+        max_bytes = 512 * 1024
+        if remote_lower.endswith('.html') or remote_lower.endswith('.js') or remote_lower.endswith('.css') or remote_lower.endswith('.json'):
+            max_bytes = 2 * 1024 * 1024
+        content_length = resp.getheader('Content-Length')
+        if content_length:
+            try:
+                expected = min(int(content_length), max_bytes)
+                data = resp.read(expected)
+                return data, content_type
+            except Exception:
+                pass
+        chunks = []
+        total = 0
+        while True:
+            chunk = resp.read(min(64 * 1024, max_bytes - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total >= max_bytes:
+                break
+        return b''.join(chunks), content_type
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send_no_cache_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -2142,7 +2188,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         ensure_sessions_exist()
         path = urlparse(self.path).path
-        if path == '/api/xxtouch/remote-screen' or path.startswith('/api/xxtouch/remote-assets/'):
+        if path == '/api/xxtouch/remote-screen' or path.startswith('/api/xxtouch/remote-assets/') or path.startswith('/api/xxtouch/remote-proxy/'):
             try:
                 cfg = load_admanager_config()
                 ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
@@ -2153,22 +2199,41 @@ class Handler(BaseHTTPRequestHandler):
                 if not machines:
                     return self._send_json({'ok': False, 'error': 'Không tìm thấy máy remote'}, 404)
                 remote_path = 'screen.html'
+                asset_prefix = '/api/xxtouch/remote-proxy/'
                 if path.startswith('/api/xxtouch/remote-assets/'):
                     remote_path = path[len('/api/xxtouch/remote-assets/'):].lstrip('/') or 'screen.html'
-                target = f"http://{machines[0]['ip']}:{port}/{remote_path}"
-                with urllib.request.urlopen(target, timeout=15) as resp:
-                    data = resp.read()
-                    content_type = resp.headers.get('Content-Type', mimetypes.guess_type(remote_path)[0] or 'application/octet-stream')
+                    asset_prefix = '/api/xxtouch/remote-assets/'
+                elif path.startswith('/api/xxtouch/remote-proxy/'):
+                    remote_path = path[len('/api/xxtouch/remote-proxy/'):].lstrip('/') or 'screen.html'
+                    asset_prefix = '/api/xxtouch/remote-proxy/'
+                target_ip = str(machines[0].get('ip') or '').strip()
+                if not target_ip:
+                    return self._send_json({'ok': False, 'error': 'IP máy remote không hợp lệ'}, 400)
+                target = f"http://{target_ip}:{port}/{remote_path}"
+                data, content_type = xxtouch_fetch_remote_asset(target, remote_path, timeout=15)
                 if remote_path.endswith('.html') or remote_path == 'screen.html':
                     html = data.decode('utf-8', errors='ignore')
-                    html = rewrite_xxtouch_remote_html(html, machine_no, port)
+                    html = html.replace('src="js/', f'src="{asset_prefix}js/')
+                    html = html.replace('src="mdui/', f'src="{asset_prefix}mdui/')
+                    html = html.replace('src="screen.js"', f'src="{asset_prefix}screen.js')
+                    html = html.replace('href="mdui/', f'href="{asset_prefix}mdui/')
+                    html = html.replace('href="css/', f'href="{asset_prefix}css/')
+                    html = html.replace('src="/xxtouch.png"', f'src="{asset_prefix}xxtouch.png')
+                    html = html.replace('href="./index.html"', f'href="{asset_prefix}index.html')
+                    sep = '&' if '?' in asset_prefix else '?'
+                    html = html.replace(f'{asset_prefix}js/', f'{asset_prefix}js/{sep}machine={quote(machine_no)}&port={quote(port)}')
+                    html = html.replace(f'{asset_prefix}mdui/', f'{asset_prefix}mdui/{sep}machine={quote(machine_no)}&port={quote(port)}')
+                    html = html.replace(f'{asset_prefix}screen.js', f'{asset_prefix}screen.js{sep}machine={quote(machine_no)}&port={quote(port)}')
+                    html = html.replace(f'{asset_prefix}css/', f'{asset_prefix}css/{sep}machine={quote(machine_no)}&port={quote(port)}')
+                    html = html.replace(f'{asset_prefix}xxtouch.png', f'{asset_prefix}xxtouch.png{sep}machine={quote(machine_no)}&port={quote(port)}')
+                    html = html.replace(f'{asset_prefix}index.html', f'{asset_prefix}index.html{sep}machine={quote(machine_no)}&port={quote(port)}')
                     data = html.encode('utf-8')
                     content_type = 'text/html; charset=utf-8'
                 elif remote_path.endswith('screen.js'):
                     js = data.decode('utf-8', errors='ignore')
-                    js = js.replace('"ws://" + document.domain + ":46968"', f'"ws://{machines[0]["ip"]}:46968"')
-                    js = js.replace('$.post("/write_file"', f'$.post("http://{machines[0]["ip"]}:{port}/write_file"')
-                    js = js.replace('$.post("/command_spawn"', f'$.post("http://{machines[0]["ip"]}:{port}/command_spawn"')
+                    js = js.replace('"ws://" + document.domain + ":46968"', f'"ws://{target_ip}:46968"')
+                    js = js.replace('$.post("/write_file"', f'$.post("http://{target_ip}:{port}/write_file"')
+                    js = js.replace('$.post("/command_spawn"', f'$.post("http://{target_ip}:{port}/command_spawn"')
                     data = js.encode('utf-8')
                     content_type = 'application/javascript; charset=utf-8'
                 self.send_response(200)
@@ -2471,7 +2536,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not machines:
                     raise ValueError('Không tìm thấy máy để remote theo Gán IP')
                 machine = machines[0]
-                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-assets/?machine={machine_no}&port={port}", 'machine_note': router_ctx.get('note', '')})
+                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'proxy_url': f"/api/xxtouch/remote-proxy/screen.html?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-proxy/?machine={machine_no}&port={port}", 'machine_note': router_ctx.get('note', '')})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}
