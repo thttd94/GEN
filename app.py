@@ -939,7 +939,9 @@ def xxtouch_send_files_to_machine(machine, port, files, remote_dir='/var/mobile/
 def xxtouch_run_action_on_machine(machine, port, action):
     ip = machine['ip']
     label = machine['label']
-    logs = [f'[{label}] bắt đầu {action}', f'[{label}] {xxtouch_stop_script(ip, port)}']
+    stop_result = xxtouch_stop_script(ip, port)
+    time.sleep(1)
+    logs = [f'[{label}] bắt đầu {action}', f'[{label}] {stop_result}', f'[{label}] chờ 1s sau stop script']
     if action == 'reboot':
         xxtouch_post_json(ip, port, '/reboot2', {}, timeout=20)
         logs.append(f'[{label}] reboot ok')
