@@ -118,7 +118,10 @@
     <div class="panel" id="proxyPanel">
       <div class="meta">
         <div class="meta-left session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Sửa tên hiển thị cấu hình">✏️</button><button class="icon-btn" onclick="openSessionManager()" title="Quản lý cấu hình" id="manageSessionBtn">⚙️</button></div>
-        <div class="meta-center"><span class="status" id="status">Ready</span></div>
+        <div class="meta-center" style="display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center;">
+          <div id="proxyMachineNote" class="sub" style="font-weight:800; color:#1d4ed8;">Máy trong router này: đang nạp...</div>
+          <span class="status" id="status">Ready</span>
+        </div>
         <div class="meta-right"><div class="sub" id="countLabel">0 rows</div></div>
       </div>
 
@@ -403,6 +406,26 @@
     }
 
     function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    function proxyMachineNoteText(){
+      const nums = [...new Set((currentRows || []).map(r => Number(String(r?.machine || '').trim())).filter(Number.isFinite))].sort((a,b)=>a-b);
+      if (!nums.length) return 'Máy trong router này: chưa có dữ liệu';
+      const ranges = [];
+      let start = nums[0], prev = nums[0];
+      for (const cur of nums.slice(1)) {
+        if (cur === prev + 1) {
+          prev = cur;
+          continue;
+        }
+        ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+        start = prev = cur;
+      }
+      ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+      return `Máy trong router này: ${ranges.join(', ')}`;
+    }
+    function renderProxyMachineNote(){
+      const el = document.getElementById('proxyMachineNote');
+      if (el) el.textContent = proxyMachineNoteText();
+    }
     function renderAppTitle() {
       const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
       const full = `${prefix} PROXY MANAGER - HGTHAI`;
@@ -617,6 +640,7 @@
 
     function render() {
       renderSessionTabs();
+      renderProxyMachineNote();
       document.getElementById('viewConfiguredBtn').classList.toggle('active', viewMode === 'configured');
       document.getElementById('viewUnconfiguredBtn').classList.toggle('active', viewMode === 'unconfigured');
       renderAppTitle();
@@ -995,6 +1019,7 @@
       currentSession = String(session);
       currentRows = applyDraftToRows(cloneRows(data.rows || []), session);
       render();
+      renderProxyMachineNote();
       if (admConfig) admInit();
       setStatus('Đang mở ' + sessionNameOf(currentSession));
     }
