@@ -1562,27 +1562,30 @@
       admSetStatus(`Đang chạy ${label}`);
       try {
         const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action})});
-        const msg = String(data.message || 'Xong');
-        const match = msg.match(/xong\s+(\d+)\/(\d+)\s+máy/i);
-        const okCount = match ? Number(match[1] || 0) : 0;
-        const totalCount = match ? Number(match[2] || 0) : 0;
-        const rawLogs = Array.isArray(data.logs) ? data.logs : [];
-        const errorLines = rawLogs.filter(line => /lỗi[: ]/i.test(String(line || '')));
-        if (totalCount > 0 && okCount === totalCount) {
-          admLog(`${label} >> OK`);
-          admSetStatus(`${label} OK`);
+        const msg = String(data.message || 'Xong').trim();
+        const okMatch = msg.match(/thành công cho\s+(\d+)\/(\d+)/i);
+        const failMatch = msg.match(/(\d+)\s+máy\s+lỗi[^:]*:\s*(.+)$/i);
+        const okCount = okMatch ? Number(okMatch[1] || 0) : 0;
+        const totalCount = okMatch ? Number(okMatch[2] || 0) : 0;
+        if (totalCount > 0) {
+          admLog(`${label} >> OK ${okCount}/${totalCount} máy`);
+          if (failMatch) {
+            admLog(`${label} >> Lỗi: ${String(failMatch[2] || '').trim()}`);
+          }
+          admSetStatus(msg);
           return;
         }
-        if (totalCount > 0 && okCount > 0) {
-          admLog(`${label} >> OK ${okCount}/${totalCount} máy`);
-        } else {
-          admLog(`${label} >> Lỗi`);
-        }
-        errorLines.forEach(line => admLog(String(line).replace(/^\[[^\]]+\]\s*/,'').trim()));
-        admSetStatus(totalCount > 0 ? `${label} ${okCount}/${totalCount}` : `${label} lỗi`);
+        admLog(msg || `${label} xong`);
+        admSetStatus(msg || `${label} xong`);
       } catch (e) {
-        admLog(`${label} >> Lỗi`);
-        admLog(String(e.message || e));
+        const msg = String(e.message || e || '').trim() || 'Unknown error';
+        const failMatch = msg.match(/(\d+)\s+máy\s+lỗi[^:]*:\s*(.+)$/i);
+        if (failMatch) {
+          admLog(`${label} >> Lỗi: ${String(failMatch[2] || '').trim()}`);
+          admSetStatus(msg);
+          return;
+        }
+        admLog(`${label} >> Lỗi: ${msg}`);
         admSetStatus(`Lỗi ${label}`);
       }
     }
