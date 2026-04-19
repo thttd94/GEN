@@ -2613,7 +2613,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not machines:
                     raise ValueError('Không tìm thấy máy để remote theo Gán IP')
                 machine = machines[0]
-                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-assets/?machine={machine_no}&port={port}", 'machine_note': router_ctx.get('note', '')})
+                return self._send_json({'ok': True, 'url': f"http://{machine['ip']}:{port}/screen.html", 'machine': machine})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}
