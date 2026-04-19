@@ -53,7 +53,7 @@ XXTOUCH_WORK_DIR = BASE_DIR / 'xxtouch_jobs'
 XXTOUCH_DATA_DIR = XXTOUCH_WORK_DIR / 'data'
 XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
 XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
-NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'nurture_tiktok_v35.lua'
+NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'NuoiPhoi_tiktok.lua'
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
 ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui_config.json')
@@ -943,6 +943,9 @@ def xxtouch_run_action_on_machine(machine, port, action):
     stop_result = xxtouch_stop_script(ip, port)
     time.sleep(1)
     logs = [f'[{label}] bắt đầu {action}', f'[{label}] {stop_result}', f'[{label}] chờ 1s sau stop script']
+    if action == 'stop_script':
+        logs.append(f'[{label}] stop script ok')
+        return True, logs
     if action == 'reboot':
         xxtouch_post_json(ip, port, '/reboot2', {}, timeout=20)
         logs.append(f'[{label}] reboot ok')
@@ -1076,6 +1079,7 @@ LUA'''
 def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_indexes):
     total = len(machines or [])
     action_label_map = {
+        'stop_script': 'Stop Script',
         'reboot': 'Reboot',
         'home': 'Home',
         'lock_home': 'Lock Home',
@@ -1088,6 +1092,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'send_files': 'Gửi file',
     }
     success_label_map = {
+        'stop_script': 'stop script thành công',
         'reboot': 'reboot thành công',
         'home': 'home thành công',
         'lock_home': 'lock home thành công',
@@ -1100,6 +1105,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'send_files': 'gửi file thành công',
     }
     fail_label_map = {
+        'stop_script': 'chưa stop script được',
         'reboot': 'chưa reboot được',
         'home': 'chưa home được',
         'lock_home': 'chưa lock home được',

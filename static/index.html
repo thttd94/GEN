@@ -230,12 +230,15 @@
               </div>
             </div>
             <div style="border:2px solid #d1d5db; border-radius:10px; padding:18px; min-height:240px; background:#fff;">
-              <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-                <div class="sub" style="font-weight:700; color:#374151;">Chọn app chạy nhóm 3:</div>
-                <select id="admGroup3App" onchange="admPersistUiState()" style="min-width:180px; padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; font-weight:700;">
-                  <option value="tiktok_lite">TikTok Lite</option>
-                  <option value="tiktok">TikTok</option>
-                </select>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; justify-content:space-between;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                  <div class="sub" style="font-weight:700; color:#374151;">Chọn app chạy nhóm 3:</div>
+                  <select id="admGroup3App" onchange="admPersistUiState()" style="min-width:180px; padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; font-weight:700;">
+                    <option value="tiktok_lite">TikTok Lite</option>
+                    <option value="tiktok">TikTok</option>
+                  </select>
+                </div>
+                <button class="btn" type="button" onclick="admRunSimpleAction('stop_script')" style="background:#dc2626; color:#fff; border-color:#dc2626; min-width:200px;">Stop Script</button>
               </div>
               <div style="display:grid; gap:14px; max-width:220px;">
                 <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi','nurture_tiktok')">Nuôi Phôi</button>
