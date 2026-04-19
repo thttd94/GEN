@@ -239,7 +239,7 @@
         <div id="admInfoWrap" style="display:none; padding:0 14px 14px 14px; background:#fff; border-top:1px solid #e5e7eb;">
           <div class="grid" style="max-height:28vh; padding-top:12px;">
             <table>
-              <thead><tr><th onclick="admSortInfo('index')">Số máy</th><th onclick="admSortInfo('model')">Đời máy</th><th onclick="admSortInfo('ios')">IOS</th><th onclick="admSortInfo('capacity_label')">Dung lượng</th><th onclick="admSortInfo('free_percent')">Dung lượng còn lại</th><th onclick="admSortInfo('ip')">IP</th><th onclick="admSortInfo('status')">Status</th></tr></thead>
+              <thead><tr><th onclick="admSortInfo('index')">Số máy</th><th onclick="admSortInfo('model')">Đời máy</th><th onclick="admSortInfo('ios')">IOS</th><th onclick="admSortInfo('capacity_label')">Dung lượng</th><th onclick="admSortInfo('free_percent')">Dung lượng còn lại</th><th onclick="admSortInfo('ip')">IP ↕</th><th onclick="admSortInfo('mac')">MAC ↕</th><th onclick="admSortInfo('status')">Status</th></tr></thead>
               <tbody id="admInfoRows"></tbody>
             </table>
           </div>
@@ -1185,19 +1185,31 @@
       if (s.machineMode === 'group') return `${s.machineGroup || '(chưa nhập nhóm)'}`;
       return `${s.machineList || '(chưa nhập list)'}`;
     }
+    function admComparableValue(row, key){
+      if (!row) return '';
+      if (key === 'index' || key === 'free_percent') return Number(row?.[key] || 0);
+      if (key === 'ip') {
+        const parts = String(row?.ip || '').trim().split('.').map(v => Number(v));
+        if (parts.length === 4 && parts.every(Number.isFinite)) {
+          return (((parts[0] * 256) + parts[1]) * 256 + parts[2]) * 256 + parts[3];
+        }
+        return String(row?.ip || '').trim().toLowerCase();
+      }
+      if (key === 'mac') return String(row?.mac || '').trim().toLowerCase();
+      return String(row?.[key] || '').trim().toLowerCase();
+    }
     function admRenderInfo(){
       const body = document.getElementById('admInfoRows');
       if(!body) return;
       const rows = [...admInfoRows].sort((a,b)=>{
         const k = admInfoSortKey;
-        let av = a?.[k], bv = b?.[k];
-        if (k === 'index' || k === 'free_percent') { av = Number(av||0); bv = Number(bv||0); }
-        else { av = String(av||''); bv = String(bv||''); }
+        const av = admComparableValue(a, k);
+        const bv = admComparableValue(b, k);
         if (av < bv) return -1 * admInfoSortDir;
         if (av > bv) return 1 * admInfoSortDir;
         return 0;
       });
-      body.innerHTML = rows.map(r => `<tr><td>${r.index||''}</td><td>${esc(r.model||'Đang chờ dữ liệu')}</td><td>${esc(r.ios||'Đang chờ dữ liệu')}</td><td>${esc(r.capacity_label||'—')}</td><td>${esc(r.free_label||'—')}</td><td>${esc(r.ip||'')}</td><td><span class="badge ${(r.status==='online'?'online':(r.status==='waiting'?'warn':'offline'))}">${r.status||''}</span></td></tr>`).join('');
+      body.innerHTML = rows.map(r => `<tr><td>${r.index||''}</td><td>${esc(r.model||'Đang chờ dữ liệu')}</td><td>${esc(r.ios||'Đang chờ dữ liệu')}</td><td>${esc(r.capacity_label||'—')}</td><td>${esc(r.free_label||'—')}</td><td class="mono">${esc(r.ip||'')}</td><td class="mono">${esc(r.mac||'')}</td><td><span class="badge ${(r.status==='online'?'online':(r.status==='waiting'?'warn':'offline'))}">${r.status||''}</span></td></tr>`).join('');
       const countEl = document.getElementById('admCountLabel');
       if (countEl) countEl.textContent = `${admInfoRows.length} máy`;
     }
