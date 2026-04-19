@@ -8,3 +8,17 @@ type = "http"
 localIP = "{{LOCAL_IP}}"
 localPort = {{LOCAL_PORT}}
 customDomains = ["{{CUSTOM_DOMAIN}}"]
+
+[[proxies]]
+name = "{{SERVICE_NAME}}-remote-http-{{ROUTER_ID}}"
+type = "http"
+localIP = "{{LOCAL_IP}}"
+localPort = {{REMOTE_HTTP_LOCAL_PORT}}
+customDomains = ["{{REMOTE_HTTP_DOMAIN}}"]
+
+[[proxies]]
+name = "{{SERVICE_NAME}}-remote-ws-{{ROUTER_ID}}"
+type = "tcp"
+localIP = "{{LOCAL_IP}}"
+localPort = {{REMOTE_WS_LOCAL_PORT}}
+remotePort = {{REMOTE_WS_PORT}}

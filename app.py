@@ -2158,6 +2158,29 @@ def xxtouch_forward_post(ip: str, port: str, remote_path: str, body: bytes, cont
             pass
 
 
+def get_xxtouch_remote_online_info():
+    try:
+        frpc = load_json(BASE_DIR / 'frpc_config.json', {})
+        app_cfg = load_json(COLLECTOR_CONFIG_FILE, {})
+        router_id = str(app_cfg.get('router_id', '')).strip() or 'unknown-router'
+        suffix = str(frpc.get('domain_suffix', 'aeg.ooguy.com')).strip() or 'aeg.ooguy.com'
+        server_host = str(frpc.get('server_host', 'aeg.ooguy.com')).strip() or 'aeg.ooguy.com'
+        remote_http_domain = str(frpc.get('remote_http_domain', '')).strip() or f'{router_id}-remote.{suffix}'
+        ws_remote_port = int(frpc.get('remote_ws_port', 0) or 0)
+        if ws_remote_port <= 0:
+            ws_remote_port = 24000 + sum(ord(ch) for ch in router_id) % 10000
+        return {
+            'router_id': router_id,
+            'http_domain': remote_http_domain,
+            'http_url': f'http://{remote_http_domain}',
+            'ws_host': server_host,
+            'ws_port': ws_remote_port,
+            'ws_url': f'ws://{server_host}:{ws_remote_port}',
+        }
+    except Exception:
+        return {}
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send_no_cache_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -2590,7 +2613,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not machines:
                     raise ValueError('Không tìm thấy máy để remote theo Gán IP')
                 machine = machines[0]
-                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'proxy_url': f"/api/xxtouch/remote-proxy/screen.html?machine={machine_no}&port={port}", 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-proxy/?machine={machine_no}&port={port}", 'machine_note': router_ctx.get('note', '')})
+                remote_online = get_xxtouch_remote_online_info()
+                remote_http_url = str(remote_online.get('http_url') or '').rstrip('/')
+                remote_ws_url = str(remote_online.get('ws_url') or '').strip()
+                remote_public_url = f"{remote_http_url}/screen.html?machine={machine_no}&port={port}" if remote_http_url else ''
+                return self._send_json({'ok': True, 'url': f"/api/xxtouch/remote-screen?machine={machine_no}&port={port}", 'proxy_url': f"/api/xxtouch/remote-proxy/screen.html?machine={machine_no}&port={port}", 'public_url': remote_public_url, 'public_ws_url': remote_ws_url, 'machine': machine, 'target': f"http://{machine['ip']}:{port}/screen.html", 'asset_base': f"/api/xxtouch/remote-proxy/?machine={machine_no}&port={port}", 'machine_note': router_ctx.get('note', '')})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}
