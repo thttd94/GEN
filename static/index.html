@@ -230,12 +230,18 @@
               </div>
             </div>
             <div style="border:2px solid #d1d5db; border-radius:10px; padding:18px; min-height:240px; background:#fff;">
-              <div class="sub" style="font-weight:700; margin-bottom:14px; color:#374151;">Các tác vụ bên dưới chỉ là khung phát triển. Luồng chọn máy/scan/send file không check TikTok loại nào.</div>
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+                <div class="sub" style="font-weight:700; color:#374151;">Chọn app chạy nhóm 3:</div>
+                <select id="admGroup3App" onchange="admPersistUiState()" style="min-width:180px; padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; font-weight:700;">
+                  <option value="tiktok_lite">TikTok Lite</option>
+                  <option value="tiktok">TikTok</option>
+                </select>
+              </div>
               <div style="display:grid; gap:14px; max-width:220px;">
-                <button class="btn apply" onclick="admMarkDeveloping('Nuôi phôi')">Nuôi Phôi</button>
-                <button class="btn apply" onclick="admMarkDeveloping('Chạy Event Video 180')">Chạy Event Video 180</button>
-                <button class="btn apply" onclick="admMarkDeveloping('Chạy Event DD 20p')">Chạy Event DD 20p</button>
-                <button class="btn apply" onclick="admMarkDeveloping('Chạy Event DD hằng ngày')">Chạy Event DD hằng ngày</button>
+                <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi')">Nuôi Phôi</button>
+                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event Video 180')">Chạy Event Video 180</button>
+                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD 20p')">Chạy Event DD 20p</button>
+                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD hằng ngày')">Chạy Event DD hằng ngày</button>
               </div>
             </div>
           </div>
@@ -1152,6 +1158,8 @@
       document.getElementById('admMachineMode').value = mode;
       document.getElementById('admMachineGroup').value = mode === 'group' ? groupVal : '';
       document.getElementById('admMachineList').value = mode === 'list' ? listVal : '';
+      const group3App = document.getElementById('admGroup3App');
+      if (group3App) group3App.value = ui.group3App || 'tiktok_lite';
       toggleAdmMachineInputs();
     }
     function admState(){
@@ -1160,6 +1168,7 @@
         machineGroup: document.getElementById('admMachineGroup').value,
         machineList: document.getElementById('admMachineList').value,
         remoteMachine: document.getElementById('admRemoteMachine').value,
+        group3App: document.getElementById('admGroup3App')?.value || 'tiktok_lite',
       };
     }
     function admSetMachineNote(note){
@@ -1454,6 +1463,13 @@
     function admMarkDeveloping(name){
       admSetStatus('Đang phát triển');
       admLog(`[DEV] ${name}: đang phát triển`);
+    }
+    function admRunGroup3Action(name){
+      const appValue = document.getElementById('admGroup3App')?.value || 'tiktok_lite';
+      const appLabel = appValue === 'tiktok' ? 'TikTok' : 'TikTok Lite';
+      admSetStatus(`Đã chọn ${appLabel} cho nhóm 3`);
+      admLog(`[DEV] ${name}: đang chọn app ${appLabel}`);
+      admPersistUiState();
     }
     async function admInit(){
       const data = await fetchJSON('/api/admanager/config');
