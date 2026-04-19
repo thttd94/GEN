@@ -1064,7 +1064,7 @@ LUA'''
         logs.append(f'[{label}] gỡ TikTok ok')
         return True, logs
     if action == 'quit_apps':
-        quit_script = r'''lua -e 'app=require("app"); sys=require("sys"); local ids={"com.apple.mobilesafari","com.apple.Preferences","com.apple.AppStore","com.ss.iphone.ugc.Ame","com.ss.iphone.tiktok.lite","com.apple.DocumentsApp","com.apple.camera","com.apple.mobiletimer","com.tigisoftware.Filza","com.tigisoftware.ADManager","com.apple.findmy","com.apple.Health","com.apple.MobileSMS","com.apple.mobilenotes","com.apple.mobilephone","com.apple.mobileslideshow","com.apple.shortcuts","com.apple.tips","com.opa334.TrollStore","ch.xxtou.XXTExplorer"}; for i=1,#ids do pcall(app.quit, ids[i]); sys.msleep(300); end' '''
+        quit_script = r'''lua -e 'app=require("app"); sys=require("sys"); local ids={"com.apple.mobilesafari","com.apple.Preferences","com.apple.AppStore","com.ss.iphone.ugc.Ame","com.ss.iphone.ugc.tiktok.lite","com.apple.DocumentsApp","com.apple.camera","com.apple.mobiletimer","com.tigisoftware.Filza","com.tigisoftware.ADManager","com.apple.findmy","com.apple.Health","com.apple.MobileSMS","com.apple.mobilenotes","com.apple.mobilephone","com.apple.mobileslideshow","com.apple.shortcuts","com.apple.tips","com.opa334.TrollStore","ch.xxtou.XXTExplorer"}; for i=1,#ids do pcall(app.quit, ids[i]); sys.msleep(300); end' '''
         xxtouch_spawn_checked(ip, port, quit_script, timeout=40)
         logs.append(f'[{label}] đóng ứng dụng ok')
         return True, logs
