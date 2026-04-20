@@ -257,6 +257,7 @@ def update_repo_from_remote(password: str):
     target_version = normalize_version_key(target_info.get('latest_subject') or target_info.get('latest_label') or target_info.get('current_label') or 'Ver')
     consume_update_code(password, target_version)
     archive_url = 'https://codeload.github.com/thttd94/GEN/tar.gz/refs/heads/main'
+    before_label = read_current_version_label()
     tmp_root = BASE_DIR.parent / 'update_tmp'
     extract_dir = tmp_root / 'GEN-main'
     archive_path = tmp_root / 'GEN-main.tar.gz'
@@ -2783,6 +2784,16 @@ class Handler(BaseHTTPRequestHandler):
                 result = update_repo_from_remote(payload.get('password', ''))
                 return self._send_json(result)
             if path == '/api/xxtouch/scan-devices':
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                router_ctx = xxtouch_get_router_machine_context(cfg, state)
+                validation = admanager_validate_machine_selection(router_ctx.get('router', ''), router_ctx.get('router_obj', {}), state.get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all', state.get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '', state.get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
+                if validation.get('invalid'):
+                    invalid_text = ', '.join(str(x) for x in validation.get('invalid', []))
+                    return self._send_json({'ok': False, 'error': f'Máy này không nằm trong router này: {invalid_text}. Dải hợp lệ: {validation.get("note")}'}, 400)
+                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
+                port = str(state.get('port') or ui.get('port') or '46952').strip()
+                machines = xxtouch_get_selected_machines(cfg, state)
 
                 def scan_one(m):
                     machine_key = f"{m['index']}|{m['ip']}"
