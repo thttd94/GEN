@@ -69,71 +69,78 @@ local function adjustCheckToBetterPosition(x, y)
   end
  end
 
- if y < 260 then
-  status("Check dang qua cao, tam giu nguyen")
-  return true, x, y
- end
-
  if isCheckInGoodZone(y) then
   status("Check dang o vi tri dep, khong can keo")
   return true, x, y
  end
 
- local anchorX = 375
- local startY = y + 140
- if startY < 900 then
-  startY = 900
- end
-  if startY > 1180 then
-  startY = 1180
- end
-
+ local holdX = x + 18
+ local holdY = y + 18
  local endY = TARGET_Y
- if endY < 420 then
-  endY = 420
- end
+ local direction = "up"
 
- local dragDistance = startY - endY
- if dragDistance < 180 then
-  startY = endY + 220
-  dragDistance = startY - endY
- end
-
- if dragDistance < 140 then
-  status("Check gan vi tri dep, khong can keo")
+ if y < GOOD_Y_MIN then
+  direction = "down"
+  endY = TARGET_Y + 40
+ elseif y > GOOD_Y_MAX then
+  direction = "up"
+  endY = TARGET_Y
+ else
+  status("Check dang gan trung tam, khong can keo")
   return true, x, y
  end
 
- status("Dang keo card event 20p len khoi popup de")
- touch.down(1, anchorX, startY)
- sys.msleep(90)
-
- local currentY = startY
- local step = 32
- while currentY > endY do
-  currentY = currentY - step
-  if currentY < endY then
-   currentY = endY
-  end
-  touch.move(1, anchorX, currentY)
-  sys.msleep(16)
+ local distance = math.abs(holdY - endY)
+ if distance < 80 then
+  status("Check da gan vi tri muc tieu, khong can keo")
+  return true, x, y
  end
 
+ if distance > 220 then
+  if direction == "up" then
+   endY = holdY - 220
+  else
+   endY = holdY + 220
+  end
+ end
+
+ if endY < 260 then endY = 260 end
+ if endY > 980 then endY = 980 end
+
+ status("Dang giu va keo event 20p ve vung giua")
+ touch.down(1, holdX, holdY)
  sys.msleep(140)
+
+ local currentY = holdY
+ local step = 18
+ while math.abs(currentY - endY) > step do
+  if direction == "up" then
+   currentY = currentY - step
+   if currentY < endY then currentY = endY end
+  else
+   currentY = currentY + step
+   if currentY > endY then currentY = endY end
+  end
+  touch.move(1, holdX, currentY)
+  sys.msleep(28)
+ end
+
+ touch.move(1, holdX, endY)
+ sys.msleep(180)
  touch.up(1)
- sys.msleep(500)
+ sys.msleep(450)
 
  local okAfter, xAfter, yAfter = findCheck()
  if okAfter then
   if isCheckInGoodZone(yAfter) then
-   status("Da keo event 20p vao vung giua de quan sat")
+   status("Da dua event 20p vao vung giua")
   else
-   status("Da keo event 20p len, se canh tiep o vi tri moi")
+   status("Da keo event 20p theo huong dung, se canh tiep")
   end
   return true, xAfter, yAfter
  end
 
- status("Da keo card event nhung chua thay lai check, van tiep tuc canh")
+ status("Da keo event nhung chua thay lai check, van tiep tuc canh")
  return true, x, y
 end
 
