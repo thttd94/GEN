@@ -369,7 +369,7 @@ local function runSearchFlow(maxCycles)
  local lockedOnCheck = false
  local direction = "up"
  local roundsInDirection = 0
- local maxRoundsOneDirection = 10
+ local maxRoundsOneDirection = 12
  local finalReady = false
 
  for cycle = 1, maxCycles do
