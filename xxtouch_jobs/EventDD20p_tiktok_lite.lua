@@ -282,13 +282,16 @@ local function waitTapAfterCheck(timeoutSec, finalReady)
  local loops = math.floor((timeoutSec * 1000) / 250)
  local lostCount = 0
  local lostNeed = 8
+ local tapVisibleLastLoop = false
+ local tapCount = 0
 
  for i = 1, loops do
   if checkTimeout() then return "timeout", -1, -1, finalReady end
 
   local okFinal = findFinal()
-  if okFinal then
+  if okFinal and not finalReady then
    finalReady = true
+   status("Da thay 0910.PNG, cho tap cuoi")
   end
 
   local okCheck = findCheck()
@@ -300,14 +303,19 @@ local function waitTapAfterCheck(timeoutSec, finalReady)
 
   local okTap, tapX, tapY = findTap()
   if okTap then
-   status("Da thay tap20p.PNG: " .. tapX .. "," .. tapY)
-   touch.tap(tapX + 10, tapY + 10)
-   status("Da bam tap20p.PNG")
-   if finalReady then
-    status("Da bam tap cuoi sau khi thay 0910.PNG, dung script")
-    return "done_final", tapX, tapY, finalReady
+   if not tapVisibleLastLoop then
+    tapCount = tapCount + 1
+    status("Da thay tap20p.PNG: " .. tapX .. "," .. tapY)
+    touch.tap(tapX + 10, tapY + 10)
+    status("Da bam tap20p.PNG lan " .. tapCount)
+    if finalReady then
+     status("Da bam tap cuoi sau khi thay 0910.PNG, dung script")
+     return "done_final", tapX, tapY, finalReady
+    end
    end
-   return "tapped", tapX, tapY, finalReady
+   tapVisibleLastLoop = true
+  else
+   tapVisibleLastLoop = false
   end
 
   if lostCount >= lostNeed then
@@ -393,9 +401,6 @@ local function runSearchFlow(maxCycles)
 
    if result == "done_final" then
     return true
-   elseif result == "tapped" then
-    lockedOnCheck = false
-    status("Da tap xong 1 lan, tiep tuc tim va cho lan sau")
    elseif result == "lost" then
     lockedOnCheck = false
     status("Mat check, tiep tuc tim lai tu vi tri hien tai")
