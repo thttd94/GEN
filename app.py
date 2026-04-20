@@ -260,11 +260,15 @@ def get_repo_version_info():
 
 
 def update_repo_from_remote(password: str):
+    before_label = ''
+    try:
+        before_label = read_current_version_label()
+    except Exception:
+        before_label = ''
     target_info = get_repo_version_info()
-    target_version = normalize_version_key(target_info.get('latest_subject') or target_info.get('latest_label') or target_info.get('current_label') or 'Ver')
+    target_version = normalize_version_key(target_info.get('latest_subject') or target_info.get('latest_label') or target_info.get('current_label') or before_label or 'Ver')
     consume_update_code(password, target_version)
     archive_url = 'https://codeload.github.com/thttd94/GEN/tar.gz/refs/heads/main'
-    before_label = read_current_version_label()
     tmp_root = BASE_DIR.parent / 'update_tmp'
     extract_dir = tmp_root / 'GEN-main'
     archive_path = tmp_root / 'GEN-main.tar.gz'
