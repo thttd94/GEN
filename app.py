@@ -135,7 +135,7 @@ def ensure_update_codes_for_version(version_label: str, count=DEFAULT_PER_VERSIO
 def consume_update_code(update_code: str, target_version: str):
     code = str(update_code or '').strip()
     if not code:
-        raise PermissionError('Thiếu mã update')
+        raise PermissionError('Mã không hợp lệ')
     store = load_update_codes_store()
     admin_code = str(store.get('admin_code') or DEFAULT_ADMIN_UPDATE_CODE).strip() or DEFAULT_ADMIN_UPDATE_CODE
     if code == admin_code:
@@ -148,7 +148,7 @@ def consume_update_code(update_code: str, target_version: str):
         if str(item.get('code') or '').strip() != code:
             continue
         if item.get('used'):
-            raise PermissionError('Mã update này đã được sử dụng')
+            raise PermissionError('Mã không hợp lệ')
         item['used'] = True
         item['used_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
         item['used_version'] = version_key
@@ -157,7 +157,7 @@ def consume_update_code(update_code: str, target_version: str):
         store['versions'] = versions
         save_update_codes_store(store)
         return {'admin': False, 'version': version_key, 'code': code}
-    raise PermissionError(f'Mã update không hợp lệ. Chỉ mã của {version_key} hoặc mã ADMIN mới dùng được')
+    raise PermissionError('Mã không hợp lệ')
 
 
 def run_git_command(args, cwd=None, timeout=60):
