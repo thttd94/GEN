@@ -189,7 +189,21 @@ def update_repo_from_remote(password: str):
     tmp_root = BASE_DIR.parent / 'update_tmp'
     extract_dir = tmp_root / 'GEN-main'
     archive_path = tmp_root / 'GEN-main.tar.gz'
+    latest_label = ''
+    latest_short = ''
     try:
+        try:
+            req = urllib.request.Request('https://api.github.com/repos/thttd94/GEN/commits/main', headers={'User-Agent': 'proxy-manager-updater'})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                payload = json.loads(resp.read().decode('utf-8', 'replace'))
+            remote_commit = str(payload.get('sha') or '').strip()
+            remote_subject = str((((payload.get('commit') or {}).get('message') or '').splitlines() or [''])[0]).strip()
+            latest_short = remote_commit[:7] if remote_commit else ''
+            m = re.search(r'(Ver\s*\d+)', remote_subject, re.IGNORECASE)
+            latest_label = m.group(1).replace('ver', 'Ver') if m else (remote_subject or '')
+        except Exception:
+            latest_label = ''
+            latest_short = ''
         if tmp_root.exists():
             shutil.rmtree(tmp_root, ignore_errors=True)
         tmp_root.mkdir(parents=True, exist_ok=True)
@@ -199,6 +213,9 @@ def update_repo_from_remote(password: str):
         shutil.unpack_archive(str(archive_path), str(tmp_root), 'gztar')
         if not extract_dir.exists():
             raise RuntimeError('Không giải nén được gói update')
+        if latest_label:
+            version_text = latest_label if not latest_short else f'{latest_label} ({latest_short})'
+            (extract_dir / 'VERSION.txt').write_text(version_text + '\n', encoding='utf-8')
         for item in extract_dir.iterdir():
             target = BASE_DIR / item.name
             if target.exists():
@@ -219,7 +236,7 @@ def update_repo_from_remote(password: str):
             'after': after_label,
             'current_label': after_label,
             'current_commit': '',
-            'current_short': '',
+            'current_short': latest_short,
             'message': 'Đã update lên bản mới' if changed else 'Đã update xong',
         }
     finally:
