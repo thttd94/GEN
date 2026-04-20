@@ -8,6 +8,11 @@ local FINAL_IMG = IMG_DIR .. "0910.PNG"
 local MAX_RUNTIME_SEC = 3 * 60 * 60
 local SCRIPT_START_AT = os.time()
 
+-- Vùng "đẹp" cho check20p: trên trung tâm 1 chút
+local GOOD_Y_MIN = 360
+local GOOD_Y_MAX = 620
+local TARGET_Y = 500
+
 local function status(t)
  sys.toast(t, 1)
  nLog(t)
@@ -49,6 +54,60 @@ end
 
 local function findFinal()
  return findImage(FINAL_IMG, 85, 0, 120, 750, 1230)
+end
+
+local function isCheckInGoodZone(y)
+ return y >= GOOD_Y_MIN and y <= GOOD_Y_MAX
+end
+
+local function adjustCheckToBetterPosition(x, y)
+ if not x or not y or x < 0 or y < 0 then
+  local ok
+  ok, x, y = findCheck()
+  if not ok then
+   return false, -1, -1
+  end
+ end
+
+ if isCheckInGoodZone(y) then
+  status("Check dang o vi tri dep, khong can keo")
+  return true, x, y
+ end
+
+ if y < GOOD_Y_MIN then
+  status("Check dang qua cao, tam giu nguyen")
+  return true, x, y
+ end
+
+ local startX = x + 20
+ local startY = y + 20
+ local delta = startY - TARGET_Y
+
+ if delta < 60 then
+  status("Check gan vi tri dep, khong can keo")
+  return true, x, y
+ end
+
+ local endY = startY - delta
+  if endY < 220 then
+  endY = 220
+ end
+
+ touch.down(1, startX, startY)
+ sys.msleep(80)
+ touch.move(1, startX, endY)
+ sys.msleep(120)
+ touch.up(1)
+ sys.msleep(350)
+
+ local okAfter, xAfter, yAfter = findCheck()
+ if okAfter then
+  status("Da keo check20p_1.PNG len vi tri de quan sat")
+  return true, xAfter, yAfter
+ end
+
+ status("Da keo check nhung chua thay lai, giu nguyen va cho tiep")
+ return true, x, y
 end
 
 local function swipeUpSearchOneRound()
@@ -295,6 +354,7 @@ local function runSearchFlow(maxCycles)
    local okCheck, xCheck, yCheck = findCheck()
    if okCheck then
     lockedOnCheck = true
+    adjustCheckToBetterPosition(xCheck, yCheck)
     status("Da thay check20p_1.PNG, dung cuon")
    else
     if direction == "up" then
@@ -311,9 +371,10 @@ local function runSearchFlow(maxCycles)
 
     if okCheck then
      lockedOnCheck = true
+     adjustCheckToBetterPosition(xCheck, yCheck)
     else
      if roundsInDirection >= maxRoundsOneDirection then
-      if direction == "up" then
+        if direction == "up" then
        direction = "down"
        status("Da cuon het huong len, dao chieu tim xuong")
       else
