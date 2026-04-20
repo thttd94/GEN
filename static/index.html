@@ -18,6 +18,9 @@
     .toolbar-left,.toolbar-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .toolbar-right { justify-content:flex-end; }
     .conn-badge { display:inline-flex; align-items:center; justify-content:center; min-width:110px; padding:9px 14px; border-radius:10px; font-weight:800; font-size:13px; border:1px solid transparent; }
+    .version-btn { position:relative; display:inline-flex; align-items:center; gap:8px; min-width:240px; justify-content:center; }
+    .version-dot { width:10px; height:10px; border-radius:999px; background:#9ca3af; box-shadow:0 0 0 2px rgba(255,255,255,.12); }
+    .version-dot.has-update { background:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.18), 0 0 12px rgba(239,68,68,.55); }
     .conn-badge.connected { background:#dcfce7; color:#166534; border-color:#86efac; }
     .conn-badge.disconnected { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
     .btn { border:1px solid #d1d5db; background:#fff; padding:9px 13px; border-radius:10px; cursor:pointer; font-weight:700; }
@@ -98,6 +101,7 @@
         <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
       </div>
       <div class="titlebar-right">
+        <button class="btn version-btn" id="versionBtn" onclick="handleVersionClick()"><span>Version: <span id="versionText">đang nạp...</span></span><span class="version-dot" id="versionDot"></span></button>
         <div class="conn-badge disconnected" id="connBadge">Disconnected</div>
       </div>
     </div>
@@ -377,7 +381,9 @@
     let sessionNames = {};
     const sessionCache = {};
     let networkPollTimer = null;
+    let versionCheckTimer = null;
     let appTitlePrefix = 'Genrouter';
+    let versionState = { current_label: 'đang nạp...', latest_label: '', has_update: false };
     let currentProjectTab = 'proxy';
     let admConfig = null;
     let admRows = [];
@@ -471,6 +477,44 @@
       if (!el) return;
       el.className = 'conn-badge ' + (isConnected ? 'connected' : 'disconnected');
       el.textContent = isConnected ? 'Connected' : 'Disconnected';
+    }
+    function setVersionInfo(info) {
+      versionState = info || versionState || {};
+      const textEl = document.getElementById('versionText');
+      const dotEl = document.getElementById('versionDot');
+      const btnEl = document.getElementById('versionBtn');
+      const label = String(versionState.current_label || versionState.current_short || 'unknown').trim();
+      if (textEl) textEl.textContent = label;
+      const hasUpdate = !!versionState.has_update;
+      if (dotEl) dotEl.className = 'version-dot' + (hasUpdate ? ' has-update' : '');
+      const latest = String(versionState.latest_label || '').trim();
+      if (btnEl) btnEl.title = hasUpdate && latest ? `Có bản mới: ${latest}` : `Bản hiện tại: ${label}`;
+    }
+    async function refreshVersionInfo(silent=false) {
+      try {
+        const data = await fetchJSON('/api/pm/meta');
+        appTitlePrefix = data.app_title_prefix || appTitlePrefix || 'Genrouter';
+        if (data.version) setVersionInfo(data.version);
+        renderAppTitle();
+      } catch (e) {
+        if (!silent) setStatus('Lỗi lấy version: ' + e.message);
+      }
+    }
+    async function handleVersionClick() {
+      const latest = String(versionState.latest_label || '').trim();
+      const promptText = versionState.has_update && latest
+        ? `Có bản mới:\n${latest}\n\nNhập mật khẩu để tự update:`
+        : 'Nhập mật khẩu để kiểm tra và tự update:';
+      const password = window.prompt(promptText, '');
+      if (password === null) return;
+      try {
+        setStatus('Đang update phiên bản...');
+        const data = await fetchJSON('/api/pm/version/update', {method:'POST', body: JSON.stringify({password})});
+        setStatus(data.message || (data.updated ? `Đã update: ${data.after}` : 'Đang ở bản mới nhất'));
+        await refreshVersionInfo(true);
+      } catch (e) {
+        setStatus('Lỗi update version: ' + e.message);
+      }
     }
     function switchProjectTab(tab) {
       currentProjectTab = tab === 'xxtouch' ? 'xxtouch' : 'proxy';
@@ -1665,6 +1709,7 @@
       try {
         const meta = await fetchJSON('/api/pm/meta');
         appTitlePrefix = meta.app_title_prefix || 'Genrouter';
+        if (meta.version) setVersionInfo(meta.version);
       } catch {}
       renderAppTitle();
       setConnectionBadge(false);
@@ -1672,6 +1717,8 @@
       refreshConnectionStatus(true);
       if (networkPollTimer) clearInterval(networkPollTimer);
       networkPollTimer = setInterval(() => refreshConnectionStatus(true), 30000);
+      if (versionCheckTimer) clearInterval(versionCheckTimer);
+      versionCheckTimer = setInterval(() => refreshVersionInfo(true), 60000);
       await fetchSessionsList(false);
       await fetchSessionsList(true);
       loadSession('1', true);

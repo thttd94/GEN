@@ -18,6 +18,7 @@ import threading
 import base64
 import hashlib
 import os
+import tempfile
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -76,6 +77,96 @@ BASE_SUBNET_OCTET = 4
 
 XXTOUCH_SCAN_LOCK = threading.Lock()
 XXTOUCH_SCAN_INFLIGHT = set()
+REPO_REMOTE_URL = 'https://github.com/thttd94/GEN.git'
+REPO_BRANCH = 'main'
+DEFAULT_UPDATE_PASSWORD = '123123@qq'
+
+
+def run_git_command(args, cwd=None, timeout=60):
+    proc = subprocess.run(['git', *args], cwd=str(cwd or BASE_DIR), capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout)
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or 'git failed').strip())
+    return (proc.stdout or '').strip()
+
+
+def read_current_version_label():
+    try:
+        msg = run_git_command(['log', '-1', '--pretty=%s'])
+        short = run_git_command(['rev-parse', '--short', 'HEAD'])
+        return f'{msg} ({short})' if msg else short
+    except Exception:
+        return 'Unknown'
+
+
+def get_update_password():
+    for key in ('GENROUTER_UPDATE_PASSWORD', 'INSTALL_PASSWORD'):
+        value = str(os.environ.get(key, '')).strip()
+        if value:
+            return value
+    return DEFAULT_UPDATE_PASSWORD
+
+
+def get_repo_version_info():
+    current_commit = run_git_command(['rev-parse', 'HEAD'])
+    current_short = run_git_command(['rev-parse', '--short', 'HEAD'])
+    current_subject = run_git_command(['log', '-1', '--pretty=%s'])
+    remote_url = run_git_command(['remote', 'get-url', 'origin'])
+    branch = run_git_command(['branch', '--show-current']) or REPO_BRANCH
+    latest_commit = current_commit
+    latest_short = current_short
+    latest_subject = current_subject
+    has_update = False
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_git_command(['clone', '--depth', '1', '--branch', branch, remote_url, tmp], cwd=BASE_DIR, timeout=180)
+            latest_commit = run_git_command(['rev-parse', 'HEAD'], cwd=tmp)
+            latest_short = run_git_command(['rev-parse', '--short', 'HEAD'], cwd=tmp)
+            latest_subject = run_git_command(['log', '-1', '--pretty=%s'], cwd=tmp)
+            has_update = latest_commit != current_commit
+    except Exception:
+        has_update = False
+    return {
+        'ok': True,
+        'current_commit': current_commit,
+        'current_short': current_short,
+        'current_subject': current_subject,
+        'current_label': f'{current_subject} ({current_short})'.strip(),
+        'latest_commit': latest_commit,
+        'latest_short': latest_short,
+        'latest_subject': latest_subject,
+        'latest_label': f'{latest_subject} ({latest_short})'.strip(),
+        'has_update': has_update,
+        'branch': branch,
+        'remote_url': remote_url,
+    }
+
+
+def update_repo_from_remote(password: str):
+    if str(password or '') != get_update_password():
+        raise PermissionError('Sai mật khẩu update')
+    branch = run_git_command(['branch', '--show-current']) or REPO_BRANCH
+    run_git_command(['fetch', 'origin', branch], timeout=180)
+    remote_ref = f'origin/{branch}'
+    before = run_git_command(['rev-parse', 'HEAD'])
+    before_short = run_git_command(['rev-parse', '--short', 'HEAD'])
+    before_subject = run_git_command(['log', '-1', '--pretty=%s'])
+    after_remote = run_git_command(['rev-parse', remote_ref])
+    changed = before != after_remote
+    if changed:
+        run_git_command(['reset', '--hard', remote_ref], timeout=180)
+    after = run_git_command(['rev-parse', 'HEAD'])
+    after_short = run_git_command(['rev-parse', '--short', 'HEAD'])
+    after_subject = run_git_command(['log', '-1', '--pretty=%s'])
+    return {
+        'ok': True,
+        'updated': changed,
+        'before': f'{before_subject} ({before_short})'.strip(),
+        'after': f'{after_subject} ({after_short})'.strip(),
+        'current_label': f'{after_subject} ({after_short})'.strip(),
+        'current_commit': after,
+        'current_short': after_short,
+        'message': 'Đã update lên bản mới' if changed else 'Đang ở bản mới nhất',
+    }
 
 
 def proxy_tag_num(tag):
@@ -2412,7 +2503,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
-            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix()})
+            version_info = get_repo_version_info()
+            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info})
         if path == '/api/pm/export-all':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             return self._send_json(export_all_sessions_payload(include_hidden=include_hidden))
@@ -2519,13 +2611,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({'ok': True})
             if path == '/api/pm/meta':
                 prefix = set_app_title_prefix(payload.get('app_title_prefix', 'Genrouter'))
-                return self._send_json({'ok': True, 'app_title_prefix': prefix})
+                return self._send_json({'ok': True, 'app_title_prefix': prefix, 'version': get_repo_version_info()})
+            if path == '/api/pm/version/update':
+                result = update_repo_from_remote(payload.get('password', ''))
+                return self._send_json(result)
             if path == '/api/xxtouch/scan-devices':
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
-                port = str(state.get('port') or ui.get('port') or '46952').strip()
-                machines = xxtouch_get_selected_machines(cfg, state)
 
                 def scan_one(m):
                     machine_key = f"{m['index']}|{m['ip']}"
