@@ -1,1 +1,1 @@
-v2026.04.18-17
+Ver 51 - keep version meta alive when git is missing (3f0e935)

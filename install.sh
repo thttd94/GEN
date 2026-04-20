@@ -31,6 +31,7 @@ if [ -f "$SCRIPT_DIR/setup_data_disk.sh" ]; then
 fi
 
 cp "$SCRIPT_DIR/app.py" "$APP_DIR/app.py"
+[ -f "$SCRIPT_DIR/VERSION.txt" ] && cp "$SCRIPT_DIR/VERSION.txt" "$APP_DIR/VERSION.txt"
 cp "$SCRIPT_DIR/admanager_gui_config.json" "$APP_DIR/admanager_gui_config.json"
 cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
 [ -f "$SCRIPT_DIR/collector_config.json" ] && cp "$SCRIPT_DIR/collector_config.json" "$APP_DIR/collector_config.json"

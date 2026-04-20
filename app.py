@@ -62,6 +62,7 @@ ADMANAGER_GUI_LOCAL_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gu
 ADMANAGER_REMOTE_DIR = '/private/var/mobile/Library/ADManager'
 ADMANAGER_FILE_RE = re.compile(r'^(?P<prefix>[^_]+_)(?P<date>\d{8})(?:_(?P<time_u>\d{6})|(?P<time>\d{6}))\.adbk$')
 COLLECTOR_CONFIG_FILE = BASE_DIR / 'collector_config.json'
+VERSION_FILE = BASE_DIR / 'VERSION.txt'
 DEFAULT_COLLECTOR_URL = 'http://aeg.ooguy.com:9010'
 MAX_SESSION_COUNT = 5
 SESSION_FILES = {
@@ -93,11 +94,17 @@ def run_git_command(args, cwd=None, timeout=60):
 
 def read_current_version_label():
     try:
+        text = VERSION_FILE.read_text(encoding='utf-8', errors='replace').strip()
+        if text:
+            return text
+    except Exception:
+        pass
+    try:
         msg = run_git_command(['log', '-1', '--pretty=%s'])
         short = run_git_command(['rev-parse', '--short', 'HEAD'])
         return f'{msg} ({short})' if msg else short
     except Exception:
-        return 'Unknown'
+        return 'Bản đang chạy'
 
 
 def get_update_password():
@@ -109,6 +116,7 @@ def get_update_password():
 
 
 def get_repo_version_info():
+    current_label = read_current_version_label()
     try:
         current_commit = run_git_command(['rev-parse', 'HEAD'])
         current_short = run_git_command(['rev-parse', '--short', 'HEAD'])
@@ -119,9 +127,9 @@ def get_repo_version_info():
         return {
             'ok': True,
             'current_commit': '',
-            'current_short': 'no-git',
-            'current_subject': 'Bản đang chạy',
-            'current_label': 'Bản đang chạy (no-git)',
+            'current_short': '',
+            'current_subject': current_label,
+            'current_label': current_label,
             'latest_commit': '',
             'latest_short': '',
             'latest_subject': '',
@@ -153,7 +161,7 @@ def get_repo_version_info():
         'current_commit': current_commit,
         'current_short': current_short,
         'current_subject': current_subject,
-        'current_label': f'{current_subject} ({current_short})'.strip(),
+        'current_label': current_label,
         'latest_commit': latest_commit,
         'latest_short': latest_short,
         'latest_subject': latest_subject,
