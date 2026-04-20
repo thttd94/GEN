@@ -124,38 +124,41 @@ def get_repo_version_info():
         remote_url = run_git_command(['remote', 'get-url', 'origin'])
         branch = run_git_command(['branch', '--show-current']) or REPO_BRANCH
     except Exception as e:
-        return {
-            'ok': True,
-            'current_commit': '',
-            'current_short': '',
-            'current_subject': current_label,
-            'current_label': current_label,
-            'latest_commit': '',
-            'latest_short': '',
-            'latest_subject': '',
-            'latest_label': '',
-            'has_update': False,
-            'branch': REPO_BRANCH,
-            'remote_url': REPO_REMOTE_URL,
-            'remote_error': str(e),
-        }
+        current_commit = ''
+        current_short = ''
+        current_subject = current_label
+        remote_url = REPO_REMOTE_URL
+        branch = REPO_BRANCH
+        remote_error = str(e)
+    else:
+        remote_error = ''
+
     latest_commit = current_commit
     latest_short = current_short
-    latest_subject = current_subject
+    latest_subject = current_subject or current_label
+    latest_label = current_label
     has_update = False
-    remote_error = ''
+
     try:
-        ls = run_git_command(['ls-remote', '--heads', remote_url, branch], timeout=30)
-        head_line = next((line for line in ls.splitlines() if line.strip()), '')
-        remote_commit = head_line.split('\t', 1)[0].strip() if head_line else ''
+        req = urllib.request.Request('https://api.github.com/repos/thttd94/GEN/commits/main', headers={'User-Agent': 'proxy-manager-version-check'})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read().decode('utf-8', 'replace'))
+        remote_commit = str(payload.get('sha') or '').strip()
+        remote_subject = str((((payload.get('commit') or {}).get('message') or '').splitlines() or [''])[0]).strip()
         if remote_commit:
             latest_commit = remote_commit
             latest_short = remote_commit[:7]
-            if remote_commit != current_commit:
-                latest_subject = 'Có bản mới trên Git'
+            latest_subject = remote_subject or 'Có bản mới trên Git'
+            latest_label = f'{latest_subject} ({latest_short})'.strip()
+            if current_commit:
+                has_update = remote_commit != current_commit
+            elif latest_short and latest_short not in current_label:
                 has_update = True
     except Exception as e:
-        remote_error = str(e)
+        if not remote_error:
+            remote_error = str(e)
+        latest_label = current_label
+
     return {
         'ok': True,
         'current_commit': current_commit,
@@ -165,7 +168,7 @@ def get_repo_version_info():
         'latest_commit': latest_commit,
         'latest_short': latest_short,
         'latest_subject': latest_subject,
-        'latest_label': f'{latest_subject} ({latest_short})'.strip(),
+        'latest_label': latest_label,
         'has_update': has_update,
         'branch': branch,
         'remote_url': remote_url,
