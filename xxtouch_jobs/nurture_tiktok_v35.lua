@@ -145,6 +145,7 @@ end
 
 local RES_DIR = "/var/mobile/Media/1ferver/lua/examples/"
 local TIKTOK_BUNDLE = "com.ss.iphone.ugc.Ame"
+local TIKTOK_LITE_BUNDLE = "com.zhiliaoapp.musicallylite"
 local APPMANAGER_BUNDLE = "com.tigisoftware.ADManager"
 local POPUP_1_CHECK = { RES_DIR .. "Popup_1_check1.png" }
 local POPUP_1_TAP = RES_DIR .. "Popup_1_tap.png"
@@ -451,26 +452,36 @@ function gotoHome() phase("Về Home") app.run("com.apple.springboard") waitPhas
 function openTikTokStoragePage() phase("Mở Storage") app.quit("com.apple.Preferences") waitPhase(1500) app.open_url("prefs:root=General&path=STORAGE_MGMT/com.ss.iphone.ugc.Ame") waitPhase(12000) app.open_url("prefs:root=General&path=STORAGE_MGMT/com.ss.iphone.ugc.Ame") waitPhase(5000) end
 function stage1DeleteTikTokOnce()
  closeTikTok() gotoHome() app.quit("com.apple.Preferences") app.quit("com.apple.AppStore") waitPhase(1500)
- local function hasTikTokInstalled()
+ local function hasBundleInstalled(bundle_id)
   local bundles = app.bundles()
   if type(bundles) ~= "table" then return nil end
-  for _, bid in ipairs(bundles) do if bid == TIKTOK_BUNDLE then return true end end
+  for _, bid in ipairs(bundles) do if bid == bundle_id then return true end end
   return false
  end
- local installed_before = hasTikTokInstalled()
- if installed_before == false then status("Không có TikTok") waitCountdown(60000, "Đợi AppStore") return true end
- phase("Gỡ TikTok") local ok = app.uninstall(TIKTOK_BUNDLE) waitPhase(3000)
+ local installed_tiktok = hasBundleInstalled(TIKTOK_BUNDLE)
+ local installed_tiktok_lite = hasBundleInstalled(TIKTOK_LITE_BUNDLE)
+ if installed_tiktok == false and installed_tiktok_lite == false then status("Không có TikTok") waitCountdown(60000, "Đợi AppStore") return true end
+ phase("Gỡ TikTok")
+ local ok_tiktok = true
+ local ok_tiktok_lite = true
+ if installed_tiktok ~= false then ok_tiktok = app.uninstall(TIKTOK_BUNDLE) waitPhase(1500) end
+ if installed_tiktok_lite ~= false then phase("Gỡ TikTok Lite") ok_tiktok_lite = app.uninstall(TIKTOK_LITE_BUNDLE) waitPhase(1500) end
  local start_wait = os.time() local lastShown = -1 phase("Chờ gỡ TikTok")
  while os.time() - start_wait < 120 do
   local remain = 120 - (os.time() - start_wait)
   if remain ~= lastShown then phaseProgress(remain) lastShown = remain end
-  local installed_now = hasTikTokInstalled()
-  if installed_now == false then phase("Gỡ xong") waitCountdown(60000, "Đợi AppStore") return true end
-  if installed_now == nil then if not app.is_running(TIKTOK_BUNDLE) then phase("TikTok đã tắt") end end
-  if os.time() - start_wait == 20 or os.time() - start_wait == 45 or os.time() - start_wait == 75 then phase("Gỡ lại TikTok") app.uninstall(TIKTOK_BUNDLE) waitPhase(2000) end
+  local installed_now_tiktok = hasBundleInstalled(TIKTOK_BUNDLE)
+  local installed_now_tiktok_lite = hasBundleInstalled(TIKTOK_LITE_BUNDLE)
+  if installed_now_tiktok == false and installed_now_tiktok_lite == false then phase("Gỡ xong") waitCountdown(60000, "Đợi AppStore") return true end
+  if installed_now_tiktok == nil or installed_now_tiktok_lite == nil then if not app.is_running(TIKTOK_BUNDLE) and not app.is_running(TIKTOK_LITE_BUNDLE) then phase("TikTok đã tắt") end end
+  if os.time() - start_wait == 20 or os.time() - start_wait == 45 or os.time() - start_wait == 75 then
+   phase("Gỡ lại TikTok")
+   if installed_now_tiktok ~= false then app.uninstall(TIKTOK_BUNDLE) waitPhase(1000) end
+   if installed_now_tiktok_lite ~= false then phase("Gỡ lại TikTok Lite") app.uninstall(TIKTOK_LITE_BUNDLE) waitPhase(1000) end
+  end
   sleep(1000)
  end
- if ok then phase("Chưa xác nhận gỡ") else phase("Gỡ TikTok lỗi") end
+ if ok_tiktok or ok_tiktok_lite then phase("Chưa xác nhận gỡ") else phase("Gỡ TikTok lỗi") end
  return false
 end
 function stage2DownloadTikTokOnce()
