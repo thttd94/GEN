@@ -54,6 +54,7 @@ XXTOUCH_DATA_DIR = XXTOUCH_WORK_DIR / 'data'
 XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
 XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
 NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'NuoiPhoi_tiktok.lua'
+EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'EventDD20p_tiktok_lite.lua'
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
 ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui_config.json')
@@ -1073,6 +1074,11 @@ LUA'''
         xxtouch_spawn_checked(ip, port, f"lua - <<'LUA'\n{nurture_script}\nLUA", timeout=14400)
         logs.append(f'[{label}] nuôi phôi TikTok ok')
         return True, logs
+    if action == 'event_dd_20p_tiktok_lite':
+        event_script = EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE.read_text(encoding='utf-8')
+        xxtouch_spawn_checked(ip, port, f"lua - <<'LUA'\n{event_script}\nLUA", timeout=11000)
+        logs.append(f'[{label}] chạy event DD 20p TikTok Lite ok')
+        return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
     return False, logs
 
@@ -1089,6 +1095,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'install_tiktok': 'Cài app TIKTOK',
         'quit_apps': 'Đóng ứng dụng',
         'nurture_tiktok': 'Nuôi phôi TikTok',
+        'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p TikTok Lite',
         'send_files': 'Gửi file',
     }
     success_label_map = {
@@ -1102,6 +1109,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'install_tiktok': 'cài app TIKTOK thành công',
         'quit_apps': 'đóng ứng dụng thành công',
         'nurture_tiktok': 'nuôi phôi TikTok thành công',
+        'event_dd_20p_tiktok_lite': 'chạy event DD 20p TikTok Lite thành công',
         'send_files': 'gửi file thành công',
     }
     fail_label_map = {
@@ -1115,6 +1123,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'install_tiktok': 'chưa cài được app TIKTOK',
         'quit_apps': 'chưa đóng được',
         'nurture_tiktok': 'chưa nuôi phôi được TikTok',
+        'event_dd_20p_tiktok_lite': 'chưa chạy được event DD 20p TikTok Lite',
         'send_files': 'chưa gửi được file',
     }
     success_label = success_label_map.get(action, f'{action_label_map.get(action, action)} thành công')

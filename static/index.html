@@ -243,7 +243,7 @@
               <div style="display:grid; gap:14px; max-width:220px;">
                 <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi','nurture_tiktok')">Nuôi Phôi</button>
                 <button class="btn apply" onclick="admRunGroup3Action('Chạy Event Video 180')">Chạy Event Video 180</button>
-                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD 20p')">Chạy Event DD 20p</button>
+                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD 20p','event_dd_20p_tiktok_lite')">Chạy Event DD 20p</button>
                 <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD hằng ngày')">Chạy Event DD hằng ngày</button>
               </div>
             </div>
@@ -1475,6 +1475,14 @@
         if (appValue !== 'tiktok') {
           admSetStatus('Nuôi Phôi hiện chỉ chạy cho TikTok');
           admLog(`[DEV] ${name}: chỉ hỗ trợ TikTok`);
+          return;
+        }
+        return admRunSimpleAction(action);
+      }
+      if (action === 'event_dd_20p_tiktok_lite') {
+        if (appValue !== 'tiktok_lite') {
+          admSetStatus('Chạy Event DD 20p hiện chỉ chạy cho TikTok Lite');
+          admLog(`[DEV] ${name}: chỉ hỗ trợ TikTok Lite`);
           return;
         }
         return admRunSimpleAction(action);
