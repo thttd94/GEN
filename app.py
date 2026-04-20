@@ -80,7 +80,6 @@ XXTOUCH_SCAN_LOCK = threading.Lock()
 XXTOUCH_SCAN_INFLIGHT = set()
 REPO_REMOTE_URL = 'https://github.com/thttd94/GEN.git'
 REPO_BRANCH = 'main'
-DEFAULT_UPDATE_PASSWORD = '123123@qq'
 DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
 DEFAULT_PER_VERSION_CODE_COUNT = 5
 
@@ -189,14 +188,6 @@ def read_current_version_label():
         return short
     except Exception:
         return 'Bản đang chạy'
-
-
-def get_update_password():
-    for key in ('GENROUTER_UPDATE_PASSWORD', 'INSTALL_PASSWORD'):
-        value = str(os.environ.get(key, '')).strip()
-        if value:
-            return value
-    return DEFAULT_UPDATE_PASSWORD
 
 
 def get_repo_version_info():
