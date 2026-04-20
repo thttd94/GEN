@@ -133,7 +133,13 @@
         <div class="top-work-grid">
           <div class="top-work-card">
             <div class="bulk-card-title">GÁN 1 PROXY CHO TOÀN BỘ CẤU HÌNH ĐANG MỞ</div>
-            <input id="bulkProxy" placeholder="server:port:user:pass">
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <input id="bulkProxy" placeholder="server:port:user:pass">
+              <select id="bulkProxyType" style="max-width:110px;">
+                <option value="socks5" selected>SOCKS5</option>
+                <option value="http">HTTP</option>
+              </select>
+            </div>
             <div class="bulk-actions-inline">
               <button class="btn" onclick="assignAllProxy()">GÁN 1 ALL</button>
               <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
@@ -897,14 +903,21 @@
 
     function assignAllProxy() {
       const value = document.getElementById('bulkProxy').value.trim();
-      getVisibleRows().forEach(r => r.proxy = value);
+      const proxyType = String(document.getElementById('bulkProxyType')?.value || 'socks5').trim().toLowerCase();
+      getVisibleRows().forEach(r => {
+        r.proxy = value;
+        r.proxyType = proxyType;
+      });
       persistDraft(currentSession);
       render();
       setStatus('Đã gán 1 proxy cho toàn bộ ' + sessionNameOf(currentSession));
     }
 
     function clearAllProxy() {
-      getVisibleRows().forEach(r => r.proxy = '');
+      getVisibleRows().forEach(r => {
+        r.proxy = '';
+        r.proxyType = 'socks5';
+      });
       persistDraft(currentSession);
       render();
       setStatus('Đã xóa toàn bộ proxy của ' + sessionNameOf(currentSession));
