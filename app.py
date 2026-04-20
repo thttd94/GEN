@@ -82,7 +82,10 @@ DEFAULT_UPDATE_PASSWORD = '123123@qq'
 
 
 def run_git_command(args, cwd=None, timeout=60):
-    proc = subprocess.run(['git', *args], cwd=str(cwd or BASE_DIR), capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout)
+    try:
+        proc = subprocess.run(['git', *args], cwd=str(cwd or BASE_DIR), capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout)
+    except FileNotFoundError as e:
+        raise RuntimeError('git not available') from e
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or proc.stdout or 'git failed').strip())
     return (proc.stdout or '').strip()
@@ -106,11 +109,28 @@ def get_update_password():
 
 
 def get_repo_version_info():
-    current_commit = run_git_command(['rev-parse', 'HEAD'])
-    current_short = run_git_command(['rev-parse', '--short', 'HEAD'])
-    current_subject = run_git_command(['log', '-1', '--pretty=%s'])
-    remote_url = run_git_command(['remote', 'get-url', 'origin'])
-    branch = run_git_command(['branch', '--show-current']) or REPO_BRANCH
+    try:
+        current_commit = run_git_command(['rev-parse', 'HEAD'])
+        current_short = run_git_command(['rev-parse', '--short', 'HEAD'])
+        current_subject = run_git_command(['log', '-1', '--pretty=%s'])
+        remote_url = run_git_command(['remote', 'get-url', 'origin'])
+        branch = run_git_command(['branch', '--show-current']) or REPO_BRANCH
+    except Exception as e:
+        return {
+            'ok': True,
+            'current_commit': '',
+            'current_short': 'no-git',
+            'current_subject': 'Bản đang chạy',
+            'current_label': 'Bản đang chạy (no-git)',
+            'latest_commit': '',
+            'latest_short': '',
+            'latest_subject': '',
+            'latest_label': '',
+            'has_update': False,
+            'branch': REPO_BRANCH,
+            'remote_url': REPO_REMOTE_URL,
+            'remote_error': str(e),
+        }
     latest_commit = current_commit
     latest_short = current_short
     latest_subject = current_subject
