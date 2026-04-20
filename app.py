@@ -2037,6 +2037,7 @@ def build_old_gui_update_proxy_payload_from_rows(rows):
     for row in rows or []:
         ip = str((row or {}).get('ip', '')).strip()
         proxy = str((row or {}).get('proxy', '')).strip()
+        proxy_type = str((row or {}).get('proxyType', 'socks5') or 'socks5').strip().lower()
         if not ip:
             continue
         if not proxy:
@@ -2044,7 +2045,7 @@ def build_old_gui_update_proxy_payload_from_rows(rows):
             continue
         try:
             server, port, username, password = parse_proxy(proxy)
-            item = {'type': 'socks5', 'server': server, 'port': int(port)}
+            item = {'type': 'http' if proxy_type == 'http' else 'socks5', 'server': server, 'port': int(port)}
             if username or password:
                 item['username'] = username
                 item['password'] = password
