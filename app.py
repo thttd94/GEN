@@ -938,6 +938,15 @@ def xxtouch_send_files_to_machine(machine, port, files, remote_dir='/var/mobile/
     return True, logs
 
 
+def xxtouch_run_repo_lua_script(ip, port, script_file: Path, timeout: int):
+    script_path = Path(script_file)
+    if not script_path.exists():
+        raise FileNotFoundError(f'Không thấy script repo: {script_path}')
+    script_text = script_path.read_text(encoding='utf-8')
+    # Chạy inline trực tiếp từ repo; tuyệt đối không ghi .lua vào máy iPhone.
+    return xxtouch_spawn_checked(ip, port, f"lua - <<'LUA'\n{script_text}\nLUA", timeout=timeout)
+
+
 def xxtouch_run_action_on_machine(machine, port, action):
     ip = machine['ip']
     label = machine['label']
@@ -1070,13 +1079,11 @@ LUA'''
         logs.append(f'[{label}] đóng ứng dụng ok')
         return True, logs
     if action == 'nurture_tiktok':
-        nurture_script = NURTURE_TIKTOK_SCRIPT_FILE.read_text(encoding='utf-8')
-        xxtouch_spawn_checked(ip, port, f"lua - <<'LUA'\n{nurture_script}\nLUA", timeout=14400)
+        xxtouch_run_repo_lua_script(ip, port, NURTURE_TIKTOK_SCRIPT_FILE, timeout=14400)
         logs.append(f'[{label}] nuôi phôi TikTok ok')
         return True, logs
     if action == 'event_dd_20p_tiktok_lite':
-        event_script = EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE.read_text(encoding='utf-8')
-        xxtouch_spawn_checked(ip, port, f"lua - <<'LUA'\n{event_script}\nLUA", timeout=11000)
+        xxtouch_run_repo_lua_script(ip, port, EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE, timeout=11000)
         logs.append(f'[{label}] chạy event DD 20p TikTok Lite ok')
         return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
