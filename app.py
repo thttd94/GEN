@@ -950,9 +950,23 @@ def xxtouch_run_repo_lua_script(ip, port, script_file: Path, timeout: int):
 def xxtouch_run_action_on_machine(machine, port, action):
     ip = machine['ip']
     label = machine['label']
+    action_label_map = {
+        'stop_script': 'Stop Script',
+        'reboot': 'Reboot',
+        'home': 'Home',
+        'lock_home': 'Lock Home',
+        'clear_app': 'Clear App',
+        'remove_tiktok_lite': 'Gỡ app TIKTOK LITE',
+        'remove_tiktok': 'Gỡ app TIKTOK',
+        'install_tiktok': 'Cài app TIKTOK',
+        'quit_apps': 'Đóng ứng dụng',
+        'nurture_tiktok': 'Nuôi Phôi',
+        'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
+        'send_files': 'Gửi file',
+    }
     stop_result = xxtouch_stop_script(ip, port)
     time.sleep(1)
-    logs = [f'[{label}] bắt đầu {action}', f'[{label}] {stop_result}', f'[{label}] chờ 1s sau stop script']
+    logs = [f'[{label}] bắt đầu {action_label_map.get(action, action)}', f'[{label}] {stop_result}', f'[{label}] chờ 1s sau stop script']
     if action == 'stop_script':
         logs.append(f'[{label}] stop script ok')
         return True, logs
@@ -1101,8 +1115,8 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'remove_tiktok': 'Gỡ app TIKTOK',
         'install_tiktok': 'Cài app TIKTOK',
         'quit_apps': 'Đóng ứng dụng',
-        'nurture_tiktok': 'Nuôi phôi TikTok',
-        'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p TikTok Lite',
+        'nurture_tiktok': 'Nuôi Phôi',
+        'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
         'send_files': 'Gửi file',
     }
     success_label_map = {
@@ -1115,8 +1129,8 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'remove_tiktok': 'gỡ app TIKTOK thành công',
         'install_tiktok': 'cài app TIKTOK thành công',
         'quit_apps': 'đóng ứng dụng thành công',
-        'nurture_tiktok': 'nuôi phôi TikTok thành công',
-        'event_dd_20p_tiktok_lite': 'chạy event DD 20p TikTok Lite thành công',
+        'nurture_tiktok': 'nuôi phôi thành công',
+        'event_dd_20p_tiktok_lite': 'chạy Event DD 20p thành công',
         'send_files': 'gửi file thành công',
     }
     fail_label_map = {
@@ -1129,8 +1143,8 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'remove_tiktok': 'chưa gỡ được app TIKTOK',
         'install_tiktok': 'chưa cài được app TIKTOK',
         'quit_apps': 'chưa đóng được',
-        'nurture_tiktok': 'chưa nuôi phôi được TikTok',
-        'event_dd_20p_tiktok_lite': 'chưa chạy được event DD 20p TikTok Lite',
+        'nurture_tiktok': 'chưa nuôi phôi được',
+        'event_dd_20p_tiktok_lite': 'chưa chạy được Event DD 20p',
         'send_files': 'chưa gửi được file',
     }
     success_label = success_label_map.get(action, f'{action_label_map.get(action, action)} thành công')

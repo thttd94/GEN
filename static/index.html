@@ -1602,7 +1602,7 @@
       if (!validated.ok) return;
       admClearLog();
       admLog(`Bắt đầu ${label}`);
-      admSetStatus(`Đang chạy ${label}`);
+      admSetStatus(`Bắt đầu ${label}`);
       try {
         const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action})});
         const msg = String(data.message || 'Xong').trim();

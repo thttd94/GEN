@@ -172,7 +172,7 @@ local function swipeUpSearchOneRound()
    local ok, fx, fy = findCheck()
    if ok then
     touch.up(1)
-    status("Da thay check20p_1.PNG: " .. fx .. "," .. fy)
+    status("Da thay Event 20p")
     return true, fx, fy
    end
   end
@@ -213,7 +213,7 @@ local function swipeDownSearchOneRound()
    local ok, fx, fy = findCheck()
    if ok then
     touch.up(1)
-    status("Da thay check20p_1.PNG: " .. fx .. "," .. fy)
+    status("Da thay Event 20p")
     return true, fx, fy
    end
   end
@@ -271,14 +271,14 @@ end
 local function recoverCheckNearby()
  if checkTimeout() then return "timeout", -1, -1 end
 
- status("Mat check, dang tim lai quanh vi tri hien tai")
+ status("Mat Event 20p, dang tim lai quanh vi tri hien tai")
 
  for round = 1, 4 do
   if checkTimeout() then return "timeout", -1, -1 end
 
   local ok, x, y = findCheck()
   if ok then
-   status("Da tim lai check20p_1.PNG")
+   status("Da tim lai Event 20p")
    return true, x, y
   end
 
@@ -287,7 +287,7 @@ local function recoverCheckNearby()
   end
   ok, x, y = findCheck()
   if ok then
-   status("Da tim lai check20p_1.PNG")
+   status("Da tim lai Event 20p")
    return true, x, y
   end
 
@@ -296,7 +296,7 @@ local function recoverCheckNearby()
   end
   ok, x, y = findCheck()
   if ok then
-   status("Da tim lai check20p_1.PNG")
+   status("Da tim lai Event 20p")
    return true, x, y
   end
  end
@@ -308,9 +308,9 @@ local function waitTapAfterCheck(timeoutSec, finalReady)
  if checkTimeout() then return "timeout", -1, -1, finalReady end
 
  if finalReady then
-  status("Da thay 0910.PNG, cho tap cuoi")
+  status("Da thay man hinh ket thuc, cho lan bam cuoi")
  else
-  status("Da thay check, dung yen cho tap20p.PNG")
+  status("Da thay Event 20p, dung yen cho bam tiep")
  end
 
  local loops = math.floor((timeoutSec * 1000) / 250)
@@ -325,7 +325,7 @@ local function waitTapAfterCheck(timeoutSec, finalReady)
   local okFinal = findFinal()
   if okFinal and not finalReady then
    finalReady = true
-   status("Da thay 0910.PNG, cho tap cuoi")
+   status("Da thay man hinh ket thuc, cho lan bam cuoi")
   end
 
   local okCheck = findCheck()
@@ -339,11 +339,11 @@ local function waitTapAfterCheck(timeoutSec, finalReady)
   if okTap then
    if not tapVisibleLastLoop then
     tapCount = tapCount + 1
-    status("Da thay tap20p.PNG: " .. tapX .. "," .. tapY)
+    status("Da thay nut bam Event 20p")
     touch.tap(tapX + 10, tapY + 10)
-    status("Da bam tap20p.PNG lan " .. tapCount)
+    status("Da bam Event 20p lan " .. tapCount)
     if finalReady then
-     status("Da bam tap cuoi sau khi thay 0910.PNG, dung script")
+     status("Da bam lan cuoi, ket thuc Event DD 20p")
      return "done_final", tapX, tapY, finalReady
     end
    end
@@ -359,7 +359,7 @@ local function waitTapAfterCheck(timeoutSec, finalReady)
    elseif okRecover then
     lostCount = 0
    else
-    status("Khong tim lai duoc check quanh vi tri hien tai")
+    status("Khong tim lai duoc Event 20p quanh vi tri hien tai")
     return "lost", -1, -1, finalReady
    end
   end
@@ -367,7 +367,7 @@ local function waitTapAfterCheck(timeoutSec, finalReady)
   sys.msleep(250)
  end
 
- status("Het thoi gian cho tap20p.PNG")
+ status("Het thoi gian cho bam Event 20p")
  return "timeout_wait", -1, -1, finalReady
 end
 
@@ -388,7 +388,7 @@ local function runSearchFlow(maxCycles)
    local okFinal = findFinal()
    if okFinal then
     finalReady = true
-    status("Da thay 0910.PNG, cho tap cuoi")
+    status("Da thay man hinh ket thuc, cho lan bam cuoi")
    end
   end
 
@@ -397,7 +397,7 @@ local function runSearchFlow(maxCycles)
    if okCheck then
     lockedOnCheck = true
     adjustCheckToBetterPosition(xCheck, yCheck)
-    status("Da thay check20p_1.PNG, dung cuon")
+    status("Da thay Event 20p, dung cuon")
    else
     if direction == "up" then
      okCheck, xCheck, yCheck = swipeUpSearchOneRound()
@@ -437,9 +437,9 @@ local function runSearchFlow(maxCycles)
     return true
    elseif result == "lost" then
     lockedOnCheck = false
-    status("Mat check, tiep tuc tim lai tu vi tri hien tai")
+    status("Mat Event 20p, tiep tuc tim lai tu vi tri hien tai")
    elseif result == "timeout_wait" then
-    status("Het thoi gian cho tap, tiep tuc tim quanh day")
+    status("Het thoi gian cho bam, tiep tuc tim quanh day")
     local okRecover = recoverCheckNearby()
     if okRecover == "timeout" then
      return false
