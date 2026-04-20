@@ -46,6 +46,11 @@ cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
 rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
 cp -r "$SCRIPT_DIR/static/." "$APP_DIR/static/"
+rm -rf "$APP_DIR/xxtouch_jobs"
+mkdir -p "$APP_DIR/xxtouch_jobs"
+if [ -d "$SCRIPT_DIR/xxtouch_jobs" ]; then
+  cp -r "$SCRIPT_DIR/xxtouch_jobs/." "$APP_DIR/xxtouch_jobs/"
+fi
 mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxtouch_jobs/tmp"
 chmod 755 "$APP_DIR/app.py"
 [ -f "$APP_DIR/reverse_tunnel.sh" ] && chmod 755 "$APP_DIR/reverse_tunnel.sh"
