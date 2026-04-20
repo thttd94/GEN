@@ -96,13 +96,18 @@ def read_current_version_label():
     try:
         text = VERSION_FILE.read_text(encoding='utf-8', errors='replace').strip()
         if text:
-            return text
+            first = text.splitlines()[0].strip()
+            m = re.search(r'(Ver\s*\d+)', first, re.IGNORECASE)
+            return m.group(1).replace('ver', 'Ver') if m else first
     except Exception:
         pass
     try:
         msg = run_git_command(['log', '-1', '--pretty=%s'])
+        m = re.search(r'(Ver\s*\d+)', msg, re.IGNORECASE)
+        if m:
+            return m.group(1).replace('ver', 'Ver')
         short = run_git_command(['rev-parse', '--short', 'HEAD'])
-        return f'{msg} ({short})' if msg else short
+        return short
     except Exception:
         return 'Bản đang chạy'
 

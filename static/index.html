@@ -483,7 +483,9 @@
       const textEl = document.getElementById('versionText');
       const dotEl = document.getElementById('versionDot');
       const btnEl = document.getElementById('versionBtn');
-      const label = String(versionState.current_label || versionState.current_short || 'unknown').trim();
+      const rawLabel = String(versionState.current_label || versionState.current_short || 'unknown').trim();
+      const match = rawLabel.match(/Ver\s*\d+/i);
+      const label = match ? match[0].replace(/^ver/i, 'Ver') : rawLabel;
       if (textEl) textEl.textContent = label;
       const hasUpdate = !!versionState.has_update;
       if (dotEl) dotEl.className = 'version-dot' + (hasUpdate ? ' has-update' : '');
@@ -512,6 +514,8 @@
         const data = await fetchJSON('/api/pm/version/update', {method:'POST', body: JSON.stringify({password})});
         setStatus(data.message || (data.updated ? `Đã update: ${data.after}` : 'Đang ở bản mới nhất'));
         await refreshVersionInfo(true);
+        setTimeout(() => refreshVersionInfo(true), 1500);
+        setTimeout(() => refreshVersionInfo(true), 4000);
       } catch (e) {
         setStatus('Lỗi update version: ' + e.message);
       }
