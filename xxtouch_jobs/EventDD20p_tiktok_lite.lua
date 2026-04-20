@@ -69,44 +69,71 @@ local function adjustCheckToBetterPosition(x, y)
   end
  end
 
+ if y < 260 then
+  status("Check dang qua cao, tam giu nguyen")
+  return true, x, y
+ end
+
  if isCheckInGoodZone(y) then
   status("Check dang o vi tri dep, khong can keo")
   return true, x, y
  end
 
- if y < GOOD_Y_MIN then
-  status("Check dang qua cao, tam giu nguyen")
-  return true, x, y
+ local anchorX = 375
+ local startY = y + 140
+ if startY < 900 then
+  startY = 900
+ end
+  if startY > 1180 then
+  startY = 1180
  end
 
- local startX = x + 20
- local startY = y + 20
- local delta = startY - TARGET_Y
+ local endY = TARGET_Y
+ if endY < 420 then
+  endY = 420
+ end
 
- if delta < 60 then
+ local dragDistance = startY - endY
+ if dragDistance < 180 then
+  startY = endY + 220
+  dragDistance = startY - endY
+ end
+
+ if dragDistance < 140 then
   status("Check gan vi tri dep, khong can keo")
   return true, x, y
  end
 
- local endY = startY - delta
-  if endY < 220 then
-  endY = 220
+ status("Dang keo card event 20p len khoi popup de")
+ touch.down(1, anchorX, startY)
+ sys.msleep(90)
+
+ local currentY = startY
+ local step = 32
+ while currentY > endY do
+  currentY = currentY - step
+  if currentY < endY then
+   currentY = endY
+  end
+  touch.move(1, anchorX, currentY)
+  sys.msleep(16)
  end
 
- touch.down(1, startX, startY)
- sys.msleep(80)
- touch.move(1, startX, endY)
- sys.msleep(120)
+ sys.msleep(140)
  touch.up(1)
- sys.msleep(350)
+ sys.msleep(500)
 
  local okAfter, xAfter, yAfter = findCheck()
  if okAfter then
-  status("Da keo check20p_1.PNG len vi tri de quan sat")
+  if isCheckInGoodZone(yAfter) then
+   status("Da keo event 20p vao vung giua de quan sat")
+  else
+   status("Da keo event 20p len, se canh tiep o vi tri moi")
+  end
   return true, xAfter, yAfter
  end
 
- status("Da keo check nhung chua thay lai, giu nguyen va cho tiep")
+ status("Da keo card event nhung chua thay lai check, van tiep tuc canh")
  return true, x, y
 end
 
