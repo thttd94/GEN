@@ -365,6 +365,23 @@
     </div>
   </div>
 
+  <div class="modal" id="versionCodeModal">
+    <div class="modal-card" style="width:min(460px, 92vw)">
+      <div class="modal-head">
+        <b>NHẬP MÃ UPDATE</b>
+        <button class="btn small" onclick="closeVersionCodeModal()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub" id="versionCodeHint">Nhập mã update để kiểm tra và tự update</div>
+        <input id="versionCodeInput" type="password" placeholder="Nhập mã update" autocomplete="off">
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="closeVersionCodeModal()">Hủy</button>
+        <button class="btn apply" onclick="submitVersionCodeUpdate()">OK</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="dupModal">
     <div class="modal-card" style="max-width:680px;">
       <div class="modal-head">
@@ -508,14 +525,27 @@
         if (!silent) setStatus('Lỗi lấy version: ' + e.message);
       }
     }
-    async function handleVersionClick() {
+    function openVersionCodeModal(){
       const latest = String(versionState.latest_label || '').trim();
-      const promptText = versionState.has_update && latest
-        ? `Có bản mới:\n${latest}\n\nNhập mã update để tự update:`
-        : 'Nhập mã update để kiểm tra và tự update:';
-      const password = window.prompt(promptText, '');
-      if (password === null) return;
+      const hint = document.getElementById('versionCodeHint');
+      const input = document.getElementById('versionCodeInput');
+      if (hint) hint.textContent = versionState.has_update && latest ? `Có bản mới: ${latest}. Nhập mã update để tự update.` : 'Nhập mã update để kiểm tra và tự update';
+      if (input) {
+        input.value = '';
+        input.type = 'password';
+      }
+      document.getElementById('versionCodeModal').classList.add('show');
+      setTimeout(() => { try { document.getElementById('versionCodeInput').focus(); } catch {} }, 50);
+    }
+    function closeVersionCodeModal(){
+      document.getElementById('versionCodeModal').classList.remove('show');
+    }
+    async function submitVersionCodeUpdate(){
+      const input = document.getElementById('versionCodeInput');
+      const password = String(input?.value || '').trim();
+      if (!password) return setStatus('Chưa nhập mã update');
       try {
+        closeVersionCodeModal();
         setStatus('Đang update phiên bản...');
         const data = await fetchJSON('/api/pm/version/update', {method:'POST', body: JSON.stringify({password})});
         setStatus(data.message || (data.updated ? `Đã update: ${data.after}` : 'Đang ở bản mới nhất'));
@@ -525,6 +555,9 @@
       } catch (e) {
         setStatus('Lỗi update version: ' + e.message);
       }
+    }
+    async function handleVersionClick() {
+      openVersionCodeModal();
     }
     function switchProjectTab(tab) {
       currentProjectTab = tab === 'xxtouch' ? 'xxtouch' : 'proxy';

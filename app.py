@@ -158,7 +158,7 @@ def consume_update_code(update_code: str, target_version: str):
         store['versions'] = versions
         save_update_codes_store(store)
         return {'admin': False, 'version': version_key, 'code': code}
-    raise PermissionError('Mã update không hợp lệ hoặc đã hết lượt cho version này')
+    raise PermissionError(f'Mã update không hợp lệ. Chỉ mã của {version_key} hoặc mã ADMIN mới dùng được')
 
 
 def run_git_command(args, cwd=None, timeout=60):
