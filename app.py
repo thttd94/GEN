@@ -64,6 +64,7 @@ ADMANAGER_FILE_RE = re.compile(r'^(?P<prefix>[^_]+_)(?P<date>\d{8})(?:_(?P<time_
 COLLECTOR_CONFIG_FILE = BASE_DIR / 'collector_config.json'
 VERSION_FILE = BASE_DIR / 'VERSION.txt'
 UPDATE_CODES_FILE = BASE_DIR / 'update_codes.json'
+BUNDLED_UPDATE_CODES_FILE = (Path(__file__).resolve().parent / 'update_codes.json')
 DEFAULT_COLLECTOR_URL = 'http://aeg.ooguy.com:9010'
 MAX_SESSION_COUNT = 5
 SESSION_FILES = {
@@ -90,11 +91,17 @@ def random_update_code(length=12):
 
 
 def load_update_codes_store():
-    try:
-        data = json.loads(UPDATE_CODES_FILE.read_text(encoding='utf-8', errors='replace'))
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    candidates = [UPDATE_CODES_FILE]
+    if BUNDLED_UPDATE_CODES_FILE != UPDATE_CODES_FILE:
+        candidates.append(BUNDLED_UPDATE_CODES_FILE)
+    for path in candidates:
+        try:
+            data = json.loads(path.read_text(encoding='utf-8', errors='replace'))
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+    return {}
 
 
 def save_update_codes_store(data):

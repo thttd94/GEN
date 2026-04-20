@@ -1,0 +1,200 @@
+{
+  "admin_code": "ADMIN2026GEN",
+  "versions": {
+    "Ver 63": {
+      "codes": [
+        {
+          "code": "9FGLVPZ36QUF",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "CXQ3NR22K29W",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "WDJBFXB8MBST",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "PZ4L38CZJLRF",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "9FWLA6WV5KCC",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
+    },
+    "Ver 64": {
+      "codes": [
+        {
+          "code": "X4GWWUQLE7HC",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "TZ6MZ94KQSTR",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "BMVZZE2DK4TV",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "3JXJH6HZSKCV",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "MJ725NCFANGL",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
+    },
+    "Ver 65": {
+      "codes": [
+        {
+          "code": "9WYJMWPMJVUP",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "AU5LC6KC62AY",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "4EDQJXY8KB8C",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "24544V96ELGW",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "S9TWD4QALHYP",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
+    },
+    "Ver 68": {
+      "codes": [
+        {
+          "code": "SWS5Z6PJR3EN",
+          "used": true,
+          "used_at": "2026-04-20 22:54:18",
+          "used_version": "Ver 68",
+          "used_target": "E:\\OpenClaw\\Genrouter_jobs\\proxy-manager-v1"
+        },
+        {
+          "code": "NBQNCVKQMLZG",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "NTEXTZCACZA8",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "ZCU9YRG6KFYN",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "8FJC6G38BGQQ",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
+    },
+    "Ver 69": {
+      "codes": [
+        {
+          "code": "6NMCKJZ6ALDW",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "LYC9R8W7TNBA",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "VFDYLQFRZH5R",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "SAEQR2CD2XZR",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "VAG8BWUMR2QR",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
+    }
+  }
+}
