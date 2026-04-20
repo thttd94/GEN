@@ -63,6 +63,7 @@ ADMANAGER_REMOTE_DIR = '/private/var/mobile/Library/ADManager'
 ADMANAGER_FILE_RE = re.compile(r'^(?P<prefix>[^_]+_)(?P<date>\d{8})(?:_(?P<time_u>\d{6})|(?P<time>\d{6}))\.adbk$')
 COLLECTOR_CONFIG_FILE = BASE_DIR / 'collector_config.json'
 VERSION_FILE = BASE_DIR / 'VERSION.txt'
+UPDATE_CODES_FILE = BASE_DIR / 'update_codes.json'
 DEFAULT_COLLECTOR_URL = 'http://aeg.ooguy.com:9010'
 MAX_SESSION_COUNT = 5
 SESSION_FILES = {
@@ -80,6 +81,84 @@ XXTOUCH_SCAN_INFLIGHT = set()
 REPO_REMOTE_URL = 'https://github.com/thttd94/GEN.git'
 REPO_BRANCH = 'main'
 DEFAULT_UPDATE_PASSWORD = '123123@qq'
+DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
+DEFAULT_PER_VERSION_CODE_COUNT = 5
+
+
+def random_update_code(length=12):
+    alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    return ''.join(__import__('secrets').choice(alphabet) for _ in range(length))
+
+
+def load_update_codes_store():
+    try:
+        data = json.loads(UPDATE_CODES_FILE.read_text(encoding='utf-8', errors='replace'))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_update_codes_store(data):
+    UPDATE_CODES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def normalize_version_key(label: str):
+    text = str(label or '').strip()
+    m = re.search(r'(Ver\s*\d+)', text, re.IGNORECASE)
+    return m.group(1).replace('ver', 'Ver') if m else text
+
+
+def ensure_update_codes_for_version(version_label: str, count=DEFAULT_PER_VERSION_CODE_COUNT):
+    version_key = normalize_version_key(version_label)
+    store = load_update_codes_store()
+    admin_code = str(store.get('admin_code') or DEFAULT_ADMIN_UPDATE_CODE).strip() or DEFAULT_ADMIN_UPDATE_CODE
+    store['admin_code'] = admin_code
+    versions = store.setdefault('versions', {}) if isinstance(store, dict) else {}
+    entry = versions.setdefault(version_key, {'codes': []})
+    codes = entry.setdefault('codes', []) if isinstance(entry, dict) else []
+    existing = {str(item.get('code') or '').strip() for item in codes if isinstance(item, dict)}
+    while len(codes) < int(count):
+        code = random_update_code(12)
+        if code in existing or code == admin_code:
+            continue
+        existing.add(code)
+        codes.append({'code': code, 'used': False, 'used_at': '', 'used_version': '', 'used_target': ''})
+    versions[version_key] = entry
+    store['versions'] = versions
+    save_update_codes_store(store)
+    return {
+        'version': version_key,
+        'admin_code': admin_code,
+        'codes': [item.get('code') for item in codes],
+    }
+
+
+def consume_update_code(update_code: str, target_version: str):
+    code = str(update_code or '').strip()
+    if not code:
+        raise PermissionError('Thiếu mã update')
+    store = load_update_codes_store()
+    admin_code = str(store.get('admin_code') or DEFAULT_ADMIN_UPDATE_CODE).strip() or DEFAULT_ADMIN_UPDATE_CODE
+    if code == admin_code:
+        return {'admin': True, 'version': normalize_version_key(target_version), 'code': code}
+    version_key = normalize_version_key(target_version)
+    versions = store.setdefault('versions', {}) if isinstance(store, dict) else {}
+    entry = versions.get(version_key) or {}
+    codes = entry.get('codes') if isinstance(entry, dict) else []
+    for item in codes or []:
+        if str(item.get('code') or '').strip() != code:
+            continue
+        if item.get('used'):
+            raise PermissionError('Mã update này đã được sử dụng')
+        item['used'] = True
+        item['used_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
+        item['used_version'] = version_key
+        item['used_target'] = str(BASE_DIR)
+        versions[version_key] = entry
+        store['versions'] = versions
+        save_update_codes_store(store)
+        return {'admin': False, 'version': version_key, 'code': code}
+    raise PermissionError('Mã update không hợp lệ hoặc đã hết lượt cho version này')
 
 
 def run_git_command(args, cwd=None, timeout=60):
@@ -178,14 +257,15 @@ def get_repo_version_info():
         'branch': branch,
         'remote_url': remote_url,
         'remote_error': remote_error,
+        'update_codes': ensure_update_codes_for_version(latest_subject or latest_label or current_label),
     }
 
 
 def update_repo_from_remote(password: str):
-    if str(password or '') != get_update_password():
-        raise PermissionError('Sai mật khẩu update')
+    target_info = get_repo_version_info()
+    target_version = normalize_version_key(target_info.get('latest_subject') or target_info.get('latest_label') or target_info.get('current_label') or 'Ver')
+    consume_update_code(password, target_version)
     archive_url = 'https://codeload.github.com/thttd94/GEN/tar.gz/refs/heads/main'
-    before_label = read_current_version_label()
     tmp_root = BASE_DIR.parent / 'update_tmp'
     extract_dir = tmp_root / 'GEN-main'
     archive_path = tmp_root / 'GEN-main.tar.gz'

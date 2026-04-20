@@ -511,8 +511,8 @@
     async function handleVersionClick() {
       const latest = String(versionState.latest_label || '').trim();
       const promptText = versionState.has_update && latest
-        ? `Có bản mới:\n${latest}\n\nNhập mật khẩu để tự update:`
-        : 'Nhập mật khẩu để kiểm tra và tự update:';
+        ? `Có bản mới:\n${latest}\n\nNhập mã update để tự update:`
+        : 'Nhập mã update để kiểm tra và tự update:';
       const password = window.prompt(promptText, '');
       if (password === null) return;
       try {
