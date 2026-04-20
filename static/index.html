@@ -179,7 +179,15 @@
               <th style="width:135px; cursor:pointer; user-select:none;" onclick="sortProxyManagerRows('ip')">IP ↑↓</th>
               <th style="width:95px;">Status</th>
               <th style="width:90px; cursor:pointer; user-select:none;" onclick="sortProxyManagerRows('machine')">MÁY ↑↓</th>
-              <th style="width:110px;">Proxy Type</th>
+              <th style="width:110px;">
+                <div style="display:grid; gap:6px; justify-items:start;">
+                  <span>Proxy Type</span>
+                  <select id="columnProxyType" onchange="applyColumnProxyType()" style="max-width:96px;">
+                    <option value="socks5" selected>SOCKS5</option>
+                    <option value="http">HTTP</option>
+                  </select>
+                </div>
+              </th>
               <th class="proxy-cell">Proxy</th>
               <th class="note-cell">Note</th>
               <th style="width:190px;">
@@ -933,15 +941,29 @@
       }
     }
 
+    function applyColumnProxyType() {
+      const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
+      getVisibleRows().forEach(r => {
+        r.proxyType = proxyType;
+      });
+      persistDraft(currentSession);
+      render();
+      const el = document.getElementById('columnProxyType');
+      if (el) el.value = proxyType;
+      setStatus('Đã đổi Proxy Type cho toàn bộ cột đang hiển thị của ' + sessionNameOf(currentSession));
+    }
+
     function assignAllProxy() {
       const value = document.getElementById('bulkProxy').value.trim();
-      const proxyType = String(document.getElementById('bulkProxyType')?.value || 'socks5').trim().toLowerCase();
+      const proxyType = String(document.getElementById('bulkProxyType')?.value || document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
       getVisibleRows().forEach(r => {
         r.proxy = value;
         r.proxyType = proxyType;
       });
       persistDraft(currentSession);
       render();
+      const col = document.getElementById('columnProxyType');
+      if (col) col.value = proxyType;
       setStatus('Đã gán 1 proxy cho toàn bộ ' + sessionNameOf(currentSession));
     }
 
@@ -952,6 +974,10 @@
       });
       persistDraft(currentSession);
       render();
+      const bulk = document.getElementById('bulkProxyType');
+      if (bulk) bulk.value = 'socks5';
+      const col = document.getElementById('columnProxyType');
+      if (col) col.value = 'socks5';
       setStatus('Đã xóa toàn bộ proxy của ' + sessionNameOf(currentSession));
     }
 
