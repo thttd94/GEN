@@ -18,7 +18,6 @@ import threading
 import base64
 import hashlib
 import os
-import tempfile
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -116,15 +115,19 @@ def get_repo_version_info():
     latest_short = current_short
     latest_subject = current_subject
     has_update = False
+    remote_error = ''
     try:
-        with tempfile.TemporaryDirectory() as tmp:
-            run_git_command(['clone', '--depth', '1', '--branch', branch, remote_url, tmp], cwd=BASE_DIR, timeout=180)
-            latest_commit = run_git_command(['rev-parse', 'HEAD'], cwd=tmp)
-            latest_short = run_git_command(['rev-parse', '--short', 'HEAD'], cwd=tmp)
-            latest_subject = run_git_command(['log', '-1', '--pretty=%s'], cwd=tmp)
-            has_update = latest_commit != current_commit
-    except Exception:
-        has_update = False
+        ls = run_git_command(['ls-remote', '--heads', remote_url, branch], timeout=30)
+        head_line = next((line for line in ls.splitlines() if line.strip()), '')
+        remote_commit = head_line.split('\t', 1)[0].strip() if head_line else ''
+        if remote_commit:
+            latest_commit = remote_commit
+            latest_short = remote_commit[:7]
+            if remote_commit != current_commit:
+                latest_subject = 'Có bản mới trên Git'
+                has_update = True
+    except Exception as e:
+        remote_error = str(e)
     return {
         'ok': True,
         'current_commit': current_commit,
@@ -138,6 +141,7 @@ def get_repo_version_info():
         'has_update': has_update,
         'branch': branch,
         'remote_url': remote_url,
+        'remote_error': remote_error,
     }
 
 
