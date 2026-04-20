@@ -241,10 +241,10 @@
                 <button class="btn" type="button" onclick="admRunSimpleAction('stop_script')" style="background:#dc2626; color:#fff; border-color:#dc2626; min-width:200px;">Stop Script</button>
               </div>
               <div style="display:grid; gap:14px; max-width:220px;">
-                <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi','nurture_tiktok')">Nuôi Phôi</button>
-                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event Video 180')">Chạy Event Video 180</button>
+                <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi','maintenance')">Nuôi Phôi</button>
+                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event Video 180','maintenance')">Chạy Event Video 180</button>
                 <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD 20p','event_dd_20p_tiktok_lite')">Chạy Event DD 20p</button>
-                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD hằng ngày')">Chạy Event DD hằng ngày</button>
+                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD hằng ngày','maintenance')">Chạy Event DD hằng ngày</button>
               </div>
             </div>
           </div>
@@ -1471,6 +1471,11 @@
       const appValue = document.getElementById('admGroup3App')?.value || 'tiktok_lite';
       const appLabel = appValue === 'tiktok' ? 'TikTok' : 'TikTok Lite';
       admPersistUiState();
+      if (action === 'maintenance') {
+        admSetStatus(`${name} đang bảo trì`);
+        admLog(`[MAINTENANCE] ${name}: tạm khóa, sẽ mở lại sau`);
+        return;
+      }
       if (action === 'nurture_tiktok') {
         if (appValue !== 'tiktok') {
           admSetStatus('Nuôi Phôi hiện chỉ chạy cho TikTok');
