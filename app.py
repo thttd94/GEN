@@ -179,29 +179,46 @@ def get_repo_version_info():
 def update_repo_from_remote(password: str):
     if str(password or '') != get_update_password():
         raise PermissionError('Sai mật khẩu update')
-    branch = run_git_command(['branch', '--show-current']) or REPO_BRANCH
-    run_git_command(['fetch', 'origin', branch], timeout=180)
-    remote_ref = f'origin/{branch}'
-    before = run_git_command(['rev-parse', 'HEAD'])
-    before_short = run_git_command(['rev-parse', '--short', 'HEAD'])
-    before_subject = run_git_command(['log', '-1', '--pretty=%s'])
-    after_remote = run_git_command(['rev-parse', remote_ref])
-    changed = before != after_remote
-    if changed:
-        run_git_command(['reset', '--hard', remote_ref], timeout=180)
-    after = run_git_command(['rev-parse', 'HEAD'])
-    after_short = run_git_command(['rev-parse', '--short', 'HEAD'])
-    after_subject = run_git_command(['log', '-1', '--pretty=%s'])
-    return {
-        'ok': True,
-        'updated': changed,
-        'before': f'{before_subject} ({before_short})'.strip(),
-        'after': f'{after_subject} ({after_short})'.strip(),
-        'current_label': f'{after_subject} ({after_short})'.strip(),
-        'current_commit': after,
-        'current_short': after_short,
-        'message': 'Đã update lên bản mới' if changed else 'Đang ở bản mới nhất',
-    }
+    archive_url = 'https://codeload.github.com/thttd94/GEN/tar.gz/refs/heads/main'
+    before_label = read_current_version_label()
+    tmp_root = BASE_DIR.parent / 'update_tmp'
+    extract_dir = tmp_root / 'GEN-main'
+    archive_path = tmp_root / 'GEN-main.tar.gz'
+    try:
+        if tmp_root.exists():
+            shutil.rmtree(tmp_root, ignore_errors=True)
+        tmp_root.mkdir(parents=True, exist_ok=True)
+        req = urllib.request.Request(archive_url, headers={'User-Agent': 'proxy-manager-updater'})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            archive_path.write_bytes(resp.read())
+        shutil.unpack_archive(str(archive_path), str(tmp_root), 'gztar')
+        if not extract_dir.exists():
+            raise RuntimeError('Không giải nén được gói update')
+        for item in extract_dir.iterdir():
+            target = BASE_DIR / item.name
+            if target.exists():
+                if target.is_dir() and not target.is_symlink():
+                    shutil.rmtree(target, ignore_errors=True)
+                else:
+                    target.unlink(missing_ok=True)
+            if item.is_dir():
+                shutil.copytree(item, target)
+            else:
+                shutil.copy2(item, target)
+        after_label = read_current_version_label()
+        changed = after_label != before_label
+        return {
+            'ok': True,
+            'updated': changed,
+            'before': before_label,
+            'after': after_label,
+            'current_label': after_label,
+            'current_commit': '',
+            'current_short': '',
+            'message': 'Đã update lên bản mới' if changed else 'Đã update xong',
+        }
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
 
 
 def proxy_tag_num(tag):
