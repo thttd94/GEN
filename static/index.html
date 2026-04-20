@@ -611,6 +611,7 @@
         tag: String(r.tag || ''),
         ip: String(r.ip || ''),
         proxy: String(r.proxy || ''),
+        proxyType: String(r.proxyType || 'socks5'),
         note: String(r.note || ''),
       }));
     }
@@ -624,6 +625,7 @@
         return draft.map(item => ({
           ...item,
           proxy: String(item?.proxy || ''),
+          proxyType: String(item?.proxyType || 'socks5'),
           note: String(item?.note || ''),
         }));
       } catch {
@@ -638,7 +640,7 @@
         const key = String(row.tag || row.ip || '');
         const saved = byKey.get(key);
         if (!saved) return row;
-        return { ...row, proxy: saved.proxy || '', note: saved.note || '' };
+        return { ...row, proxy: saved.proxy || '', proxyType: saved.proxyType || row.proxyType || 'socks5', note: saved.note || '' };
       });
     }
 
@@ -737,7 +739,15 @@
           <td class="mono">${esc(row.ip)}</td>
           <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
           <td class="mono">${esc(row.machine || '')}</td>
-          <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
+          <td>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxyType" onchange="updateField(this)" style="max-width:96px;">
+                <option value="socks5" ${(String(row.proxyType || 'socks5').toLowerCase()==='socks5') ? 'selected' : ''}>SOCKS5</option>
+                <option value="http" ${(String(row.proxyType || 'socks5').toLowerCase()==='http') ? 'selected' : ''}>HTTP</option>
+              </select>
+              <input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass">
+            </div>
+          </td>
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
         </tr>`).join('');

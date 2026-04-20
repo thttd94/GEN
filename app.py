@@ -1714,6 +1714,13 @@ def format_proxy(outbound):
     return f"{server}:{port}:{user}:{password}"
 
 
+def format_proxy_type(outbound):
+    t = str((outbound or {}).get('type', '')).strip().lower()
+    if t == 'http':
+        return 'http'
+    return 'socks5'
+
+
 def extract_rows(data, session='1'):
     outbounds = {
         str(item.get('tag')): item
@@ -1754,6 +1761,7 @@ def extract_rows(data, session='1'):
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
+            'proxyType': format_proxy_type(outbound),
             'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
             'note': str(meta.get('note', '')).strip(),
@@ -1773,6 +1781,7 @@ def extract_rows(data, session='1'):
             'ip': ip,
             'tag': tag,
             'proxy': format_proxy(outbound),
+            'proxyType': 'socks5',
             'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
             'note': str(meta.get('note', '')).strip(),
@@ -1788,7 +1797,8 @@ def apply_rows_to_data(data, rows_by_tag, session='1'):
     touched_rows = []
     for tag, row in rows_by_tag.items():
         proxy = str(row.get('proxy', '')).strip()
-        set_outbound_proxy(outbounds, outbound_idx, tag, proxy)
+        proxy_type = str(row.get('proxyType', 'socks5') or 'socks5').strip().lower()
+        set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type)
         touched_rows.append({
             'tag': tag,
             'mac': row.get('mac', ''),
@@ -1798,7 +1808,7 @@ def apply_rows_to_data(data, rows_by_tag, session='1'):
     update_session_rows_meta(session, touched_rows)
     return data
 
-def set_outbound_proxy(outbounds, outbound_idx, tag, proxy):
+def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5'):
     idx = outbound_idx.get(tag)
     if idx is None:
         return
@@ -1806,6 +1816,17 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy):
         outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
     server, port, user, password = parse_proxy(proxy)
+    normalized_type = str(proxy_type or 'socks5').strip().lower()
+    if normalized_type == 'http':
+        outbounds[idx] = {
+            'tag': tag,
+            'type': 'http',
+            'server': server,
+            'server_port': port,
+            'username': user,
+            'password': password,
+        }
+        return
     outbounds[idx] = {
         'tag': tag,
         'type': 'socks',
