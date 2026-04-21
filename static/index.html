@@ -534,6 +534,10 @@
         if (!silent) setStatus('Lỗi lấy version: ' + e.message);
       }
     }
+    let versionUpdateSubmitting = false;
+    function normalizeVersionCodeInput(value){
+      return String(value || '').toUpperCase().replace(/\s+/g, '').trim();
+    }
     function openVersionCodeModal(){
       const latest = String(versionState.latest_label || '').trim();
       const hint = document.getElementById('versionCodeHint');
@@ -542,7 +546,15 @@
       if (input) {
         input.value = '';
         input.type = 'password';
+        input.oninput = () => { input.value = normalizeVersionCodeInput(input.value); };
+        input.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submitVersionCodeUpdate();
+          }
+        };
       }
+      versionUpdateSubmitting = false;
       document.getElementById('versionCodeModal').classList.add('show');
       setTimeout(() => { try { document.getElementById('versionCodeInput').focus(); } catch {} }, 50);
     }
@@ -550,19 +562,24 @@
       document.getElementById('versionCodeModal').classList.remove('show');
     }
     async function submitVersionCodeUpdate(){
+      if (versionUpdateSubmitting) return;
       const input = document.getElementById('versionCodeInput');
-      const password = String(input?.value || '').trim();
+      const password = normalizeVersionCodeInput(input?.value || '');
+      if (input) input.value = password;
       if (!password) return setStatus('Chưa nhập mã update');
+      versionUpdateSubmitting = true;
       try {
         closeVersionCodeModal();
-        setStatus('Đang update phiên bản...');
+        setStatus(`Đang update phiên bản với mã ${password}...`);
         const data = await fetchJSON('/api/pm/version/update', {method:'POST', body: JSON.stringify({password})});
         setStatus(data.message || (data.updated ? `Đã update: ${data.after}` : 'Đang ở bản mới nhất'));
         await refreshVersionInfo(true);
         setTimeout(() => refreshVersionInfo(true), 1500);
         setTimeout(() => refreshVersionInfo(true), 4000);
       } catch (e) {
-        setStatus('Lỗi update version: ' + e.message);
+        setStatus((e && e.message) ? e.message : ('Lỗi update version: ' + e));
+      } finally {
+        versionUpdateSubmitting = false;
       }
     }
     async function handleVersionClick() {
