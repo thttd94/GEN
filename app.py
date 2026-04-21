@@ -55,6 +55,8 @@ XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
 XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
 NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'NuoiPhoi_tiktok.lua'
 EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'EventDD20p_tiktok_lite.lua'
+GROUP3_NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_NuoiPhoi_tiktok.lua'
+GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventDD20p_tiktok_lite.lua'
 GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventVideo180_tiktok.lua'
 EVENT_VIDEO_180_TIKTOK_LINKS = [
     'https://www.tiktok.com/t/ZSHoJkxP6/',
@@ -1377,11 +1379,11 @@ LUA'''
         logs.append(f'[{label}] đóng ứng dụng ok')
         return True, logs
     if action == 'nurture_tiktok':
-        xxtouch_run_repo_lua_script(ip, port, NURTURE_TIKTOK_SCRIPT_FILE, timeout=14400)
+        xxtouch_run_repo_lua_script(ip, port, GROUP3_NURTURE_TIKTOK_SCRIPT_FILE, timeout=14400)
         logs.append(f'[{label}] nuôi phôi TikTok ok')
         return True, logs
     if action == 'event_dd_20p_tiktok_lite':
-        xxtouch_run_repo_lua_script(ip, port, EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE, timeout=11000)
+        xxtouch_run_repo_lua_script(ip, port, GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE, timeout=11000)
         logs.append(f'[{label}] chạy event DD 20p TikTok Lite ok')
         return True, logs
     if action == 'event_video_180_tiktok':

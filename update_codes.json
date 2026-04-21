@@ -1014,6 +1014,45 @@
           "used_target": ""
         }
       ]
+    },
+    "Ver 94": {
+      "codes": [
+        {
+          "code": "DFF9PFK8XE8H",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "9GG5LAE5YPG4",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "PZ9HNNR8U6BC",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "LWV9QYPHJG2L",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "1VYYL5J37LJ9",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
     }
   }
 }
