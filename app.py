@@ -719,6 +719,111 @@ def create_group3_schedule_job(payload, cfg):
     return job_key, job
 
 
+def group3_schedule_execute_job(job):
+    cfg = load_admanager_config()
+    state = dict(job.get('state') or {})
+    port = str(job.get('port') or state.get('port') or ((cfg.get('uiState') or {}).get('port')) or '46952').strip()
+    action = str(job.get('action') or '').strip()
+    machines = xxtouch_get_selected_machines(cfg, state)
+    if not machines:
+        return False, ['[SCHEDULE] Không tìm thấy máy XXTouch hợp lệ để chạy lệnh']
+    logs = []
+    ok_count = 0
+    failed_indexes = []
+    app_choice = str(job.get('group3App') or state.get('group3App') or 'tiktok_lite').strip() or 'tiktok_lite'
+    if len(machines) <= 1:
+        for m in machines:
+            try:
+                ok, lines = xxtouch_run_action_on_machine(m, port, action, app_choice)
+                logs.extend(lines)
+                if ok:
+                    ok_count += 1
+                else:
+                    failed_indexes.append(int(m.get('index') or 0))
+            except Exception as e:
+                logs.append(f"[{m['label']}] lỗi: {e}")
+                failed_indexes.append(int(m.get('index') or 0))
+    else:
+        max_workers = max(1, len(machines))
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action, app_choice): m for m in machines}
+            ordered_results = []
+            for future in as_completed(future_map):
+                m = future_map[future]
+                try:
+                    ok, lines = future.result()
+                except Exception as e:
+                    ok, lines = False, [f"[{m['label']}] lỗi: {e}"]
+                ordered_results.append({'index': int(m.get('index') or 0), 'label': str(m.get('label') or ''), 'ok': ok, 'lines': lines})
+        ordered_results.sort(key=lambda item: (item['index'], item['label']))
+        for item in ordered_results:
+            logs.extend(item['lines'])
+            if item['ok']:
+                ok_count += 1
+            else:
+                failed_indexes.append(int(item.get('index') or 0))
+    logs.append(xxtouch_build_action_summary(action, machines, ok_count, failed_indexes))
+    return ok_count == len(machines), logs
+
+
+def group3_schedule_worker(job_key):
+    while True:
+        with GROUP3_SCHEDULE_LOCK:
+            store = load_group3_schedule_store()
+            job = (store.get('jobs') or {}).get(job_key)
+        if not isinstance(job, dict):
+            GROUP3_SCHEDULE_THREADS.pop(job_key, None)
+            return
+        now = int(time.time())
+        if int(job.get('next_run_at') or 0) > now:
+            time.sleep(1)
+            continue
+        with GROUP3_SCHEDULE_LOCK:
+            store = load_group3_schedule_store()
+            job = (store.get('jobs') or {}).get(job_key)
+            if not isinstance(job, dict):
+                GROUP3_SCHEDULE_THREADS.pop(job_key, None)
+                return
+            job['status'] = 'running'
+            job['running'] = True
+            store['jobs'][job_key] = job
+            save_group3_schedule_store(store)
+        ok, logs = group3_schedule_execute_job(job)
+        with GROUP3_SCHEDULE_LOCK:
+            store = load_group3_schedule_store()
+            job = (store.get('jobs') or {}).get(job_key)
+            if not isinstance(job, dict):
+                GROUP3_SCHEDULE_THREADS.pop(job_key, None)
+                return
+            job['running'] = False
+            job['last_run_at'] = int(time.time())
+            job['last_logs'] = logs[-20:]
+            if not ok and logs:
+                job['last_error'] = str(logs[-1])
+            remaining = max(0, int(job.get('remaining_runs') or 0) - 1)
+            job['remaining_runs'] = remaining
+            if remaining <= 0:
+                store.get('jobs', {}).pop(job_key, None)
+                save_group3_schedule_store(store)
+                GROUP3_SCHEDULE_THREADS.pop(job_key, None)
+                return
+            job['status'] = 'waiting'
+            job['next_run_at'] = int(time.time()) + max(1, int(job.get('interval_seconds') or 1))
+            store['jobs'][job_key] = job
+            save_group3_schedule_store(store)
+        time.sleep(1)
+
+
+def group3_schedule_start_worker(job_key):
+    with GROUP3_SCHEDULE_LOCK:
+        worker = GROUP3_SCHEDULE_THREADS.get(job_key)
+        if worker and worker.is_alive():
+            return
+        worker = threading.Thread(target=group3_schedule_worker, args=(job_key,), daemon=True)
+        GROUP3_SCHEDULE_THREADS[job_key] = worker
+        worker.start()
+
+
 def admanager_detect_app_label(apps_cfg: dict, base_name: str) -> str:
     low = str(base_name or '').lower()
     for key, info in (apps_cfg or {}).items():
@@ -3024,12 +3129,13 @@ class Handler(BaseHTTPRequestHandler):
                 interval_seconds = max(1, int(state.get('interval_seconds') or 0))
                 run_count = max(1, int(state.get('run_count') or 0))
                 job_key, job = create_group3_schedule_job({**state, 'interval_seconds': interval_seconds, 'run_count': run_count}, cfg)
-                job['status'] = 'queued'
+                job['status'] = 'waiting'
                 job['next_run_at'] = int(time.time())
                 with GROUP3_SCHEDULE_LOCK:
                     store = load_group3_schedule_store()
                     store.setdefault('jobs', {})[job_key] = job
                     save_group3_schedule_store(store)
+                group3_schedule_start_worker(job_key)
                 return self._send_json({'ok': True, 'job': group3_schedule_public(job), 'message': 'Đã lưu lịch hẹn giờ'})
             if path == '/api/xxtouch/group3-schedule/cancel':
                 cfg = load_admanager_config()
