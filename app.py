@@ -3009,23 +3009,48 @@ class Handler(BaseHTTPRequestHandler):
                             logs.append(f"[{m['label']}] lỗi: {e}")
                             failed_indexes.append(int(m.get('index') or 0))
                 else:
-                    max_workers = max(1, len(machines))
-                    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                        group3_app = state.get('group3App') or 'tiktok_lite'
-                        future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action, group3_app): m for m in machines}
+                    group3_app = state.get('group3App') or 'tiktok_lite'
+                    if action == 'event_video_180_tiktok' and len(machines) >= 10:
                         ordered_results = []
-                        for future in as_completed(future_map):
-                            m = future_map[future]
-                            try:
-                                ok, lines = future.result()
-                            except Exception as e:
-                                ok, lines = False, [f"[{m['label']}] lỗi: {e}"]
-                            ordered_results.append({
-                                'index': int(m.get('index') or 0),
-                                'label': str(m.get('label') or ''),
-                                'ok': ok,
-                                'lines': lines,
-                            })
+                        total = len(machines)
+                        for batch_start in range(0, total, 10):
+                            batch = machines[batch_start:batch_start + 10]
+                            batch_end = batch_start + len(batch)
+                            logs.append(f'[BATCH] Event Video 180: chạy đợt {batch_start // 10 + 1}, máy {batch_start + 1}-{batch_end}/{total}')
+                            with ThreadPoolExecutor(max_workers=len(batch)) as ex:
+                                future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action, group3_app): m for m in batch}
+                                for future in as_completed(future_map):
+                                    m = future_map[future]
+                                    try:
+                                        ok, lines = future.result()
+                                    except Exception as e:
+                                        ok, lines = False, [f"[{m['label']}] lỗi: {e}"]
+                                    ordered_results.append({
+                                        'index': int(m.get('index') or 0),
+                                        'label': str(m.get('label') or ''),
+                                        'ok': ok,
+                                        'lines': lines,
+                                    })
+                            if batch_end < total:
+                                logs.append('[BATCH] Event Video 180: chờ 30s trước đợt tiếp theo')
+                                time.sleep(30)
+                    else:
+                        max_workers = max(1, len(machines))
+                        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                            future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action, group3_app): m for m in machines}
+                            ordered_results = []
+                            for future in as_completed(future_map):
+                                m = future_map[future]
+                                try:
+                                    ok, lines = future.result()
+                                except Exception as e:
+                                    ok, lines = False, [f"[{m['label']}] lỗi: {e}"]
+                                ordered_results.append({
+                                    'index': int(m.get('index') or 0),
+                                    'label': str(m.get('label') or ''),
+                                    'ok': ok,
+                                    'lines': lines,
+                                })
                     ordered_results.sort(key=lambda item: (item['index'], item['label']))
                     for item in ordered_results:
                         logs.extend(item['lines'])
