@@ -1387,8 +1387,7 @@ LUA'''
         if str(app_choice or '').strip() != 'tiktok':
             logs.append(f'[{label}] Event Video 180 hiện chỉ chạy cho TikTok')
             return False, logs
-        script = build_event_video_180_script(app_choice)
-        xxtouch_spawn_checked(ip, port, script, timeout=40)
+        xxtouch_run_repo_lua_script(ip, port, BASE_DIR / 'xxtouch_jobs' / 'EventVideo180.lua', timeout=40)
         logs.append(f'[{label}] chạy file EventVideo180.lua ok (tiktok)')
         return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
