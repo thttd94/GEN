@@ -936,6 +936,45 @@
           "used_target": ""
         }
       ]
+    },
+    "Ver 92": {
+      "codes": [
+        {
+          "code": "HHTFHKMEAM5M",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "1WHL6RWE21N0",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "6BE2H54I7P1I",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "2EWCFZR33J7B",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "DPV570LJEY6Q",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
     }
   }
 }

@@ -55,6 +55,7 @@ XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
 XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
 NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'NuoiPhoi_tiktok.lua'
 EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'EventDD20p_tiktok_lite.lua'
+GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventVideo180_tiktok.lua'
 EVENT_VIDEO_180_TIKTOK_LINKS = [
     'https://www.tiktok.com/t/ZSHoJkxP6/',
     'https://www.tiktok.com/t/ZSHoJvPdS',
@@ -72,7 +73,7 @@ EVENT_VIDEO_180_TIKTOK_LITE_LINKS = [link.replace('https://www.tiktok.com', 'htt
 
 def build_event_video_180_script(app_choice: str) -> str:
     safe_choice = 'tiktok_lite' if str(app_choice or '').strip() == 'tiktok_lite' else 'tiktok'
-    script_path = BASE_DIR / 'xxtouch_jobs' / 'EventVideo180.lua'
+    script_path = BASE_DIR / 'xxtouch_jobs' / 'Group3_EventVideo180_tiktok.lua'
     return f"lua {shlex.quote(str(script_path))}"
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
@@ -1387,8 +1388,8 @@ LUA'''
         if str(app_choice or '').strip() != 'tiktok':
             logs.append(f'[{label}] Event Video 180 hiện chỉ chạy cho TikTok')
             return False, logs
-        xxtouch_run_repo_lua_script(ip, port, BASE_DIR / 'xxtouch_jobs' / 'EventVideo180.lua', timeout=40)
-        logs.append(f'[{label}] chạy file EventVideo180.lua ok (tiktok)')
+        xxtouch_run_repo_lua_script(ip, port, GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE, timeout=40)
+        logs.append(f'[{label}] chạy file Group3_EventVideo180_tiktok.lua ok')
         return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
     return False, logs
