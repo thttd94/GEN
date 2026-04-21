@@ -1644,6 +1644,11 @@
         return admRunSimpleAction(action);
       }
       if (action === 'event_video_180_tiktok') {
+        if (appValue !== 'tiktok') {
+          admSetStatus('Chạy Event Video 180 hiện chỉ chạy cho TikTok');
+          admLog(`[DEV] ${name}: chỉ hỗ trợ TikTok`);
+          return;
+        }
         return admRunSimpleAction(action);
       }
       admSetStatus(`Đã chọn ${appLabel} cho nhóm 3`);
