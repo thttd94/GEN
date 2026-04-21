@@ -72,7 +72,7 @@ EVENT_VIDEO_180_TIKTOK_LITE_LINKS = [link.replace('https://www.tiktok.com', 'htt
 
 def build_event_video_180_script(app_choice: str) -> str:
     safe_choice = 'tiktok_lite' if str(app_choice or '').strip() == 'tiktok_lite' else 'tiktok'
-    script_path = XXTOUCH_JOBS_DIR / 'EventVideo180.lua'
+    script_path = BASE_DIR / 'xxtouch_jobs' / 'EventVideo180.lua'
     return f"EVENT_VIDEO_180_APP={safe_choice} lua {shlex.quote(str(script_path))}"
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
