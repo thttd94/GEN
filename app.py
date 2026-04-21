@@ -1025,22 +1025,44 @@ def xxtouch_get_selected_machines(cfg: dict, state: dict):
         mode = 'all'
         group_text = ''
         list_text = ''
-    router = (cfg.get('routers') or {}).get(requested_router) if isinstance(cfg.get('routers'), dict) and requested_router else {}
+    routers_cfg = cfg.get('routers') if isinstance(cfg.get('routers'), dict) else {}
+    router_items = []
+    if requested_router and requested_router not in ('All', 'ALL', 'all'):
+        router = routers_cfg.get(requested_router) if isinstance(routers_cfg, dict) else {}
+        router_items.append((requested_router, router if isinstance(router, dict) else {}))
+    else:
+        router_items = [(rk, ro if isinstance(ro, dict) else {}) for rk, ro in (routers_cfg or {}).items()]
     out = []
-    for machine in admanager_iter_machines(requested_router, router if isinstance(router, dict) else {}, mode, group_text, list_text):
-        out.append({'router': '', 'index': machine['index'], 'ip': machine['ip'], 'label': machine['label']})
-    out.sort(key=lambda x: x['index'])
+    seen = set()
+    for router_key, router_obj in router_items:
+        for machine in admanager_iter_machines(router_key, router_obj, mode, group_text, list_text):
+            key = (int(machine['index']), str(machine['ip']))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({'router': router_key, 'index': machine['index'], 'ip': machine['ip'], 'label': machine['label']})
+    out.sort(key=lambda x: (x['index'], x['ip']))
     return out
 
 
 def xxtouch_get_router_machine_context(cfg: dict, state: dict):
     requested_router = str((state or {}).get('router') or ((cfg.get('uiState') or {}).get('router')) or '').strip()
-    router = (cfg.get('routers') or {}).get(requested_router) if isinstance(cfg.get('routers'), dict) and requested_router else {}
-    note = admanager_machine_note_text(router if isinstance(router, dict) else {}, router_key=requested_router)
-    available = [i for i, _ in admanager_get_machine_ip_pairs(router if isinstance(router, dict) else {}, router_key=requested_router)]
+    routers_cfg = cfg.get('routers') if isinstance(cfg.get('routers'), dict) else {}
+    if requested_router and requested_router not in ('All', 'ALL', 'all'):
+        router = routers_cfg.get(requested_router) if isinstance(routers_cfg, dict) else {}
+        note = admanager_machine_note_text(router if isinstance(router, dict) else {}, router_key=requested_router)
+        available = [i for i, _ in admanager_get_machine_ip_pairs(router if isinstance(router, dict) else {}, router_key=requested_router)]
+        return {
+            'router': requested_router,
+            'router_obj': router if isinstance(router, dict) else {},
+            'note': note,
+            'available': available,
+        }
+    available = sorted({int(i) for rk, ro in (routers_cfg or {}).items() for i, _ in admanager_get_machine_ip_pairs(ro if isinstance(ro, dict) else {}, router_key=rk)})
+    note = f'Tất cả router: {format_machine_ranges(available)}' if available else 'Chưa có dữ liệu Gán IP'
     return {
-        'router': requested_router,
-        'router_obj': router if isinstance(router, dict) else {},
+        'router': requested_router or 'All',
+        'router_obj': {},
         'note': note,
         'available': available,
     }
