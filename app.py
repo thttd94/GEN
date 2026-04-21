@@ -2941,6 +2941,8 @@ class Handler(BaseHTTPRequestHandler):
                 port = str(state.get('port') or ui.get('port') or '46952').strip()
                 action = str(state.get('action') or '').strip()
                 machines = xxtouch_get_selected_machines(cfg, state)
+                if not machines:
+                    return self._send_json({'ok': False, 'error': 'Không tìm thấy máy XXTouch hợp lệ để chạy lệnh'}, 400)
                 logs = []
                 ok_count = 0
                 if action == 'send_files':
