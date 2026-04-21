@@ -88,6 +88,9 @@
     .checkline label { display:flex; gap:8px; align-items:center; font-size:14px; }
     .embedded-app { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; min-height:78vh; }
     .embedded-frame { width:100%; height:78vh; border:0; display:block; background:#fff; }
+    .group3-action-line { display:grid; grid-template-columns:minmax(220px,1fr) 74px 90px 110px 44px; gap:8px; align-items:center; }
+    .group3-schedule-time, .group3-schedule-count { height:38px; border:1px solid #d1d5db; border-radius:10px; padding:0 10px; font-size:16px; font-weight:700; text-align:center; box-sizing:border-box; }
+    .group3-schedule-time[disabled], .group3-schedule-count[disabled] { background:#e5e7eb; color:#6b7280; }
   </style>
 </head>
 <body>
@@ -259,11 +262,35 @@
                 </div>
                 <button class="btn" type="button" onclick="admRunSimpleAction('stop_script')" style="background:#dc2626; color:#fff; border-color:#dc2626; min-width:200px;">Stop Script</button>
               </div>
-              <div style="display:grid; gap:14px; max-width:220px;">
-                <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi','nurture_tiktok')">Nuôi Phôi</button>
-                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event Video 180','event_video_180_tiktok')">Chạy Event Video 180</button>
-                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD 20p','event_dd_20p_tiktok_lite')">Chạy Event DD 20p</button>
-                <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD hằng ngày','maintenance')">Chạy Event DD hằng ngày</button>
+              <div style="display:grid; gap:14px; width:100%; max-width:560px;">
+                <div class="group3-action-line">
+                  <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi','nurture_tiktok')">Nuôi Phôi</button>
+                  <input id="group3Timer_nurture_tiktok" class="group3-schedule-time" type="text" inputmode="numeric" maxlength="5" placeholder="00:00" value="00:00" />
+                  <input id="group3Count_nurture_tiktok" class="group3-schedule-count" type="number" min="1" step="1" placeholder="SL Chạy" />
+                  <button id="group3ScheduleBtn_nurture_tiktok" class="btn" type="button" style="background:#7c3aed; color:#fff; border-color:#7c3aed;" onclick="admScheduleUiOnly('Nuôi phôi','nurture_tiktok')">HẸN GIỜ</button>
+                  <button id="group3CancelBtn_nurture_tiktok" class="btn" type="button" style="background:#dc2626; color:#fff; border-color:#dc2626;" onclick="admCancelScheduleUiOnly('Nuôi phôi','nurture_tiktok')">X</button>
+                </div>
+                <div class="group3-action-line">
+                  <button class="btn apply" onclick="admRunGroup3Action('Chạy Event Video 180','event_video_180_tiktok')">Chạy Event Video 180</button>
+                  <input id="group3Timer_event_video_180_tiktok" class="group3-schedule-time" type="text" inputmode="numeric" maxlength="5" placeholder="00:00" value="00:00" />
+                  <input id="group3Count_event_video_180_tiktok" class="group3-schedule-count" type="number" min="1" step="1" placeholder="SL Chạy" />
+                  <button id="group3ScheduleBtn_event_video_180_tiktok" class="btn" type="button" style="background:#7c3aed; color:#fff; border-color:#7c3aed;" onclick="admScheduleUiOnly('Chạy Event Video 180','event_video_180_tiktok')">HẸN GIỜ</button>
+                  <button id="group3CancelBtn_event_video_180_tiktok" class="btn" type="button" style="background:#dc2626; color:#fff; border-color:#dc2626;" onclick="admCancelScheduleUiOnly('Chạy Event Video 180','event_video_180_tiktok')">X</button>
+                </div>
+                <div class="group3-action-line">
+                  <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD 20p','event_dd_20p_tiktok_lite')">Chạy Event DD 20p</button>
+                  <input id="group3Timer_event_dd_20p_tiktok_lite" class="group3-schedule-time" type="text" inputmode="numeric" maxlength="5" placeholder="00:00" value="00:00" />
+                  <input id="group3Count_event_dd_20p_tiktok_lite" class="group3-schedule-count" type="number" min="1" step="1" placeholder="SL Chạy" />
+                  <button id="group3ScheduleBtn_event_dd_20p_tiktok_lite" class="btn" type="button" style="background:#7c3aed; color:#fff; border-color:#7c3aed;" onclick="admScheduleUiOnly('Chạy Event DD 20p','event_dd_20p_tiktok_lite')">HẸN GIỜ</button>
+                  <button id="group3CancelBtn_event_dd_20p_tiktok_lite" class="btn" type="button" style="background:#dc2626; color:#fff; border-color:#dc2626;" onclick="admCancelScheduleUiOnly('Chạy Event DD 20p','event_dd_20p_tiktok_lite')">X</button>
+                </div>
+                <div class="group3-action-line">
+                  <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD hằng ngày','maintenance')">Chạy Event DD hằng ngày</button>
+                  <input id="group3Timer_maintenance" class="group3-schedule-time" type="text" inputmode="numeric" maxlength="5" placeholder="00:00" value="00:00" />
+                  <input id="group3Count_maintenance" class="group3-schedule-count" type="number" min="1" step="1" placeholder="SL Chạy" />
+                  <button id="group3ScheduleBtn_maintenance" class="btn" type="button" style="background:#7c3aed; color:#fff; border-color:#7c3aed;" onclick="admScheduleUiOnly('Chạy Event DD hằng ngày','maintenance')">HẸN GIỜ</button>
+                  <button id="group3CancelBtn_maintenance" class="btn" type="button" style="background:#dc2626; color:#fff; border-color:#dc2626;" onclick="admCancelScheduleUiOnly('Chạy Event DD hằng ngày','maintenance')">X</button>
+                </div>
               </div>
             </div>
           </div>
@@ -1617,6 +1644,14 @@
     function admMarkDeveloping(name){
       admSetStatus('Đang phát triển');
       admLog(`[DEV] ${name}: đang phát triển`);
+    }
+    function admScheduleUiOnly(name, action){
+      admSetStatus(`${name}: giao diện hẹn giờ đã sẵn sàng, backend sẽ làm ở bước tiếp theo`);
+      admLog(`[SCHEDULE_UI] ${name}: đã mở form hẹn giờ cho action ${action}`);
+    }
+    function admCancelScheduleUiOnly(name, action){
+      admSetStatus(`${name}: nút X đã lên giao diện, backend hủy lịch sẽ làm ở bước tiếp theo`);
+      admLog(`[SCHEDULE_UI] ${name}: đã bấm nút X cho action ${action}`);
     }
     async function admRunGroup3Action(name, action=''){
       const appValue = document.getElementById('admGroup3App')?.value || 'tiktok_lite';
