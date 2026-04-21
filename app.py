@@ -68,6 +68,12 @@ EVENT_VIDEO_180_TIKTOK_LINKS = [
     'https://www.tiktok.com/t/ZSHoksvp6/',
 ]
 EVENT_VIDEO_180_TIKTOK_LITE_LINKS = [link.replace('https://www.tiktok.com', 'https://lite.tiktok.com') for link in EVENT_VIDEO_180_TIKTOK_LINKS]
+
+
+def build_event_video_180_script(app_choice: str) -> str:
+    links = EVENT_VIDEO_180_TIKTOK_LITE_LINKS if str(app_choice or '').strip() == 'tiktok_lite' else EVENT_VIDEO_180_TIKTOK_LINKS
+    links_lua = ',\n    '.join([json.dumps(link) for link in links])
+    return f'''lua -e 'math.randomseed(os.time()); math.random(); math.random(); local app=require("app"); local links={{\n    {links_lua}\n}}; local pick=links[math.random(1, #links)]; app.open_url(pick)' '''
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
 ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui_config.json')
@@ -1362,16 +1368,9 @@ LUA'''
         logs.append(f'[{label}] chạy event DD 20p TikTok Lite ok')
         return True, logs
     if action == 'event_video_180_tiktok':
-        links_lua = ',\n    '.join([json.dumps(link) for link in EVENT_VIDEO_180_TIKTOK_LINKS])
-        script = f'''lua -e 'math.randomseed(os.time()); math.random(); math.random(); local app=require("app"); local links={{\n    {links_lua}\n}}; local pick=links[math.random(1, #links)]; app.open_url(pick)' '''
+        script = build_event_video_180_script(app_choice)
         xxtouch_spawn_checked(ip, port, script, timeout=40)
-        logs.append(f'[{label}] chạy Event Video 180 TikTok ok')
-        return True, logs
-    if action == 'event_video_180_tiktok_lite':
-        links_lua = ',\n    '.join([json.dumps(link) for link in EVENT_VIDEO_180_TIKTOK_LITE_LINKS])
-        script = f'''lua -e 'math.randomseed(os.time()); math.random(); math.random(); local app=require("app"); local links={{\n    {links_lua}\n}}; local pick=links[math.random(1, #links)]; app.open_url(pick)' '''
-        xxtouch_spawn_checked(ip, port, script, timeout=40)
-        logs.append(f'[{label}] chạy Event Video 180 TikTok Lite ok')
+        logs.append(f'[{label}] chạy Event Video 180 ok ({app_choice})')
         return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
     return False, logs
@@ -1389,8 +1388,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'install_tiktok': 'Cài app TIKTOK',
         'quit_apps': 'Đóng ứng dụng',
         'nurture_tiktok': 'Nuôi Phôi',
-        'event_video_180_tiktok': 'Chạy Event Video 180 TikTok',
-        'event_video_180_tiktok_lite': 'Chạy Event Video 180 TikTok Lite',
+        'event_video_180_tiktok': 'Chạy Event Video 180',
         'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
         'send_files': 'Gửi file',
     }
@@ -1405,8 +1403,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'install_tiktok': 'cài app TIKTOK thành công',
         'quit_apps': 'đóng ứng dụng thành công',
         'nurture_tiktok': 'nuôi phôi thành công',
-        'event_video_180_tiktok': 'chạy Event Video 180 TikTok thành công',
-        'event_video_180_tiktok_lite': 'chạy Event Video 180 TikTok Lite thành công',
+        'event_video_180_tiktok': 'chạy Event Video 180 thành công',
         'event_dd_20p_tiktok_lite': 'chạy Event DD 20p thành công',
         'send_files': 'gửi file thành công',
     }
@@ -1421,8 +1418,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'install_tiktok': 'chưa cài được app TIKTOK',
         'quit_apps': 'chưa đóng được',
         'nurture_tiktok': 'chưa nuôi phôi được',
-        'event_video_180_tiktok': 'chưa chạy được Event Video 180 TikTok',
-        'event_video_180_tiktok_lite': 'chưa chạy được Event Video 180 TikTok Lite',
+        'event_video_180_tiktok': 'chưa chạy được Event Video 180',
         'event_dd_20p_tiktok_lite': 'chưa chạy được Event DD 20p',
         'send_files': 'chưa gửi được file',
     }
