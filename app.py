@@ -53,6 +53,9 @@ XXTOUCH_WORK_DIR = BASE_DIR / 'xxtouch_jobs'
 XXTOUCH_DATA_DIR = XXTOUCH_WORK_DIR / 'data'
 XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
 XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
+GROUP3_SCHEDULE_FILE = BASE_DIR / 'group3_schedules.json'
+GROUP3_SCHEDULE_LOCK = threading.Lock()
+GROUP3_SCHEDULE_THREADS = {}
 NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'NuoiPhoi_tiktok.lua'
 EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'EventDD20p_tiktok_lite.lua'
 GROUP3_NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_NuoiPhoi_tiktok.lua'
@@ -644,6 +647,76 @@ def save_admanager_local(cfg):
         if key in cfg:
             local[key] = cfg[key]
     save_json(ADMANAGER_LOCAL_FILE, local)
+
+
+def load_group3_schedule_store():
+    data = {'jobs': {}}
+    try:
+        if GROUP3_SCHEDULE_FILE.exists():
+            incoming = json.loads(GROUP3_SCHEDULE_FILE.read_text(encoding='utf-8'))
+            if isinstance(incoming, dict) and isinstance(incoming.get('jobs'), dict):
+                data['jobs'] = incoming['jobs']
+    except Exception:
+        pass
+    return data
+
+
+def save_group3_schedule_store(data):
+    save_json(GROUP3_SCHEDULE_FILE, data if isinstance(data, dict) else {'jobs': {}})
+
+
+def group3_schedule_job_key(router: str, action: str) -> str:
+    return f"{str(router or '').strip()}::{str(action or '').strip()}"
+
+
+def group3_schedule_public(job: dict) -> dict:
+    if not isinstance(job, dict):
+        return {}
+    out = dict(job)
+    out.pop('cancel_requested', None)
+    out.pop('running', None)
+    return out
+
+
+def create_group3_schedule_job(payload, cfg):
+    state = payload if isinstance(payload, dict) else {}
+    action = str(state.get('action') or '').strip()
+    router_ctx = xxtouch_get_router_machine_context(cfg, state)
+    router = str(router_ctx.get('router') or state.get('router') or '').strip()
+    interval_seconds = max(1, int(state.get('interval_seconds') or 0))
+    run_count = max(1, int(state.get('run_count') or 0))
+    job_key = group3_schedule_job_key(router, action)
+    job = {
+        'job_key': job_key,
+        'router': router,
+        'action': action,
+        'group3App': str(state.get('group3App') or 'tiktok_lite').strip() or 'tiktok_lite',
+        'interval_seconds': interval_seconds,
+        'remaining_runs': run_count,
+        'initial_runs': run_count,
+        'machineMode': str(state.get('machineMode') or '').strip(),
+        'machineGroup': str(state.get('machineGroup') or '').strip(),
+        'machineList': str(state.get('machineList') or '').strip(),
+        'remoteMachine': str(state.get('remoteMachine') or '').strip(),
+        'port': str(state.get('port') or ((cfg.get('uiState') or {}).get('port')) or '46952').strip(),
+        'status': 'draft',
+        'created_at': int(time.time()),
+        'next_run_at': 0,
+        'last_run_at': 0,
+        'last_error': '',
+        'last_logs': [],
+        'state': {
+            'router': router,
+            'machineMode': state.get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all',
+            'machineGroup': state.get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '',
+            'machineList': state.get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '',
+            'remoteMachine': state.get('remoteMachine') or '',
+            'group3App': str(state.get('group3App') or 'tiktok_lite').strip() or 'tiktok_lite',
+            'action': action,
+            'port': str(state.get('port') or ((cfg.get('uiState') or {}).get('port')) or '46952').strip(),
+        },
+    }
+    return job_key, job
 
 
 def admanager_detect_app_label(apps_cfg: dict, base_name: str) -> str:
@@ -2934,6 +3007,42 @@ class Handler(BaseHTTPRequestHandler):
                 offline = [str(r.get('index')) for r in offline_rows]
                 waiting = [str(r.get('index')) for r in waiting_rows]
                 return self._send_json({'ok': True, 'rows': rows, 'online': online, 'offline': offline, 'waiting': waiting, 'online_count': len(online_rows), 'offline_count': len(offline_rows), 'waiting_count': len(waiting_rows)})
+            if path == '/api/xxtouch/group3-schedule/status':
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                router_ctx = xxtouch_get_router_machine_context(cfg, state)
+                router = str(router_ctx.get('router') or state.get('router') or '').strip()
+                action = str(state.get('action') or '').strip()
+                job_key = group3_schedule_job_key(router, action)
+                with GROUP3_SCHEDULE_LOCK:
+                    store = load_group3_schedule_store()
+                    job = (store.get('jobs') or {}).get(job_key)
+                return self._send_json({'ok': True, 'job': group3_schedule_public(job) if job else None})
+            if path == '/api/xxtouch/group3-schedule/create':
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                interval_seconds = max(1, int(state.get('interval_seconds') or 0))
+                run_count = max(1, int(state.get('run_count') or 0))
+                job_key, job = create_group3_schedule_job({**state, 'interval_seconds': interval_seconds, 'run_count': run_count}, cfg)
+                job['status'] = 'queued'
+                job['next_run_at'] = int(time.time())
+                with GROUP3_SCHEDULE_LOCK:
+                    store = load_group3_schedule_store()
+                    store.setdefault('jobs', {})[job_key] = job
+                    save_group3_schedule_store(store)
+                return self._send_json({'ok': True, 'job': group3_schedule_public(job), 'message': 'Đã lưu lịch hẹn giờ'})
+            if path == '/api/xxtouch/group3-schedule/cancel':
+                cfg = load_admanager_config()
+                state = payload if isinstance(payload, dict) else {}
+                router_ctx = xxtouch_get_router_machine_context(cfg, state)
+                router = str(router_ctx.get('router') or state.get('router') or '').strip()
+                action = str(state.get('action') or '').strip()
+                job_key = group3_schedule_job_key(router, action)
+                with GROUP3_SCHEDULE_LOCK:
+                    store = load_group3_schedule_store()
+                    job = (store.get('jobs') or {}).pop(job_key, None)
+                    save_group3_schedule_store(store)
+                return self._send_json({'ok': True, 'job': group3_schedule_public(job) if job else None, 'message': 'Đã hủy lịch hẹn giờ'})
             if path == '/api/xxtouch/action':
                 cfg = load_admanager_config()
                 state = payload if isinstance(payload, dict) else {}
