@@ -164,39 +164,25 @@ def consume_update_code(update_code: str, target_version: str):
         raise PermissionError('Mã không hợp lệ')
     store = load_update_codes_store()
     admin_code = str(store.get('admin_code') or DEFAULT_ADMIN_UPDATE_CODE).strip() or DEFAULT_ADMIN_UPDATE_CODE
-    if code == admin_code:
-        return {'admin': True, 'version': normalize_version_key(target_version), 'code': code}
     version_key = normalize_version_key(target_version)
+    if code == admin_code:
+        return {'admin': True, 'version': version_key, 'code': code}
     versions = store.setdefault('versions', {}) if isinstance(store, dict) else {}
-
-    def try_consume(one_version_key: str):
-        entry = versions.get(one_version_key) or {}
-        codes = entry.get('codes') if isinstance(entry, dict) else []
-        for item in codes or []:
-            if str(item.get('code') or '').strip() != code:
-                continue
-            if item.get('used'):
-                raise PermissionError('Mã không hợp lệ')
-            item['used'] = True
-            item['used_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
-            item['used_version'] = one_version_key
-            item['used_target'] = str(BASE_DIR)
-            versions[one_version_key] = entry
-            store['versions'] = versions
-            save_update_codes_store(store)
-            return {'admin': False, 'version': one_version_key, 'code': code}
-        return None
-
-    result = try_consume(version_key)
-    if result:
-        return result
-
-    current_key = normalize_version_key(read_current_version_label())
-    if current_key and current_key != version_key:
-        result = try_consume(current_key)
-        if result:
-            return result
-
+    entry = versions.get(version_key) or {}
+    codes = entry.get('codes') if isinstance(entry, dict) else []
+    for item in codes or []:
+        if str(item.get('code') or '').strip() != code:
+            continue
+        if item.get('used'):
+            raise PermissionError('Mã không hợp lệ')
+        item['used'] = True
+        item['used_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
+        item['used_version'] = version_key
+        item['used_target'] = str(BASE_DIR)
+        versions[version_key] = entry
+        store['versions'] = versions
+        save_update_codes_store(store)
+        return {'admin': False, 'version': version_key, 'code': code}
     raise PermissionError('Mã không hợp lệ')
 
 
@@ -300,7 +286,7 @@ def update_repo_from_remote(password: str):
         before_label = ''
     target_info = get_repo_version_info()
     target_version = normalize_version_key(target_info.get('latest_subject') or target_info.get('latest_label') or target_info.get('current_label') or before_label or 'Ver')
-    consume_update_code(password, before_label or target_version)
+    consume_update_code(password, target_version)
     archive_url = 'https://codeload.github.com/thttd94/GEN/tar.gz/refs/heads/main'
     tmp_root = BASE_DIR.parent / 'update_tmp'
     extract_dir = tmp_root / 'GEN-main'

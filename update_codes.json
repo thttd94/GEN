@@ -429,6 +429,45 @@
           "used_target": ""
         }
       ]
+    },
+    "Ver 79": {
+      "codes": [
+        {
+          "code": "ZE4SU07Q89UR",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "14UN68MIH2RS",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "EUMBL5LVXRKI",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "L5Z2CH4H4FW5",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "E03BP3WR1SI0",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
     }
   }
 }
