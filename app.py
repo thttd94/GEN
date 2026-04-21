@@ -1214,7 +1214,7 @@ def xxtouch_run_repo_lua_script(ip, port, script_file: Path, timeout: int):
     return xxtouch_spawn_checked(ip, port, f"lua - <<'LUA'\n{script_text}\nLUA", timeout=timeout)
 
 
-def xxtouch_run_action_on_machine(machine, port, action):
+def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite'):
     ip = machine['ip']
     label = machine['label']
     action_label_map = {
@@ -2994,7 +2994,7 @@ class Handler(BaseHTTPRequestHandler):
                 if len(machines) <= 1:
                     for m in machines:
                         try:
-                            ok, lines = xxtouch_run_action_on_machine(m, port, action)
+                            ok, lines = xxtouch_run_action_on_machine(m, port, action, state.get('group3App') or 'tiktok_lite')
                             logs.extend(lines)
                             if ok:
                                 ok_count += 1
@@ -3006,7 +3006,8 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     max_workers = max(1, len(machines))
                     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                        future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action): m for m in machines}
+                        group3_app = state.get('group3App') or 'tiktok_lite'
+                        future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action, group3_app): m for m in machines}
                         ordered_results = []
                         for future in as_completed(future_map):
                             m = future_map[future]
