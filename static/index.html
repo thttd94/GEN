@@ -1638,6 +1638,9 @@
         }
         return admRunSimpleAction(action);
       }
+      if (action === 'event_video_180_tiktok') {
+        return admRunSimpleAction(action);
+      }
       admSetStatus(`Đã chọn ${appLabel} cho nhóm 3`);
       admLog(`[DEV] ${name}: đang chọn app ${appLabel}`);
     }
