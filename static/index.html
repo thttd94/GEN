@@ -570,7 +570,7 @@
       versionUpdateSubmitting = true;
       try {
         closeVersionCodeModal();
-        setStatus(`Đang update phiên bản với mã ${password}...`);
+        setStatus('Đang update phiên bản...');
         const data = await fetchJSON('/api/pm/version/update', {method:'POST', body: JSON.stringify({password})});
         setStatus(data.message || (data.updated ? `Đã update: ${data.after}` : 'Đang ở bản mới nhất'));
         await refreshVersionInfo(true);
