@@ -1228,12 +1228,28 @@ def xxtouch_run_action_on_machine(machine, port, action):
         'install_tiktok': 'Cài app TIKTOK',
         'quit_apps': 'Đóng ứng dụng',
         'nurture_tiktok': 'Nuôi Phôi',
+        'event_video_180_tiktok': 'Chạy Event Video 180',
         'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
         'send_files': 'Gửi file',
     }
-    stop_result = xxtouch_stop_script(ip, port)
-    time.sleep(1)
-    logs = [f'[{label}] bắt đầu {action_label_map.get(action, action)}', f'[{label}] {stop_result}', f'[{label}] chờ 1s sau stop script']
+    stop_first_actions = {
+        'stop_script',
+        'clear_app',
+        'remove_tiktok_lite',
+        'remove_tiktok',
+        'install_tiktok',
+        'quit_apps',
+        'nurture_tiktok',
+        'event_video_180_tiktok',
+        'event_dd_20p_tiktok_lite',
+    }
+    logs = [f'[{label}] bắt đầu {action_label_map.get(action, action)}']
+    if action in stop_first_actions:
+        stop_result = xxtouch_stop_script(ip, port)
+        logs.append(f'[{label}] {stop_result}')
+        if action != 'stop_script':
+            time.sleep(0.25)
+            logs.append(f'[{label}] chờ 0.25s sau stop script')
     if action == 'stop_script':
         logs.append(f'[{label}] stop script ok')
         return True, logs
