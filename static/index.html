@@ -1645,6 +1645,7 @@
       admSetStatus('Đang phát triển');
       admLog(`[DEV] ${name}: đang phát triển`);
     }
+    let admGroup3SchedulePoller = null;
     function admParseScheduleMmSs(value){
       const m = String(value || '').trim().match(/^(\d{1,2})\s*[:.]\s*(\d{1,2})$/);
       if (!m) return 0;
@@ -1653,15 +1654,50 @@
       if (!Number.isFinite(mm) || !Number.isFinite(ss) || mm < 0 || ss < 0 || ss >= 60) return 0;
       return (mm * 60) + ss;
     }
-    function admSetGroup3ScheduleUiState(action, active){
+    function admFormatScheduleMmSs(total){
+      const safe = Math.max(0, Number(total) || 0);
+      const mm = Math.floor(safe / 60);
+      const ss = safe % 60;
+      return `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+    }
+    function admSetGroup3ScheduleUiState(action, active, job=null){
       const timeInput = document.getElementById(`group3Timer_${action}`);
       const countInput = document.getElementById(`group3Count_${action}`);
       const schedBtn = document.getElementById(`group3ScheduleBtn_${action}`);
       const cancelBtn = document.getElementById(`group3CancelBtn_${action}`);
-      if (timeInput) timeInput.disabled = !!active;
-      if (countInput) countInput.disabled = !!active;
-      if (schedBtn) schedBtn.disabled = !!active;
+      if (timeInput) {
+        timeInput.disabled = !!active;
+        if (active && job) {
+          const now = Math.floor(Date.now() / 1000);
+          const remain = Math.max(0, Number(job.next_run_at || 0) - now);
+          timeInput.value = admFormatScheduleMmSs(remain);
+        }
+      }
+      if (countInput) {
+        countInput.disabled = !!active;
+        if (active && job) countInput.value = String(job.remaining_runs || '');
+      }
+      if (schedBtn) {
+        schedBtn.disabled = !!active;
+        schedBtn.textContent = active ? 'ĐANG CHẠY' : 'HẸN GIỜ';
+      }
       if (cancelBtn) cancelBtn.disabled = !active;
+    }
+    async function admRefreshGroup3ScheduleAction(action){
+      const data = await fetchJSON('/api/xxtouch/group3-schedule/status', { method:'POST', body: JSON.stringify({ ...admState(), action }) });
+      const job = data?.job || null;
+      admSetGroup3ScheduleUiState(action, !!job, job);
+      return job;
+    }
+    async function admRefreshAllGroup3Schedules(){
+      const actions = ['nurture_tiktok','event_video_180_tiktok','event_dd_20p_tiktok_lite','maintenance'];
+      for (const action of actions) {
+        try { await admRefreshGroup3ScheduleAction(action); } catch (_) {}
+      }
+    }
+    function admEnsureGroup3SchedulePolling(){
+      if (admGroup3SchedulePoller) return;
+      admGroup3SchedulePoller = setInterval(() => { admRefreshAllGroup3Schedules(); }, 1000);
     }
     async function admScheduleUiOnly(name, action){
       const seconds = admParseScheduleMmSs(document.getElementById(`group3Timer_${action}`)?.value || '');
@@ -1676,12 +1712,18 @@
       }
       const body = { ...admState(), action, interval_seconds: seconds, run_count: runs };
       const data = await fetchJSON('/api/xxtouch/group3-schedule/create', { method:'POST', body: JSON.stringify(body) });
-      admSetGroup3ScheduleUiState(action, true);
+      admSetGroup3ScheduleUiState(action, true, data?.job || null);
       admSetStatus(data.message || `${name}: đã lưu lịch hẹn giờ`);
       admLog(`[SCHEDULE] ${name}: interval=${seconds}s, runs=${runs}`);
+      admEnsureGroup3SchedulePolling();
+      await admRefreshGroup3ScheduleAction(action);
     }
     async function admCancelScheduleUiOnly(name, action){
       const data = await fetchJSON('/api/xxtouch/group3-schedule/cancel', { method:'POST', body: JSON.stringify({ ...admState(), action }) });
+      const timeInput = document.getElementById(`group3Timer_${action}`);
+      const countInput = document.getElementById(`group3Count_${action}`);
+      if (timeInput) timeInput.value = '00:00';
+      if (countInput) countInput.value = '';
       admSetGroup3ScheduleUiState(action, false);
       admSetStatus(data.message || `${name}: đã hủy lịch hẹn giờ`);
       admLog(`[SCHEDULE] ${name}: đã hủy lịch`);
@@ -1735,6 +1777,8 @@
       if (remoteInput) remoteInput.value = ui.remoteMachine || '';
       const noteText = String(data.machine_note || '').trim() || formatMachineRanges(admMachineIndexes);
       admSetMachineNote(noteText);
+      admEnsureGroup3SchedulePolling();
+      admRefreshAllGroup3Schedules();
       admSetStatus('Sẵn sàng');
       admClearLog();
       admLog(`Đã nạp config - ${Math.max(routerKeys.length, 0)} router`);
