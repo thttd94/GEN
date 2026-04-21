@@ -71,9 +71,9 @@ EVENT_VIDEO_180_TIKTOK_LITE_LINKS = [link.replace('https://www.tiktok.com', 'htt
 
 
 def build_event_video_180_script(app_choice: str) -> str:
-    links = EVENT_VIDEO_180_TIKTOK_LITE_LINKS if str(app_choice or '').strip() == 'tiktok_lite' else EVENT_VIDEO_180_TIKTOK_LINKS
-    links_lua = ',\n    '.join([json.dumps(link) for link in links])
-    return f'''lua -e 'math.randomseed(os.time()); math.random(); math.random(); local app=require("app"); local links={{\n    {links_lua}\n}}; local pick=links[math.random(1, #links)]; app.open_url(pick)' '''
+    safe_choice = 'tiktok_lite' if str(app_choice or '').strip() == 'tiktok_lite' else 'tiktok'
+    script_path = XXTOUCH_JOBS_DIR / 'EventVideo180.lua'
+    return f"EVENT_VIDEO_180_APP={safe_choice} lua {shlex.quote(str(script_path))}"
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
 ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui_config.json')
@@ -1386,7 +1386,7 @@ LUA'''
     if action == 'event_video_180_tiktok':
         script = build_event_video_180_script(app_choice)
         xxtouch_spawn_checked(ip, port, script, timeout=40)
-        logs.append(f'[{label}] chạy Event Video 180 ok ({app_choice})')
+        logs.append(f'[{label}] chạy file EventVideo180.lua ok ({app_choice})')
         return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
     return False, logs
