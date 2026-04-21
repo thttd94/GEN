@@ -1170,6 +1170,45 @@
           "used_target": ""
         }
       ]
+    },
+    "Ver 98": {
+      "codes": [
+        {
+          "code": "IIZT57DKY9ZZ",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "GEWV2QZO72UC",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "6WRIPB3FOJE5",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "NHOTTL2FMDLA",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "6RBCH7ADEKQF",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
     }
   }
 }
