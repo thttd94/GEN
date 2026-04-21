@@ -1287,6 +1287,45 @@
           "used_target": ""
         }
       ]
+    },
+    "Ver 101": {
+      "codes": [
+        {
+          "code": "BOTCQ27F05ND",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "M4Q3BIC781SQ",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "4ZIXOF782TAE",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "FPDYYKVON65L",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "EB3BXWT7L1RJ",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
     }
   }
 }

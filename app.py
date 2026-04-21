@@ -675,6 +675,11 @@ def group3_schedule_public(job: dict) -> dict:
     out = dict(job)
     out.pop('cancel_requested', None)
     out.pop('running', None)
+    next_run_at = int(out.get('next_run_at') or 0)
+    if next_run_at:
+        out['remaining_seconds'] = max(0, next_run_at - int(time.time()))
+    else:
+        out['remaining_seconds'] = 0
     return out
 
 
@@ -686,19 +691,25 @@ def create_group3_schedule_job(payload, cfg):
     interval_seconds = max(1, int(state.get('interval_seconds') or 0))
     run_count = max(1, int(state.get('run_count') or 0))
     job_key = group3_schedule_job_key(router, action)
+    machine_mode = state.get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all'
+    machine_group = state.get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or ''
+    machine_list = state.get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or ''
+    remote_machine = state.get('remoteMachine') or ''
+    group3_app = str(state.get('group3App') or 'tiktok_lite').strip() or 'tiktok_lite'
+    port = str(state.get('port') or ((cfg.get('uiState') or {}).get('port')) or '46952').strip()
     job = {
         'job_key': job_key,
         'router': router,
         'action': action,
-        'group3App': str(state.get('group3App') or 'tiktok_lite').strip() or 'tiktok_lite',
+        'group3App': group3_app,
         'interval_seconds': interval_seconds,
         'remaining_runs': run_count,
         'initial_runs': run_count,
-        'machineMode': str(state.get('machineMode') or '').strip(),
-        'machineGroup': str(state.get('machineGroup') or '').strip(),
-        'machineList': str(state.get('machineList') or '').strip(),
-        'remoteMachine': str(state.get('remoteMachine') or '').strip(),
-        'port': str(state.get('port') or ((cfg.get('uiState') or {}).get('port')) or '46952').strip(),
+        'machineMode': str(machine_mode).strip(),
+        'machineGroup': str(machine_group).strip(),
+        'machineList': str(machine_list).strip(),
+        'remoteMachine': str(remote_machine).strip(),
+        'port': port,
         'status': 'draft',
         'created_at': int(time.time()),
         'next_run_at': 0,
@@ -707,13 +718,13 @@ def create_group3_schedule_job(payload, cfg):
         'last_logs': [],
         'state': {
             'router': router,
-            'machineMode': state.get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all',
-            'machineGroup': state.get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '',
-            'machineList': state.get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '',
-            'remoteMachine': state.get('remoteMachine') or '',
-            'group3App': str(state.get('group3App') or 'tiktok_lite').strip() or 'tiktok_lite',
+            'machineMode': machine_mode,
+            'machineGroup': machine_group,
+            'machineList': machine_list,
+            'remoteMachine': remote_machine,
+            'group3App': group3_app,
             'action': action,
-            'port': str(state.get('port') or ((cfg.get('uiState') or {}).get('port')) or '46952').strip(),
+            'port': port,
         },
     }
     return job_key, job
