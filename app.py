@@ -110,6 +110,7 @@ XXTOUCH_SCAN_LOCK = threading.Lock()
 XXTOUCH_SCAN_INFLIGHT = set()
 REPO_REMOTE_URL = 'https://github.com/thttd94/GEN.git'
 REPO_BRANCH = 'main'
+RAW_UPDATE_CODES_URL = 'https://raw.githubusercontent.com/thttd94/GEN/main/update_codes.json'
 DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
 DEFAULT_PER_VERSION_CODE_COUNT = 5
 
@@ -119,7 +120,21 @@ def random_update_code(length=12):
     return ''.join(__import__('secrets').choice(alphabet) for _ in range(length))
 
 
-def load_update_codes_store():
+def load_update_codes_store(prefer_remote=True):
+    if prefer_remote:
+        try:
+            fresh_url = f"{RAW_UPDATE_CODES_URL}?ts={int(time.time() * 1000)}"
+            req = urllib.request.Request(fresh_url, headers={'User-Agent': 'Genrouter/1.0', 'Cache-Control': 'no-cache'})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = json.loads(r.read().decode('utf-8', errors='replace'))
+            if isinstance(data, dict):
+                try:
+                    save_update_codes_store(data)
+                except Exception:
+                    pass
+                return data
+        except Exception:
+            pass
     candidates = [UPDATE_CODES_FILE]
     if BUNDLED_UPDATE_CODES_FILE != UPDATE_CODES_FILE:
         candidates.append(BUNDLED_UPDATE_CODES_FILE)
@@ -172,28 +187,38 @@ def consume_update_code(update_code: str, target_version: str):
     code = str(update_code or '').strip()
     if not code:
         raise PermissionError('Mã không hợp lệ')
-    store = load_update_codes_store()
+    store = load_update_codes_store(prefer_remote=True)
     admin_code = str(store.get('admin_code') or DEFAULT_ADMIN_UPDATE_CODE).strip() or DEFAULT_ADMIN_UPDATE_CODE
     version_key = normalize_version_key(target_version)
     if code == admin_code:
         return {'admin': True, 'version': version_key, 'code': code}
     versions = store.setdefault('versions', {}) if isinstance(store, dict) else {}
-    entry = versions.get(version_key) or {}
-    codes = entry.get('codes') if isinstance(entry, dict) else []
-    for item in codes or []:
-        if str(item.get('code') or '').strip() != code:
-            continue
-        if item.get('used'):
-            raise PermissionError('Mã không hợp lệ')
-        item['used'] = True
-        item['used_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
-        item['used_version'] = version_key
-        item['used_target'] = str(BASE_DIR)
-        versions[version_key] = entry
-        store['versions'] = versions
-        save_update_codes_store(store)
-        return {'admin': False, 'version': version_key, 'code': code}
-    raise PermissionError('Mã không hợp lệ')
+    hit_entry = None
+    hit_item = None
+    hit_version = ''
+    for ver_name, entry in (versions or {}).items():
+        codes = entry.get('codes') if isinstance(entry, dict) else []
+        for item in codes or []:
+            if str(item.get('code') or '').strip() != code:
+                continue
+            if item.get('used'):
+                raise PermissionError('Mã không hợp lệ')
+            hit_entry = entry
+            hit_item = item
+            hit_version = normalize_version_key(ver_name)
+            break
+        if hit_item is not None:
+            break
+    if hit_item is None:
+        raise PermissionError('Mã không hợp lệ')
+    hit_item['used'] = True
+    hit_item['used_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
+    hit_item['used_version'] = hit_version
+    hit_item['used_target'] = str(BASE_DIR)
+    versions[hit_version] = hit_entry
+    store['versions'] = versions
+    save_update_codes_store(store)
+    return {'admin': False, 'version': version_key, 'code': code, 'source_version': hit_version}
 
 
 def run_git_command(args, cwd=None, timeout=60):
