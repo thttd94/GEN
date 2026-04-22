@@ -1669,7 +1669,7 @@
         timeInput.disabled = !!active;
         if (active && job) {
           const now = Math.floor(Date.now() / 1000);
-          const remain = Math.max(0, Number(job.next_run_at || 0) - now);
+          const remain = Math.max(0, Number(job.remaining_seconds || 0));
           timeInput.value = admFormatScheduleMmSs(remain);
         }
       }
@@ -1778,7 +1778,7 @@
       const noteText = String(data.machine_note || '').trim() || formatMachineRanges(admMachineIndexes);
       admSetMachineNote(noteText);
       admEnsureGroup3SchedulePolling();
-      admRefreshAllGroup3Schedules();
+      setTimeout(() => { admRefreshAllGroup3Schedules(); }, 300);
       admSetStatus('Sẵn sàng');
       admClearLog();
       admLog(`Đã nạp config - ${Math.max(routerKeys.length, 0)} router`);

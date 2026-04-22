@@ -3126,9 +3126,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/xxtouch/group3-schedule/status':
                 cfg = load_admanager_config()
                 state = payload if isinstance(payload, dict) else {}
-                router_ctx = xxtouch_get_router_machine_context(cfg, state)
-                router = str(router_ctx.get('router') or state.get('router') or '').strip()
+                router = str(state.get('router') or '').strip()
                 action = str(state.get('action') or '').strip()
+                if not router:
+                    router_ctx = xxtouch_get_router_machine_context(cfg, state)
+                    router = str(router_ctx.get('router') or '').strip()
                 job_key = group3_schedule_job_key(router, action)
                 with GROUP3_SCHEDULE_LOCK:
                     store = load_group3_schedule_store()
@@ -3151,9 +3153,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/xxtouch/group3-schedule/cancel':
                 cfg = load_admanager_config()
                 state = payload if isinstance(payload, dict) else {}
-                router_ctx = xxtouch_get_router_machine_context(cfg, state)
-                router = str(router_ctx.get('router') or state.get('router') or '').strip()
+                router = str(state.get('router') or '').strip()
                 action = str(state.get('action') or '').strip()
+                if not router:
+                    router_ctx = xxtouch_get_router_machine_context(cfg, state)
+                    router = str(router_ctx.get('router') or '').strip()
                 job_key = group3_schedule_job_key(router, action)
                 with GROUP3_SCHEDULE_LOCK:
                     store = load_group3_schedule_store()
