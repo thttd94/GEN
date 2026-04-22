@@ -5,10 +5,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import json
 import time
-
-from urllib.parse import urlparse
 import threading
 
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / 'collector_data'
+STATE_FILE = DATA_DIR / 'routers.json'
+STATIC_DIR = BASE_DIR
 UPDATE_CODES_FILE = DATA_DIR / 'update_codes_state.json'
 UPDATE_CODES_LOCK = threading.Lock()
 DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
@@ -26,8 +28,7 @@ def load_update_code_state():
 
 def save_update_code_state(state):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    UPDATE_CODES_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '
-', encoding='utf-8')
+    UPDATE_CODES_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
 def refresh_update_codes_from_git():
@@ -67,12 +68,6 @@ def consume_update_code_once(code, router_id, current_version=''):
                 save_update_code_state(state)
                 return {'ok': True, 'admin': False, 'version': str(ver_name), 'router_id': router_id, 'current_version': current_version}
         raise PermissionError('Mã không hợp lệ')
-
-
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / 'collector_data'
-STATE_FILE = DATA_DIR / 'routers.json'
-STATIC_DIR = BASE_DIR
 
 
 def load_state():
