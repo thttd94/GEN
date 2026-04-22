@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import time
 import threading
+import urllib.request
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / 'collector_data'
@@ -14,6 +15,7 @@ STATIC_DIR = BASE_DIR
 UPDATE_CODES_FILE = DATA_DIR / 'update_codes_state.json'
 UPDATE_CODES_LOCK = threading.Lock()
 DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
+RAW_UPDATE_CODES_URL = 'https://raw.githubusercontent.com/thttd94/GEN/main/update_codes.json'
 
 
 def load_update_code_state():
@@ -31,16 +33,53 @@ def save_update_code_state(state):
     UPDATE_CODES_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
 
+def merge_git_codes_into_state(local_state, git_state):
+    out = local_state if isinstance(local_state, dict) else {'admin_code': DEFAULT_ADMIN_UPDATE_CODE, 'versions': {}}
+    if not isinstance(git_state, dict):
+        return out
+    out['admin_code'] = str(git_state.get('admin_code') or out.get('admin_code') or DEFAULT_ADMIN_UPDATE_CODE).strip() or DEFAULT_ADMIN_UPDATE_CODE
+    out_versions = out.setdefault('versions', {}) if isinstance(out, dict) else {}
+    git_versions = git_state.get('versions', {}) if isinstance(git_state, dict) else {}
+    for ver_name, git_entry in (git_versions or {}).items():
+        git_codes = git_entry.get('codes') if isinstance(git_entry, dict) else []
+        local_entry = out_versions.setdefault(ver_name, {'codes': []})
+        local_codes = local_entry.setdefault('codes', []) if isinstance(local_entry, dict) else []
+        local_map = {str(item.get('code') or '').strip(): item for item in local_codes if isinstance(item, dict)}
+        merged_codes = []
+        for git_item in git_codes or []:
+            code = str((git_item or {}).get('code') or '').strip()
+            if not code:
+                continue
+            local_item = local_map.get(code)
+            if local_item:
+                merged = dict(git_item)
+                merged['used'] = bool(local_item.get('used'))
+                merged['used_at'] = str(local_item.get('used_at') or '')
+                merged['used_version'] = str(local_item.get('used_version') or '')
+                merged['used_target'] = str(local_item.get('used_target') or '')
+                merged['used_current_version'] = str(local_item.get('used_current_version') or '')
+                merged_codes.append(merged)
+            else:
+                merged_codes.append(dict(git_item))
+        local_entry['codes'] = merged_codes
+        out_versions[ver_name] = local_entry
+    out['versions'] = out_versions
+    return out
+
+
 def refresh_update_codes_from_git():
-    import urllib.request
-    url = 'https://raw.githubusercontent.com/thttd94/GEN/main/update_codes.json'
-    req = urllib.request.Request(f"{url}?ts={int(time.time() * 1000)}", headers={'User-Agent': 'Collector/1.0', 'Cache-Control': 'no-cache'})
+    req = urllib.request.Request(
+        f"{RAW_UPDATE_CODES_URL}?ts={int(time.time() * 1000)}",
+        headers={'User-Agent': 'Collector/1.0', 'Cache-Control': 'no-cache'}
+    )
     with urllib.request.urlopen(req, timeout=20) as r:
-        data = json.loads(r.read().decode('utf-8', 'replace'))
-    if not isinstance(data, dict):
+        git_state = json.loads(r.read().decode('utf-8', 'replace'))
+    if not isinstance(git_state, dict):
         raise ValueError('invalid update code state')
-    save_update_code_state(data)
-    return data
+    local_state = load_update_code_state()
+    merged = merge_git_codes_into_state(local_state, git_state)
+    save_update_code_state(merged)
+    return merged
 
 
 def consume_update_code_once(code, router_id, current_version=''):
