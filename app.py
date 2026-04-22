@@ -1886,6 +1886,8 @@ def load_collector_config():
         'enabled': True,
         'push_interval_sec': 60,
     }
+    if not str(cfg.get('collector_url', '')).strip() or 'aeg.ooguy.com:9010' in str(cfg.get('collector_url', '')).strip():
+        cfg['collector_url'] = 'http://192.15.0.1:9010'
     try:
         if COLLECTOR_CONFIG_FILE.exists():
             data = load_json(COLLECTOR_CONFIG_FILE)
