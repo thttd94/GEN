@@ -266,28 +266,28 @@
                 <div class="group3-action-line">
                   <button class="btn apply" onclick="admRunGroup3Action('Nuôi phôi','nurture_tiktok')">Nuôi Phôi</button>
                   <input id="group3Timer_nurture_tiktok" class="group3-schedule-time" type="text" inputmode="numeric" maxlength="5" placeholder="00:00" value="00:00" />
-                  <input id="group3Count_nurture_tiktok" class="group3-schedule-count" type="number" min="1" step="1" placeholder="SL Chạy" />
+                  <input id="group3Count_nurture_tiktok" class="group3-schedule-count" type="text" inputmode="numeric" placeholder="SL Chạy" />
                   <button id="group3ScheduleBtn_nurture_tiktok" class="btn" type="button" style="background:#7c3aed; color:#fff; border-color:#7c3aed;" onclick="admScheduleUiOnly('Nuôi phôi','nurture_tiktok')">HẸN GIỜ</button>
                   <button id="group3CancelBtn_nurture_tiktok" class="btn" type="button" style="background:#dc2626; color:#fff; border-color:#dc2626;" onclick="admCancelScheduleUiOnly('Nuôi phôi','nurture_tiktok')" disabled>X</button>
                 </div>
                 <div class="group3-action-line">
                   <button class="btn apply" onclick="admRunGroup3Action('Chạy Event Video 180','event_video_180_tiktok')">Chạy Event Video 180</button>
                   <input id="group3Timer_event_video_180_tiktok" class="group3-schedule-time" type="text" inputmode="numeric" maxlength="5" placeholder="00:00" value="00:00" />
-                  <input id="group3Count_event_video_180_tiktok" class="group3-schedule-count" type="number" min="1" step="1" placeholder="SL Chạy" />
+                  <input id="group3Count_event_video_180_tiktok" class="group3-schedule-count" type="text" inputmode="numeric" placeholder="SL Chạy" />
                   <button id="group3ScheduleBtn_event_video_180_tiktok" class="btn" type="button" style="background:#7c3aed; color:#fff; border-color:#7c3aed;" onclick="admScheduleUiOnly('Chạy Event Video 180','event_video_180_tiktok')">HẸN GIỜ</button>
                   <button id="group3CancelBtn_event_video_180_tiktok" class="btn" type="button" style="background:#dc2626; color:#fff; border-color:#dc2626;" onclick="admCancelScheduleUiOnly('Chạy Event Video 180','event_video_180_tiktok')" disabled>X</button>
                 </div>
                 <div class="group3-action-line">
                   <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD 20p','event_dd_20p_tiktok_lite')">Chạy Event DD 20p</button>
                   <input id="group3Timer_event_dd_20p_tiktok_lite" class="group3-schedule-time" type="text" inputmode="numeric" maxlength="5" placeholder="00:00" value="00:00" />
-                  <input id="group3Count_event_dd_20p_tiktok_lite" class="group3-schedule-count" type="number" min="1" step="1" placeholder="SL Chạy" />
+                  <input id="group3Count_event_dd_20p_tiktok_lite" class="group3-schedule-count" type="text" inputmode="numeric" placeholder="SL Chạy" />
                   <button id="group3ScheduleBtn_event_dd_20p_tiktok_lite" class="btn" type="button" style="background:#7c3aed; color:#fff; border-color:#7c3aed;" onclick="admScheduleUiOnly('Chạy Event DD 20p','event_dd_20p_tiktok_lite')">HẸN GIỜ</button>
                   <button id="group3CancelBtn_event_dd_20p_tiktok_lite" class="btn" type="button" style="background:#dc2626; color:#fff; border-color:#dc2626;" onclick="admCancelScheduleUiOnly('Chạy Event DD 20p','event_dd_20p_tiktok_lite')" disabled>X</button>
                 </div>
                 <div class="group3-action-line">
                   <button class="btn apply" onclick="admRunGroup3Action('Chạy Event DD hằng ngày','maintenance')">Chạy Event DD hằng ngày</button>
                   <input id="group3Timer_maintenance" class="group3-schedule-time" type="text" inputmode="numeric" maxlength="5" placeholder="00:00" value="00:00" />
-                  <input id="group3Count_maintenance" class="group3-schedule-count" type="number" min="1" step="1" placeholder="SL Chạy" />
+                  <input id="group3Count_maintenance" class="group3-schedule-count" type="text" inputmode="numeric" placeholder="SL Chạy" />
                   <button id="group3ScheduleBtn_maintenance" class="btn" type="button" style="background:#7c3aed; color:#fff; border-color:#7c3aed;" onclick="admScheduleUiOnly('Chạy Event DD hằng ngày','maintenance')">HẸN GIỜ</button>
                   <button id="group3CancelBtn_maintenance" class="btn" type="button" style="background:#dc2626; color:#fff; border-color:#dc2626;" onclick="admCancelScheduleUiOnly('Chạy Event DD hằng ngày','maintenance')" disabled>X</button>
                 </div>
@@ -1668,18 +1668,23 @@
       if (timeInput) {
         timeInput.disabled = !!active;
         if (active && job) {
-          const now = Math.floor(Date.now() / 1000);
           const remain = Math.max(0, Number(job.remaining_seconds || 0));
           timeInput.value = admFormatScheduleMmSs(remain);
-        }
+        } 
       }
       if (countInput) {
         countInput.disabled = !!active;
         if (active && job) countInput.value = String(job.remaining_runs || '');
+
       }
       if (schedBtn) {
         schedBtn.disabled = !!active;
-        schedBtn.textContent = active ? 'ĐANG CHẠY' : 'HẸN GIỜ';
+        if (active && job) {
+          const status = String(job.status || '').trim().toLowerCase();
+          schedBtn.textContent = status === 'running' ? 'ĐANG CHẠY' : 'ĐANG ĐẾM';
+        } else {
+          schedBtn.textContent = 'HẸN GIỜ';
+        }
       }
       if (cancelBtn) cancelBtn.disabled = !active;
     }
@@ -1687,6 +1692,14 @@
       const data = await fetchJSON('/api/xxtouch/group3-schedule/status', { method:'POST', body: JSON.stringify({ ...admState(), action }) });
       const job = data?.job || null;
       admSetGroup3ScheduleUiState(action, !!job, job);
+      if (job) {
+        const remain = Math.max(0, Number(job.remaining_seconds || 0));
+        const runs = Number(job.remaining_runs || 0);
+        const status = String(job.status || '').trim().toLowerCase();
+        const label = admActionLabel(action);
+        if (status === 'running') admSetStatus(`${label}: đang chạy, còn ${runs} lượt`);
+        else admSetStatus(`${label}: còn ${admFormatScheduleMmSs(remain)}, còn ${runs} lượt`);
+      }
       return job;
     }
     async function admRefreshAllGroup3Schedules(){
