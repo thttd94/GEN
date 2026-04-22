@@ -321,7 +321,7 @@ def update_repo_from_remote(password: str):
         before_label = ''
     target_info = get_repo_version_info()
     target_version = normalize_version_key(target_info.get('latest_subject') or target_info.get('latest_label') or target_info.get('current_label') or before_label or 'Ver')
-    consume_update_code(password, target_version)
+    consume_update_code_via_collector(password, before_label, target_version)
     archive_url = 'https://codeload.github.com/thttd94/GEN/tar.gz/refs/heads/main'
     tmp_root = BASE_DIR.parent / 'update_tmp'
     extract_dir = tmp_root / 'GEN-main'
@@ -1927,6 +1927,40 @@ def get_router_id():
     cfg['router_id'] = router_id
     save_collector_config(cfg)
     return router_id
+
+
+def consume_update_code_via_collector(update_code: str, current_version: str, target_version: str):
+    cfg = load_collector_config()
+    collector_url = str(cfg.get('collector_url', '')).strip().rstrip('/')
+    if not collector_url or not cfg.get('enabled'):
+        raise PermissionError('Collector chưa sẵn sàng')
+    payload = {
+        'code': str(update_code or '').strip(),
+        'router_id': get_router_id(),
+        'current_version': str(current_version or '').strip(),
+        'target_version': str(target_version or '').strip(),
+        'router_title': get_app_title_prefix(),
+    }
+    req = urllib.request.Request(
+        collector_url + '/api/update-code/consume',
+        data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
+        method='POST',
+        headers={'Content-Type': 'application/json; charset=utf-8'}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode('utf-8', 'replace'))
+    except urllib.error.HTTPError as e:
+        try:
+            payload = json.loads(e.read().decode('utf-8', 'replace'))
+        except Exception:
+            payload = {'error': str(e)}
+        raise PermissionError(str(payload.get('error') or 'Mã không hợp lệ'))
+    except Exception as e:
+        raise PermissionError(f'Collector lỗi: {e}')
+    if not isinstance(data, dict) or not data.get('ok'):
+        raise PermissionError(str((data or {}).get('error') or 'Mã không hợp lệ'))
+    return data
 
 
 def push_export_to_collector_once():
