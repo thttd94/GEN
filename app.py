@@ -1483,7 +1483,7 @@ def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite
         logs.append(f'[{label}] reboot ok')
         return True, logs
     if action == 'home':
-        xxtouch_spawn_checked(ip, port, 'lua -e \'while (device.is_screen_locked()) do\n device.unlock_screen()\n sys.msleep(1000)\nend\nsys.toast("Screen unlocked, script starting")\'', timeout=15)
+        xxtouch_spawn_checked(ip, port, 'lua -e \'device=require("device"); sys=require("sys"); while (device.is_screen_locked()) do\n device.unlock_screen()\n sys.msleep(1000)\nend\nsys.toast("Screen unlocked, script starting")\'', timeout=15)
         logs.append(f'[{label}] home ok')
         return True, logs
     if action == 'lock_home':
