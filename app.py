@@ -59,8 +59,11 @@ GROUP3_SCHEDULE_THREADS = {}
 NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'NuoiPhoi_tiktok.lua'
 EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'EventDD20p_tiktok_lite.lua'
 GROUP3_NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_NuoiPhoi_tiktok.lua'
+GROUP3_NURTURE_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_NuoiPhoi_tiktok_lite.lua'
+GROUP3_EVENT_DD_20P_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventDD20p_tiktok.lua'
 GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventDD20p_tiktok_lite.lua'
 GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventVideo180_tiktok.lua'
+GROUP3_EVENT_VIDEO_180_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventVideo180_tiktok_lite.lua'
 EVENT_VIDEO_180_TIKTOK_LINKS = [
     'https://www.tiktok.com/t/ZSHoJkxP6/',
     'https://www.tiktok.com/t/ZSHoJvPdS',
@@ -78,8 +81,9 @@ EVENT_VIDEO_180_TIKTOK_LITE_LINKS = [link.replace('https://www.tiktok.com', 'htt
 
 def build_event_video_180_script(app_choice: str) -> str:
     safe_choice = 'tiktok_lite' if str(app_choice or '').strip() == 'tiktok_lite' else 'tiktok'
-    script_path = BASE_DIR / 'xxtouch_jobs' / 'Group3_EventVideo180_tiktok.lua'
-    return f"lua {shlex.quote(str(script_path))}"
+    script_path = GROUP3_EVENT_VIDEO_180_TIKTOK_LITE_SCRIPT_FILE if safe_choice == 'tiktok_lite' else GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE
+    script_text = Path(script_path).read_text(encoding='utf-8')
+    return "lua - <<'LUA'\n" + script_text + "\nLUA"
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
 ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui_config.json')
@@ -1423,6 +1427,7 @@ def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite
         'nurture_tiktok': 'Nuôi Phôi',
         'event_video_180_tiktok': 'Chạy Event Video 180',
         'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
+        'event_dd_20p_tiktok': 'Chạy Event DD 20p',
         'send_files': 'Gửi file',
     }
     stop_first_actions = {
@@ -1436,6 +1441,7 @@ def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite
         'nurture_tiktok',
         'event_video_180_tiktok',
         'event_dd_20p_tiktok_lite',
+        'event_dd_20p_tiktok',
     }
     logs = [f'[{label}] bắt đầu {action_label_map.get(action, action)}']
     if action in stop_first_actions:
@@ -1662,19 +1668,30 @@ LUA'''
         logs.append(f'[{label}] đóng ứng dụng ok')
         return True, logs
     if action == 'nurture_tiktok':
-        xxtouch_run_repo_lua_script(ip, port, GROUP3_NURTURE_TIKTOK_SCRIPT_FILE, timeout=14400)
-        logs.append(f'[{label}] nuôi phôi TikTok ok')
+        safe_app = 'tiktok' if str(app_choice or '').strip() == 'tiktok' else 'tiktok_lite'
+        script_file = GROUP3_NURTURE_TIKTOK_SCRIPT_FILE if safe_app == 'tiktok' else GROUP3_NURTURE_TIKTOK_LITE_SCRIPT_FILE
+        logs.append(f'[{label}] bắt đầu chạy file {script_file.name} inline')
+        xxtouch_run_repo_lua_script(ip, port, script_file, timeout=14400)
+        logs.append(f'[{label}] đã gửi xong file {script_file.name} sang XXTouch')
+        app_label = 'TikTok' if safe_app == 'tiktok' else 'TikTok Lite'
+        logs.append(f'[{label}] nuôi phôi {app_label} ok')
         return True, logs
-    if action == 'event_dd_20p_tiktok_lite':
-        xxtouch_run_repo_lua_script(ip, port, GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE, timeout=11000)
-        logs.append(f'[{label}] chạy event DD 20p TikTok Lite ok')
+    if action in ('event_dd_20p_tiktok_lite', 'event_dd_20p_tiktok'):
+        safe_app = 'tiktok' if str(app_choice or '').strip() == 'tiktok' else 'tiktok_lite'
+        script_file = GROUP3_EVENT_DD_20P_TIKTOK_SCRIPT_FILE if safe_app == 'tiktok' else GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE
+        logs.append(f'[{label}] bắt đầu chạy file {script_file.name} inline')
+        xxtouch_run_repo_lua_script(ip, port, script_file, timeout=11000)
+        logs.append(f'[{label}] đã gửi xong file {script_file.name} sang XXTouch')
+        app_label = 'TikTok' if safe_app == 'tiktok' else 'TikTok Lite'
+        logs.append(f'[{label}] chạy event DD 20p {app_label} ok')
         return True, logs
     if action == 'event_video_180_tiktok':
-        if str(app_choice or '').strip() != 'tiktok':
-            logs.append(f'[{label}] Event Video 180 hiện chỉ chạy cho TikTok')
-            return False, logs
-        xxtouch_run_repo_lua_script(ip, port, GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE, timeout=40)
-        logs.append(f'[{label}] chạy file Group3_EventVideo180_tiktok.lua ok')
+        safe_app = 'tiktok' if str(app_choice or '').strip() == 'tiktok' else 'tiktok_lite'
+        script_file = GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE if safe_app == 'tiktok' else GROUP3_EVENT_VIDEO_180_TIKTOK_LITE_SCRIPT_FILE
+        logs.append(f'[{label}] bắt đầu chạy file {script_file.name} inline')
+        xxtouch_run_repo_lua_script(ip, port, script_file, timeout=40)
+        logs.append(f'[{label}] đã gửi xong file {script_file.name} sang XXTouch')
+        logs.append(f'[{label}] chạy file {script_file.name} ok')
         return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
     return False, logs
@@ -1695,6 +1712,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'nurture_tiktok': 'Nuôi Phôi',
         'event_video_180_tiktok': 'Chạy Event Video 180',
         'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
+        'event_dd_20p_tiktok': 'Chạy Event DD 20p',
         'send_files': 'Gửi file',
     }
     success_label_map = {
@@ -1711,6 +1729,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'nurture_tiktok': 'nuôi phôi thành công',
         'event_video_180_tiktok': 'chạy Event Video 180 thành công',
         'event_dd_20p_tiktok_lite': 'chạy Event DD 20p thành công',
+        'event_dd_20p_tiktok': 'chạy Event DD 20p thành công',
         'send_files': 'gửi file thành công',
     }
     fail_label_map = {
@@ -1727,6 +1746,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'nurture_tiktok': 'chưa nuôi phôi được',
         'event_video_180_tiktok': 'chưa chạy được Event Video 180',
         'event_dd_20p_tiktok_lite': 'chưa chạy được Event DD 20p',
+        'event_dd_20p_tiktok': 'chưa chạy được Event DD 20p',
         'send_files': 'chưa gửi được file',
     }
     success_label = success_label_map.get(action, f'{action_label_map.get(action, action)} thành công')

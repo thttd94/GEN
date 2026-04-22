@@ -1,4 +1,4 @@
-Group3_EventDD20p_tiktok_lite.luascreen.init(0)
+screen.init(0)
 
 local IMG_DIR = "/var/mobile/Media/1ferver/lua/examples/"
 local CHECK_IMG = IMG_DIR .. "check20p_1.PNG"
