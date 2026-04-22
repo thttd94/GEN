@@ -1404,6 +1404,45 @@
           "used_target": ""
         }
       ]
+    },
+    "Ver 110": {
+      "codes": [
+        {
+          "code": "GDNOW1XVH9T5",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "TR65FYU4H8QA",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "1P7DDEBS43HR",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "1UCHFBYZ39C6",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        },
+        {
+          "code": "SNVNZEETJNJF",
+          "used": false,
+          "used_at": "",
+          "used_version": "",
+          "used_target": ""
+        }
+      ]
     }
   }
 }

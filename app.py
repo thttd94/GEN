@@ -1418,6 +1418,7 @@ def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite
         'remove_tiktok_lite': 'Gỡ app TIKTOK LITE',
         'remove_tiktok': 'Gỡ app TIKTOK',
         'install_tiktok': 'Cài app TIKTOK',
+        'install_tiktok_lite': 'Cài app TIKTOK LITE',
         'quit_apps': 'Đóng ứng dụng',
         'nurture_tiktok': 'Nuôi Phôi',
         'event_video_180_tiktok': 'Chạy Event Video 180',
@@ -1430,6 +1431,7 @@ def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite
         'remove_tiktok_lite',
         'remove_tiktok',
         'install_tiktok',
+        'install_tiktok_lite',
         'quit_apps',
         'nurture_tiktok',
         'event_video_180_tiktok',
@@ -1549,6 +1551,98 @@ LUA'''
         xxtouch_spawn_checked(ip, port, install_script, timeout=660)
         logs.append(f'[{label}] install tiktok ok')
         return True, logs
+    if action == 'install_tiktok_lite':
+        install_lite_script = r'''lua - <<'LUA'
+local app = require("app")
+local sys = require("sys")
+local screen = require("screen")
+local touch = require("touch")
+screen.init(0)
+
+local RES_DIR = "/var/mobile/Media/1ferver/lua/scripts/img/"
+local TIKTOK_LITE_URL = "https://apps.apple.com/jp/app/tiktok-lite/id6447160980?l=en-US"
+local CHECK_TAI_1 = RES_DIR .. "/CheckTai1.png"
+local CHECK_TAI_2 = RES_DIR .. "/CheckTai2.png"
+local CHECK_TAI_3 = RES_DIR .. "/CheckTai3.png"
+local CLOUD_IMG = RES_DIR .. "/cloud.png"
+local OPEN_IMG = RES_DIR .. "/open.png"
+
+local function wait_ms(ms)
+  sys.msleep(ms)
+end
+
+local function openStoreTikTokLite()
+  app.close("com.apple.AppStore")
+  wait_ms(1500)
+  app.open_url(TIKTOK_LITE_URL)
+  wait_ms(6000)
+end
+
+local function hasAnyCheckTai()
+  if findImage(CHECK_TAI_1, 82, 0, 0, 750, 1334) then return true end
+  if findImage(CHECK_TAI_2, 82, 0, 0, 750, 1334) then return true end
+  if findImage(CHECK_TAI_3, 82, 0, 0, 750, 1334) then return true end
+  return false
+end
+
+local function hasOpen()
+  local ok = findImage(OPEN_IMG, 82, 0, 0, 750, 1334)
+  return ok == true
+end
+
+local function hasCloud()
+  local ok = findImage(CLOUD_IMG, 82, 250, 500, 430, 700)
+  return ok == true
+end
+
+local function tapCloudOnce()
+  local ok, x, y = findImage(CLOUD_IMG, 82, 250, 500, 430, 700)
+  if ok then
+    touch.tap(x + 20, y + 20)
+    wait_ms(1000)
+    return true
+  end
+  return false
+end
+
+openStoreTikTokLite()
+local start_at = os.time()
+local last_cloud_tap_at = 0
+local cloud_tap_cooldown = 12
+local download_started = false
+while os.time() - start_at < 600 do
+  if hasOpen() then
+    app.run("com.ss.iphone.ugc.AmeLite")
+    wait_ms(10000)
+    print("INSTALL_TIKTOK_LITE_OK")
+    return
+  end
+
+  local ready_for_cloud = hasAnyCheckTai()
+  if (not download_started) and ready_for_cloud then
+    if hasCloud() and (os.time() - last_cloud_tap_at >= cloud_tap_cooldown) then
+      if tapCloudOnce() then
+        last_cloud_tap_at = os.time()
+        download_started = true
+        wait_ms(8000)
+      end
+    end
+  elseif download_started then
+    wait_ms(1000)
+  else
+    if (os.time() - start_at) % 20 == 0 then
+      openStoreTikTokLite()
+    else
+      wait_ms(1000)
+    end
+  end
+  wait_ms(1000)
+end
+error("INSTALL_TIKTOK_LITE_TIMEOUT")
+LUA'''
+        xxtouch_spawn_checked(ip, port, install_lite_script, timeout=660)
+        logs.append(f'[{label}] install tiktok lite ok')
+        return True, logs
     if action == 'clear_app':
         clear_script = "lua -e 'app=require(\"app\"); local ids={\"com.apple.weather\",\"com.apple.mobileme.fmip1\",\"com.apple.Home\",\"com.apple.MobileAddressBook\",\"com.apple.stocks\",\"com.apple.Translate\",\"com.apple.iBooks\",\"com.apple.calculator\",\"com.apple.compass\",\"com.apple.facetime\",\"com.apple.mobilemail\",\"com.apple.Health\",\"com.apple.Maps\",\"com.apple.podcasts\",\"com.apple.reminders\",\"com.apple.tv\",\"com.apple.Passbook\",\"com.apple.mobilecal\",\"com.apple.Magnifier\",\"com.apple.measure\",\"com.apple.Music\",\"com.apple.VoiceMemos\",\"com.apple.mobilephone\",\"com.apple.MobileSMS\",\"com.apple.Bridge\"}; for i=1,#ids do pcall(app.uninstall, ids[i]) end'"
         xxtouch_spawn_checked(ip, port, clear_script, timeout=50)
@@ -1596,6 +1690,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'remove_tiktok_lite': 'Gỡ app TIKTOK LITE',
         'remove_tiktok': 'Gỡ app TIKTOK',
         'install_tiktok': 'Cài app TIKTOK',
+        'install_tiktok_lite': 'Cài app TIKTOK LITE',
         'quit_apps': 'Đóng ứng dụng',
         'nurture_tiktok': 'Nuôi Phôi',
         'event_video_180_tiktok': 'Chạy Event Video 180',
@@ -1611,6 +1706,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'remove_tiktok_lite': 'gỡ app TIKTOK LITE thành công',
         'remove_tiktok': 'gỡ app TIKTOK thành công',
         'install_tiktok': 'cài app TIKTOK thành công',
+        'install_tiktok_lite': 'cài app TIKTOK LITE thành công',
         'quit_apps': 'đóng ứng dụng thành công',
         'nurture_tiktok': 'nuôi phôi thành công',
         'event_video_180_tiktok': 'chạy Event Video 180 thành công',
@@ -1626,6 +1722,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'remove_tiktok_lite': 'chưa gỡ được app TIKTOK LITE',
         'remove_tiktok': 'chưa gỡ được app TIKTOK',
         'install_tiktok': 'chưa cài được app TIKTOK',
+        'install_tiktok_lite': 'chưa cài được app TIKTOK LITE',
         'quit_apps': 'chưa đóng được',
         'nurture_tiktok': 'chưa nuôi phôi được',
         'event_video_180_tiktok': 'chưa chạy được Event Video 180',
