@@ -2357,11 +2357,13 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
 
     route_rules = [
         rule for rule in route_rules
-        if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip() == 'direct')
+        if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip() in ('direct', 'proxy'))
     ]
 
     for tag, ip in ordered_items:
         route_rules.append({'action': 'route', 'outbound': tag, 'source_ip_cidr': ip})
+
+    route_rules.append({'action': 'route', 'outbound': 'block'})
 
     rebuilt_outbounds = list(non_proxy_outbounds)
     for tag, _ip in ordered_items:
@@ -2489,25 +2491,46 @@ def run_apply(session: str, rows_override=None):
     results = []
 
     preset_data = load_json(preset_source)
-    rows = rows_override if isinstance(rows_override, list) else extract_rows(preset_data, session=session)
-    tag_to_ip_map = {
-        str(row.get('tag', '')).strip(): str(row.get('ip', '')).strip()
-        for row in (rows or [])
-        if str(row.get('tag', '')).strip().startswith('proxy_') and str(row.get('ip', '')).strip()
-    }
-    runtime_data = rebuild_gencore_rules(preset_data, tag_to_ip_map)
-    apply_ip_identity_config(runtime_data, build_ip_identity_text(runtime_data, session=session), session=session)
-    save_json(RUNTIME_SOURCE_FILE, runtime_data)
-    results.append({
-        'cmd': 'write runtime source directly',
-        'ok': True,
-        'source': str(preset_source),
-        'target': str(RUNTIME_SOURCE_FILE),
-        'count': len(tag_to_ip_map),
-    })
+    if str(preset_source) != str(RUNTIME_SOURCE_FILE):
+        save_json(RUNTIME_SOURCE_FILE, preset_data)
+        results.append({
+            'cmd': 'copy preset to runtime source',
+            'ok': True,
+            'source': str(preset_source),
+            'target': str(RUNTIME_SOURCE_FILE),
+        })
+    else:
+        results.append({
+            'cmd': 'copy preset to runtime source',
+            'ok': True,
+            'source': str(preset_source),
+            'target': str(RUNTIME_SOURCE_FILE),
+            'skipped': True,
+        })
+
+    runtime_data = load_json(RUNTIME_SOURCE_FILE)
+    rows = rows_override if isinstance(rows_override, list) else extract_rows(runtime_data, session=session)
+    payload = build_old_gui_update_proxy_payload_from_rows(rows)
+    try:
+        resp = call_old_gui('/api/update_proxy', method='POST', data=payload)
+        results.append({
+            'cmd': 'POST /api/update_proxy',
+            'ok': True,
+            'source': str(RUNTIME_SOURCE_FILE),
+            'count': len(payload),
+            'response': resp.get('data') if isinstance(resp, dict) else resp,
+        })
+    except Exception as e:
+        results.append({
+            'cmd': 'POST /api/update_proxy',
+            'ok': False,
+            'source': str(RUNTIME_SOURCE_FILE),
+            'count': len(payload),
+            'error': str(e),
+        })
 
     if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
-        save_json(RUNTIME_FILE, runtime_data)
+        save_json(RUNTIME_FILE, load_json(RUNTIME_SOURCE_FILE))
         results.append({
             'cmd': 'sync runtime file',
             'ok': True,
