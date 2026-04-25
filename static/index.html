@@ -243,12 +243,13 @@
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start;">
             <div style="border:2px solid #d1d5db; border-radius:10px; padding:18px; min-height:240px; background:#fff;">
-              <div style="display:grid; gap:14px; max-width:220px;">
+              <div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; width:100%; max-width:760px;">
+                <button class="btn apply" onclick="admRunSimpleAction('open_app_manager')">APP MANAGER</button>
                 <button class="btn apply" onclick="admRunSimpleAction('remove_tiktok_lite')">Gỡ app TIKTOK LITE</button>
                 <button class="btn apply" onclick="admRunSimpleAction('remove_tiktok')">Gỡ app TIKTOK</button>
-                <button class="btn apply" onclick="admRunSimpleAction('install_tiktok')">Cài app TIKTOK</button>
-                <button class="btn apply" onclick="admRunSimpleAction('install_tiktok_lite')">Cài app TIKTOK LITE</button>
                 <button class="btn apply" onclick="admRunSimpleAction('quit_apps')">Đóng Ứng Dụng</button>
+                <button class="btn apply" onclick="admRunSimpleAction('install_tiktok_lite')">Cài app TIKTOK LITE</button>
+                <button class="btn apply" onclick="admRunSimpleAction('install_tiktok')">Cài app TIKTOK</button>
               </div>
             </div>
             <div style="border:2px solid #d1d5db; border-radius:10px; padding:18px; min-height:240px; background:#fff;">
@@ -1296,6 +1297,7 @@
         home: 'Home',
         lock_home: 'Lock Home',
         clear_app: 'Clear App',
+        open_app_manager: 'App Manager',
         remove_tiktok_lite: 'Gỡ TikTok Lite',
         remove_tiktok: 'Gỡ TikTok',
         install_tiktok: 'Cài TikTok',
@@ -1344,6 +1346,7 @@
       if (group3App) group3App.value = ui.group3App || 'tiktok_lite';
       toggleAdmMachineInputs();
     }
+    let admActionCooldownUntil = 0;
     function admState(){
       return {
         machineMode: document.getElementById('admMachineMode').value,
@@ -1352,6 +1355,17 @@
         remoteMachine: document.getElementById('admRemoteMachine').value,
         group3App: document.getElementById('admGroup3App')?.value || 'tiktok_lite',
       };
+    }
+    function admCheckActionCooldown(label){
+      const now = Date.now();
+      if (now < admActionCooldownUntil) {
+        const remain = Math.ceil((admActionCooldownUntil - now) / 1000);
+        admSetStatus(`Chờ ${remain}s trước khi chạy lệnh tiếp theo`);
+        admLog(`[WAIT] ${label}: còn ${remain}s mới chạy lệnh tiếp theo`);
+        return false;
+      }
+      admActionCooldownUntil = now + 5000;
+      return true;
     }
     function admSetMachineNote(note){
       const fallback = formatMachineRanges(admMachineIndexes);
@@ -1599,6 +1613,7 @@
       input.click();
     }
     async function admSendFiles(){
+      if (!admCheckActionCooldown('SEND FILE')) return;
       if (!admSelectedFiles.length) {
         admSetStatus('Chưa chọn file');
         admLog('Chưa có file nào được chọn');
@@ -1883,6 +1898,7 @@
     }
     async function admRunSimpleAction(action){
       const label = admActionLabel(action);
+      if (!admCheckActionCooldown(label)) return;
       const validated = admValidateMachineState(admState(), label);
       if (!validated.ok) return;
       admClearLog();
