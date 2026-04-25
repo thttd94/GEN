@@ -59,11 +59,8 @@ GROUP3_SCHEDULE_THREADS = {}
 NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'NuoiPhoi_tiktok.lua'
 EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'EventDD20p_tiktok_lite.lua'
 GROUP3_NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_NuoiPhoi_tiktok.lua'
-GROUP3_NURTURE_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_NuoiPhoi_tiktok_lite.lua'
-GROUP3_EVENT_DD_20P_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventDD20p_tiktok.lua'
 GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventDD20p_tiktok_lite.lua'
 GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventVideo180_tiktok.lua'
-GROUP3_EVENT_VIDEO_180_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventVideo180_tiktok_lite.lua'
 EVENT_VIDEO_180_TIKTOK_LINKS = [
     'https://www.tiktok.com/t/ZSHoJkxP6/',
     'https://www.tiktok.com/t/ZSHoJvPdS',
@@ -81,9 +78,8 @@ EVENT_VIDEO_180_TIKTOK_LITE_LINKS = [link.replace('https://www.tiktok.com', 'htt
 
 def build_event_video_180_script(app_choice: str) -> str:
     safe_choice = 'tiktok_lite' if str(app_choice or '').strip() == 'tiktok_lite' else 'tiktok'
-    script_path = GROUP3_EVENT_VIDEO_180_TIKTOK_LITE_SCRIPT_FILE if safe_choice == 'tiktok_lite' else GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE
-    script_text = Path(script_path).read_text(encoding='utf-8')
-    return "lua - <<'LUA'\n" + script_text + "\nLUA"
+    script_path = BASE_DIR / 'xxtouch_jobs' / 'Group3_EventVideo180_tiktok.lua'
+    return f"lua {shlex.quote(str(script_path))}"
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
 ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui_config.json')
@@ -110,7 +106,6 @@ XXTOUCH_SCAN_LOCK = threading.Lock()
 XXTOUCH_SCAN_INFLIGHT = set()
 REPO_REMOTE_URL = 'https://github.com/thttd94/GEN.git'
 REPO_BRANCH = 'main'
-RAW_UPDATE_CODES_URL = 'https://raw.githubusercontent.com/thttd94/GEN/main/update_codes.json'
 DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
 DEFAULT_PER_VERSION_CODE_COUNT = 5
 
@@ -120,21 +115,7 @@ def random_update_code(length=12):
     return ''.join(__import__('secrets').choice(alphabet) for _ in range(length))
 
 
-def load_update_codes_store(prefer_remote=True):
-    if prefer_remote:
-        try:
-            fresh_url = f"{RAW_UPDATE_CODES_URL}?ts={int(time.time() * 1000)}"
-            req = urllib.request.Request(fresh_url, headers={'User-Agent': 'Genrouter/1.0', 'Cache-Control': 'no-cache'})
-            with urllib.request.urlopen(req, timeout=20) as r:
-                data = json.loads(r.read().decode('utf-8', errors='replace'))
-            if isinstance(data, dict):
-                try:
-                    save_update_codes_store(data)
-                except Exception:
-                    pass
-                return data
-        except Exception:
-            pass
+def load_update_codes_store():
     candidates = [UPDATE_CODES_FILE]
     if BUNDLED_UPDATE_CODES_FILE != UPDATE_CODES_FILE:
         candidates.append(BUNDLED_UPDATE_CODES_FILE)
@@ -187,38 +168,28 @@ def consume_update_code(update_code: str, target_version: str):
     code = str(update_code or '').strip()
     if not code:
         raise PermissionError('Mã không hợp lệ')
-    store = load_update_codes_store(prefer_remote=True)
+    store = load_update_codes_store()
     admin_code = str(store.get('admin_code') or DEFAULT_ADMIN_UPDATE_CODE).strip() or DEFAULT_ADMIN_UPDATE_CODE
     version_key = normalize_version_key(target_version)
     if code == admin_code:
         return {'admin': True, 'version': version_key, 'code': code}
     versions = store.setdefault('versions', {}) if isinstance(store, dict) else {}
-    hit_entry = None
-    hit_item = None
-    hit_version = ''
-    for ver_name, entry in (versions or {}).items():
-        codes = entry.get('codes') if isinstance(entry, dict) else []
-        for item in codes or []:
-            if str(item.get('code') or '').strip() != code:
-                continue
-            if item.get('used'):
-                raise PermissionError('Mã không hợp lệ')
-            hit_entry = entry
-            hit_item = item
-            hit_version = normalize_version_key(ver_name)
-            break
-        if hit_item is not None:
-            break
-    if hit_item is None:
-        raise PermissionError('Mã không hợp lệ')
-    hit_item['used'] = True
-    hit_item['used_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
-    hit_item['used_version'] = hit_version
-    hit_item['used_target'] = str(BASE_DIR)
-    versions[hit_version] = hit_entry
-    store['versions'] = versions
-    save_update_codes_store(store)
-    return {'admin': False, 'version': version_key, 'code': code, 'source_version': hit_version}
+    entry = versions.get(version_key) or {}
+    codes = entry.get('codes') if isinstance(entry, dict) else []
+    for item in codes or []:
+        if str(item.get('code') or '').strip() != code:
+            continue
+        if item.get('used'):
+            raise PermissionError('Mã không hợp lệ')
+        item['used'] = True
+        item['used_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
+        item['used_version'] = version_key
+        item['used_target'] = str(BASE_DIR)
+        versions[version_key] = entry
+        store['versions'] = versions
+        save_update_codes_store(store)
+        return {'admin': False, 'version': version_key, 'code': code}
+    raise PermissionError('Mã không hợp lệ')
 
 
 def run_git_command(args, cwd=None, timeout=60):
@@ -321,7 +292,7 @@ def update_repo_from_remote(password: str):
         before_label = ''
     target_info = get_repo_version_info()
     target_version = normalize_version_key(target_info.get('latest_subject') or target_info.get('latest_label') or target_info.get('current_label') or before_label or 'Ver')
-    consume_update_code_via_collector(password, before_label, target_version)
+    consume_update_code(password, target_version)
     archive_url = 'https://codeload.github.com/thttd94/GEN/tar.gz/refs/heads/main'
     tmp_root = BASE_DIR.parent / 'update_tmp'
     extract_dir = tmp_root / 'GEN-main'
@@ -1444,6 +1415,7 @@ def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite
         'home': 'Home',
         'lock_home': 'Lock Home',
         'clear_app': 'Clear App',
+        'open_app_manager': 'App Manager',
         'remove_tiktok_lite': 'Gỡ app TIKTOK LITE',
         'remove_tiktok': 'Gỡ app TIKTOK',
         'install_tiktok': 'Cài app TIKTOK',
@@ -1452,12 +1424,12 @@ def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite
         'nurture_tiktok': 'Nuôi Phôi',
         'event_video_180_tiktok': 'Chạy Event Video 180',
         'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
-        'event_dd_20p_tiktok': 'Chạy Event DD 20p',
         'send_files': 'Gửi file',
     }
     stop_first_actions = {
         'stop_script',
         'clear_app',
+        'open_app_manager',
         'remove_tiktok_lite',
         'remove_tiktok',
         'install_tiktok',
@@ -1466,7 +1438,6 @@ def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite
         'nurture_tiktok',
         'event_video_180_tiktok',
         'event_dd_20p_tiktok_lite',
-        'event_dd_20p_tiktok',
     }
     logs = [f'[{label}] bắt đầu {action_label_map.get(action, action)}']
     if action in stop_first_actions:
@@ -1483,7 +1454,7 @@ def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite
         logs.append(f'[{label}] reboot ok')
         return True, logs
     if action == 'home':
-        xxtouch_spawn_checked(ip, port, 'lua -e \'device=require("device"); sys=require("sys"); while (device.is_screen_locked()) do\n device.unlock_screen()\n sys.msleep(1000)\nend\nsys.toast("Screen unlocked, script starting")\'', timeout=15)
+        xxtouch_spawn_checked(ip, port, 'lua -e \'key=require("key"); key.press(0x0C, 64); print("HOME_OK")\'', timeout=15)
         logs.append(f'[{label}] home ok')
         return True, logs
     if action == 'lock_home':
@@ -1547,7 +1518,7 @@ end
 openStoreTikTok()
 local start_at = os.time()
 local last_cloud_tap_at = 0
-local cloud_tap_cooldown = 12
+local cloud_tap_cooldown = 5
 local download_started = false
 while os.time() - start_at < 600 do
   if hasOpen() then
@@ -1639,7 +1610,7 @@ end
 openStoreTikTokLite()
 local start_at = os.time()
 local last_cloud_tap_at = 0
-local cloud_tap_cooldown = 12
+local cloud_tap_cooldown = 5
 local download_started = false
 while os.time() - start_at < 600 do
   if hasOpen() then
@@ -1679,6 +1650,10 @@ LUA'''
         xxtouch_spawn_checked(ip, port, clear_script, timeout=50)
         logs.append(f'[{label}] clear app ok')
         return True, logs
+    if action == 'open_app_manager':
+        xxtouch_spawn_checked(ip, port, 'lua -e \'app=require("app"); app.run("com.tigisoftware.ADManager")\'', timeout=20)
+        logs.append(f'[{label}] open app manager ok')
+        return True, logs
     if action == 'remove_tiktok_lite':
         xxtouch_spawn_checked(ip, port, 'lua -e \'app=require("app"); pcall(app.uninstall, "com.ss.iphone.ugc.tiktok.lite")\'', timeout=25)
         logs.append(f'[{label}] gỡ TikTok Lite ok')
@@ -1693,30 +1668,19 @@ LUA'''
         logs.append(f'[{label}] đóng ứng dụng ok')
         return True, logs
     if action == 'nurture_tiktok':
-        safe_app = 'tiktok' if str(app_choice or '').strip() == 'tiktok' else 'tiktok_lite'
-        script_file = GROUP3_NURTURE_TIKTOK_SCRIPT_FILE if safe_app == 'tiktok' else GROUP3_NURTURE_TIKTOK_LITE_SCRIPT_FILE
-        logs.append(f'[{label}] bắt đầu chạy file {script_file.name} inline')
-        xxtouch_run_repo_lua_script(ip, port, script_file, timeout=14400)
-        logs.append(f'[{label}] đã gửi xong file {script_file.name} sang XXTouch')
-        app_label = 'TikTok' if safe_app == 'tiktok' else 'TikTok Lite'
-        logs.append(f'[{label}] nuôi phôi {app_label} ok')
+        xxtouch_run_repo_lua_script(ip, port, GROUP3_NURTURE_TIKTOK_SCRIPT_FILE, timeout=14400)
+        logs.append(f'[{label}] nuôi phôi TikTok ok')
         return True, logs
-    if action in ('event_dd_20p_tiktok_lite', 'event_dd_20p_tiktok'):
-        safe_app = 'tiktok' if str(app_choice or '').strip() == 'tiktok' else 'tiktok_lite'
-        script_file = GROUP3_EVENT_DD_20P_TIKTOK_SCRIPT_FILE if safe_app == 'tiktok' else GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE
-        logs.append(f'[{label}] bắt đầu chạy file {script_file.name} inline')
-        xxtouch_run_repo_lua_script(ip, port, script_file, timeout=11000)
-        logs.append(f'[{label}] đã gửi xong file {script_file.name} sang XXTouch')
-        app_label = 'TikTok' if safe_app == 'tiktok' else 'TikTok Lite'
-        logs.append(f'[{label}] chạy event DD 20p {app_label} ok')
+    if action == 'event_dd_20p_tiktok_lite':
+        xxtouch_run_repo_lua_script(ip, port, GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE, timeout=11000)
+        logs.append(f'[{label}] chạy event DD 20p TikTok Lite ok')
         return True, logs
     if action == 'event_video_180_tiktok':
-        safe_app = 'tiktok' if str(app_choice or '').strip() == 'tiktok' else 'tiktok_lite'
-        script_file = GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE if safe_app == 'tiktok' else GROUP3_EVENT_VIDEO_180_TIKTOK_LITE_SCRIPT_FILE
-        logs.append(f'[{label}] bắt đầu chạy file {script_file.name} inline')
-        xxtouch_run_repo_lua_script(ip, port, script_file, timeout=40)
-        logs.append(f'[{label}] đã gửi xong file {script_file.name} sang XXTouch')
-        logs.append(f'[{label}] chạy file {script_file.name} ok')
+        if str(app_choice or '').strip() != 'tiktok':
+            logs.append(f'[{label}] Event Video 180 hiện chỉ chạy cho TikTok')
+            return False, logs
+        xxtouch_run_repo_lua_script(ip, port, GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE, timeout=40)
+        logs.append(f'[{label}] chạy file Group3_EventVideo180_tiktok.lua ok')
         return True, logs
     logs.append(f'[{label}] action chưa hỗ trợ')
     return False, logs
@@ -1729,6 +1693,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'home': 'Home',
         'lock_home': 'Lock Home',
         'clear_app': 'Clear App',
+        'open_app_manager': 'App Manager',
         'remove_tiktok_lite': 'Gỡ app TIKTOK LITE',
         'remove_tiktok': 'Gỡ app TIKTOK',
         'install_tiktok': 'Cài app TIKTOK',
@@ -1737,7 +1702,6 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'nurture_tiktok': 'Nuôi Phôi',
         'event_video_180_tiktok': 'Chạy Event Video 180',
         'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
-        'event_dd_20p_tiktok': 'Chạy Event DD 20p',
         'send_files': 'Gửi file',
     }
     success_label_map = {
@@ -1746,6 +1710,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'home': 'home thành công',
         'lock_home': 'lock home thành công',
         'clear_app': 'clear app thành công',
+        'open_app_manager': 'mở App Manager thành công',
         'remove_tiktok_lite': 'gỡ app TIKTOK LITE thành công',
         'remove_tiktok': 'gỡ app TIKTOK thành công',
         'install_tiktok': 'cài app TIKTOK thành công',
@@ -1754,7 +1719,6 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'nurture_tiktok': 'nuôi phôi thành công',
         'event_video_180_tiktok': 'chạy Event Video 180 thành công',
         'event_dd_20p_tiktok_lite': 'chạy Event DD 20p thành công',
-        'event_dd_20p_tiktok': 'chạy Event DD 20p thành công',
         'send_files': 'gửi file thành công',
     }
     fail_label_map = {
@@ -1763,6 +1727,7 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'home': 'chưa home được',
         'lock_home': 'chưa lock home được',
         'clear_app': 'chưa clear app được',
+        'open_app_manager': 'chưa mở được App Manager',
         'remove_tiktok_lite': 'chưa gỡ được app TIKTOK LITE',
         'remove_tiktok': 'chưa gỡ được app TIKTOK',
         'install_tiktok': 'chưa cài được app TIKTOK',
@@ -1771,7 +1736,6 @@ def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_in
         'nurture_tiktok': 'chưa nuôi phôi được',
         'event_video_180_tiktok': 'chưa chạy được Event Video 180',
         'event_dd_20p_tiktok_lite': 'chưa chạy được Event DD 20p',
-        'event_dd_20p_tiktok': 'chưa chạy được Event DD 20p',
         'send_files': 'chưa gửi được file',
     }
     success_label = success_label_map.get(action, f'{action_label_map.get(action, action)} thành công')
@@ -1886,8 +1850,6 @@ def load_collector_config():
         'enabled': True,
         'push_interval_sec': 60,
     }
-    if not str(cfg.get('collector_url', '')).strip() or 'aeg.ooguy.com:9010' in str(cfg.get('collector_url', '')).strip():
-        cfg['collector_url'] = 'http://192.15.0.1:9010'
     try:
         if COLLECTOR_CONFIG_FILE.exists():
             data = load_json(COLLECTOR_CONFIG_FILE)
@@ -1929,40 +1891,6 @@ def get_router_id():
     cfg['router_id'] = router_id
     save_collector_config(cfg)
     return router_id
-
-
-def consume_update_code_via_collector(update_code: str, current_version: str, target_version: str):
-    cfg = load_collector_config()
-    collector_url = str(cfg.get('collector_url', '')).strip().rstrip('/')
-    if not collector_url or not cfg.get('enabled'):
-        raise PermissionError('Collector chưa sẵn sàng')
-    payload = {
-        'code': str(update_code or '').strip(),
-        'router_id': get_router_id(),
-        'current_version': str(current_version or '').strip(),
-        'target_version': str(target_version or '').strip(),
-        'router_title': get_app_title_prefix(),
-    }
-    req = urllib.request.Request(
-        collector_url + '/api/update-code/consume',
-        data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
-        method='POST',
-        headers={'Content-Type': 'application/json; charset=utf-8'}
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode('utf-8', 'replace'))
-    except urllib.error.HTTPError as e:
-        try:
-            payload = json.loads(e.read().decode('utf-8', 'replace'))
-        except Exception:
-            payload = {'error': str(e)}
-        raise PermissionError(str(payload.get('error') or 'Mã không hợp lệ'))
-    except Exception as e:
-        raise PermissionError(f'Collector lỗi: {e}')
-    if not isinstance(data, dict) or not data.get('ok'):
-        raise PermissionError(str((data or {}).get('error') or 'Mã không hợp lệ'))
-    return data
 
 
 def push_export_to_collector_once():
@@ -2311,7 +2239,7 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
     if idx is None:
         return
     if not proxy:
-        outbounds[idx] = {'tag': tag, 'type': 'direct'}
+        outbounds[idx] = {'tag': tag, 'type': 'block'}
         return
     server, port, user, password = parse_proxy(proxy)
     normalized_type = str(proxy_type or 'socks5').strip().lower()
@@ -2352,7 +2280,7 @@ def clear_session_proxies(data):
         tag = str(item.get('tag', '')).strip()
         if tag.startswith('proxy_'):
             item.clear()
-            item.update({'tag': tag, 'type': 'direct'})
+            item.update({'tag': tag, 'type': 'block'})
 
 
 def remap_ip_by_tag(data):
@@ -2406,7 +2334,6 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
             {'action': 'sniff'},
             {'action': 'reject', 'method': 'drop', 'protocol': 'stun'},
             {'action': 'hijack-dns', 'protocol': 'dns'},
-            {'action': 'route', 'outbound': 'direct'},
         ]
 
     non_proxy_outbounds = [
@@ -2418,23 +2345,17 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
         dns_rules.append({'action': 'route', 'server': tag, 'source_ip_cidr': ip})
         dns_servers.append({'address': 'tcp://8.8.8.8', 'detour': tag, 'tag': tag})
 
-    direct_rule = None
-    kept_route_rules = []
-    for rule in route_rules:
-        if str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip() == 'direct':
-            direct_rule = rule
-            continue
-        kept_route_rules.append(rule)
-    route_rules = kept_route_rules
+    route_rules = [
+        rule for rule in route_rules
+        if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip() == 'direct')
+    ]
 
     for tag, ip in ordered_items:
         route_rules.append({'action': 'route', 'outbound': tag, 'source_ip_cidr': ip})
 
-    route_rules.append(direct_rule or {'action': 'route', 'outbound': 'direct'})
-
     rebuilt_outbounds = list(non_proxy_outbounds)
     for tag, _ip in ordered_items:
-        rebuilt_outbounds.append(old_outbound_map.get(tag, {'tag': tag, 'type': 'direct'}))
+        rebuilt_outbounds.append(old_outbound_map.get(tag, {'tag': tag, 'type': 'block'}))
 
     dns['rules'] = dns_rules
     dns['servers'] = dns_servers
@@ -2558,40 +2479,61 @@ def run_apply(session: str, rows_override=None):
     results = []
 
     preset_data = load_json(preset_source)
-    if str(preset_source) != str(RUNTIME_SOURCE_FILE):
-        save_json(RUNTIME_SOURCE_FILE, preset_data)
+    rows = rows_override if isinstance(rows_override, list) else extract_rows(preset_data, session=session)
+    tag_to_ip_map = {
+        str(row.get('tag', '')).strip(): str(row.get('ip', '')).strip()
+        for row in (rows or [])
+        if str(row.get('tag', '')).strip().startswith('proxy_') and str(row.get('ip', '')).strip()
+    }
+    runtime_data = rebuild_gencore_rules(preset_data, tag_to_ip_map)
+    apply_ip_identity_config(runtime_data, build_ip_identity_text(runtime_data, session=session), session=session)
+    save_json(RUNTIME_SOURCE_FILE, runtime_data)
+    results.append({
+        'cmd': 'write runtime source directly',
+        'ok': True,
+        'source': str(preset_source),
+        'target': str(RUNTIME_SOURCE_FILE),
+        'count': len(tag_to_ip_map),
+    })
+
+    if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
+        save_json(RUNTIME_FILE, runtime_data)
         results.append({
-            'cmd': 'copy preset to runtime source',
+            'cmd': 'sync runtime file',
             'ok': True,
-            'source': str(preset_source),
-            'target': str(RUNTIME_SOURCE_FILE),
+            'source': str(RUNTIME_SOURCE_FILE),
+            'target': str(RUNTIME_FILE),
         })
     else:
         results.append({
-            'cmd': 'copy preset to runtime source',
+            'cmd': 'sync runtime file',
             'ok': True,
-            'source': str(preset_source),
-            'target': str(RUNTIME_SOURCE_FILE),
+            'source': str(RUNTIME_SOURCE_FILE),
+            'target': str(RUNTIME_FILE),
             'skipped': True,
         })
 
-    rows = rows_override if isinstance(rows_override, list) else extract_rows(load_json(RUNTIME_SOURCE_FILE), session=session)
-    payload = build_old_gui_update_proxy_payload_from_rows(rows)
     try:
-        resp = call_old_gui('/api/update_proxy', method='POST', data=payload)
-        results.append({
-            'cmd': 'POST /api/update_proxy',
-            'ok': True,
-            'source': str(RUNTIME_SOURCE_FILE),
-            'count': len(payload),
-            'response': resp.get('data'),
-        })
+        if GENRUNNER.exists():
+            proc = subprocess.run([str(GENRUNNER), 'check', '-c', str(RUNTIME_SOURCE_FILE)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+            results.append({
+                'cmd': 'genrunner check',
+                'ok': proc.returncode == 0,
+                'returncode': proc.returncode,
+                'stdout': (proc.stdout or '').strip(),
+                'stderr': (proc.stderr or '').strip(),
+            })
+        else:
+            results.append({
+                'cmd': 'genrunner check',
+                'ok': False,
+                'skipped': True,
+                'error': f'Không thấy GENRUNNER: {GENRUNNER}',
+            })
     except Exception as e:
         results.append({
-            'cmd': 'POST /api/update_proxy',
+            'cmd': 'genrunner check',
             'ok': False,
-            'source': str(RUNTIME_SOURCE_FILE),
-            'count': len(payload),
             'error': str(e),
         })
     return results
@@ -3418,6 +3360,7 @@ class Handler(BaseHTTPRequestHandler):
                             failed_indexes.append(int(m.get('index') or 0))
                 else:
                     group3_app = state.get('group3App') or 'tiktok_lite'
+                    ordered_results = []
                     if action == 'event_video_180_tiktok' and len(machines) >= 10:
                         ordered_results = []
                         total = len(machines)
