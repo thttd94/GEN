@@ -3213,20 +3213,15 @@ class Handler(BaseHTTPRequestHandler):
                             'free_percent': 0,
                         }
                     try:
-                        probe = xxtouch_http_probe(m['ip'], port, timeout=3)
+                        probe = xxtouch_http_probe(m['ip'], port, timeout=1)
                         model = ''
                         ios = ''
-                        df = {}
                         info_error = ''
                         try:
-                            info = xxtouch_device_info(m['ip'], port, timeout=4)
+                            info = xxtouch_device_info(m['ip'], port, timeout=1)
                             data = info.get('data') or {}
                             model = data.get('marketing_name') or data.get('devtype') or ''
                             ios = data.get('sysversion') or ''
-                            try:
-                                df = xxtouch_df_info(m['ip'], port)
-                            except Exception:
-                                df = {}
                         except Exception as e:
                             info_error = str(e)
                         return {
@@ -3239,7 +3234,9 @@ class Handler(BaseHTTPRequestHandler):
                             'ios': ios,
                             'error': info_error,
                             'probe_path': probe.get('path') or '',
-                            **df,
+                            'capacity_label': '',
+                            'free_label': '',
+                            'free_percent': 0,
                         }
                     except Exception as e:
                         return {

@@ -1,5 +1,11 @@
 # Changelog
 
+## v2026.04.29-120
+
+- preserve existing Proxy Manager config files during `install.sh` updates instead of overwriting machine/session data
+- reduce XXTouch scan latency by shortening probe/deviceinfo timeouts and skipping heavy disk-info fetch during normal scan
+- fix severe 9001 GUI lag/freeze symptoms seen from Ver 119 onward while keeping structure and existing features intact
+
 ## v2026.04.18-17
 
 - rewrite XXTouch `screen.js` on the fly so remote control posts directly to the device HTTP API and opens websocket against the device IP:46968 instead of browser domain assumptions
