@@ -1,5 +1,11 @@
 # Changelog
 
+## v2026.04.29-121
+
+- fix GÁN IP modal loading when session state is not ready by defaulting safely to session 1 instead of requesting an invalid path
+- reduce unnecessary Group3 schedule polling load in the browser by polling every 5 seconds only while active jobs exist
+- keep machine identity semantics unchanged for `machine|proxy_tag|ip`: when a leading machine number exists it remains the real machine id
+
 ## v2026.04.29-120
 
 - preserve existing Proxy Manager config files during `install.sh` updates instead of overwriting machine/session data

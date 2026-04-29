@@ -1066,8 +1066,10 @@
 
     async function openIpMacConfig() {
       try {
+        const sessionId = String(currentSession || '1').trim() || '1';
         setStatus('Đang nạp định danh IP dùng chung...');
-        const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`);
+        const data = await fetchJSON(`/api/pm/ip-mac-config/${sessionId}`);
+        currentSession = sessionId;
         document.getElementById('ipMacText').value = data.text || '';
         document.getElementById('ipMacModal').classList.add('show');
         setStatus('Đã nạp GÁN IP dùng chung');
@@ -1089,6 +1091,7 @@
 
     async function submitIpMacConfig() {
       try {
+        const sessionId = String(currentSession || '1').trim() || '1';
         const text = document.getElementById('ipMacText').value;
         if (!text.trim()) return setStatus('Chưa có dữ liệu IP/MAC');
         setStatus('Đang lưu GÁN IP dùng chung...');
@@ -1098,7 +1101,7 @@
           apply_runtime: document.getElementById('cfgApplyRuntime').checked,
           reboot_router: document.getElementById('cfgRebootRouter').checked,
         };
-        const data = await fetchJSON(`/api/pm/ip-mac-config/${currentSession}`, { method:'POST', body: JSON.stringify(payload) });
+        const data = await fetchJSON(`/api/pm/ip-mac-config/${sessionId}`, { method:'POST', body: JSON.stringify(payload) });
         closeIpMacModal();
         sessionCache[String(currentSession)] = null;
         await loadSession(currentSession, true);
@@ -1720,13 +1723,26 @@
     }
     async function admRefreshAllGroup3Schedules(){
       const actions = ['nurture_tiktok','event_video_180_tiktok','event_dd_20p_tiktok_lite','maintenance'];
+      let hasActiveJob = false;
       for (const action of actions) {
-        try { await admRefreshGroup3ScheduleAction(action); } catch (_) {}
+        try {
+          const job = await admRefreshGroup3ScheduleAction(action);
+          if (job) hasActiveJob = true;
+        } catch (_) {}
       }
+      return hasActiveJob;
+    }
+    function admStopGroup3SchedulePolling(){
+      if (!admGroup3SchedulePoller) return;
+      clearInterval(admGroup3SchedulePoller);
+      admGroup3SchedulePoller = null;
     }
     function admEnsureGroup3SchedulePolling(){
       if (admGroup3SchedulePoller) return;
-      admGroup3SchedulePoller = setInterval(() => { admRefreshAllGroup3Schedules(); }, 1000);
+      admGroup3SchedulePoller = setInterval(async () => {
+        const hasActiveJob = await admRefreshAllGroup3Schedules();
+        if (!hasActiveJob) admStopGroup3SchedulePolling();
+      }, 5000);
     }
     async function admScheduleUiOnly(name, action){
       const seconds = admParseScheduleMmSs(document.getElementById(`group3Timer_${action}`)?.value || '');
@@ -1756,6 +1772,7 @@
       admSetGroup3ScheduleUiState(action, false);
       admSetStatus(data.message || `${name}: đã hủy lịch hẹn giờ`);
       admLog(`[SCHEDULE] ${name}: đã hủy lịch`);
+      setTimeout(() => { admRefreshAllGroup3Schedules().then(active => { if (!active) admStopGroup3SchedulePolling(); }); }, 100);
     }
     async function admRunGroup3Action(name, action=''){
       const appValue = document.getElementById('admGroup3App')?.value || 'tiktok_lite';
@@ -1806,8 +1823,11 @@
       if (remoteInput) remoteInput.value = ui.remoteMachine || '';
       const noteText = String(data.machine_note || '').trim() || formatMachineRanges(admMachineIndexes);
       admSetMachineNote(noteText);
-      admEnsureGroup3SchedulePolling();
-      setTimeout(() => { admRefreshAllGroup3Schedules(); }, 300);
+      setTimeout(() => {
+        admRefreshAllGroup3Schedules().then(active => {
+          if (active) admEnsureGroup3SchedulePolling();
+        });
+      }, 300);
       admSetStatus('Sẵn sàng');
       admClearLog();
       admLog(`Đã nạp config - ${Math.max(routerKeys.length, 0)} router`);
