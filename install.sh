@@ -108,6 +108,17 @@ pkill -f 'frpc.generated.toml' >/dev/null 2>&1 || true
 killall ssh >/dev/null 2>&1 || true
 rm -f /tmp/genrouter-frpc.log /tmp/genrouter-frpc-domain.log
 
+if [ -f /etc/genrouter/core/run_server.sh ]; then
+  cp /etc/genrouter/core/run_server.sh /etc/genrouter/core/run_server.sh.bak.gen_install 2>/dev/null || true
+  cat > /etc/genrouter/core/run_server.sh <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+  chmod +x /etc/genrouter/core/run_server.sh
+fi
+killall server >/dev/null 2>&1 || true
+pkill -f '/etc/genrouter/server' >/dev/null 2>&1 || true
+
 echo "[OK] Installed"
 echo "[OK] Open: http://$LAN_IP:$PORT"
 echo "[OK] XXTouch assets synced to: $APP_DIR/static/xxtouch"
