@@ -1875,25 +1875,9 @@ def save_collector_config(cfg):
     return cfg
 
 
-def get_router_id_from_frpc_config():
-    try:
-        frpc = load_json(FRPC_CFG, {})
-        custom_domain = str(frpc.get('custom_domain', '')).strip().lower()
-        if custom_domain.startswith('router-') and '.aeg.ooguy.com' in custom_domain:
-            return custom_domain.split('.', 1)[0]
-    except Exception:
-        pass
-    return ''
-
-
 def get_router_id():
     cfg = load_collector_config()
     router_id = str(cfg.get('router_id', '')).strip()
-    frpc_router_id = get_router_id_from_frpc_config()
-    if frpc_router_id and router_id != frpc_router_id:
-        cfg['router_id'] = frpc_router_id
-        save_collector_config(cfg)
-        return frpc_router_id
     if router_id:
         return router_id
     raw = f"{get_app_title_prefix()}|{socket.gethostname()}"
@@ -2915,26 +2899,7 @@ def xxtouch_forward_post(ip: str, port: str, remote_path: str, body: bytes, cont
 
 
 def get_xxtouch_remote_online_info():
-    try:
-        frpc = load_json(BASE_DIR / 'frpc_config.json', {})
-        app_cfg = load_json(COLLECTOR_CONFIG_FILE, {})
-        router_id = str(app_cfg.get('router_id', '')).strip() or 'unknown-router'
-        suffix = str(frpc.get('domain_suffix', 'aeg.ooguy.com')).strip() or 'aeg.ooguy.com'
-        server_host = str(frpc.get('server_host', 'aeg.ooguy.com')).strip() or 'aeg.ooguy.com'
-        remote_http_domain = str(frpc.get('remote_http_domain', '')).strip() or f'{router_id}-remote.{suffix}'
-        ws_remote_port = int(frpc.get('remote_ws_port', 0) or 0)
-        if ws_remote_port <= 0:
-            ws_remote_port = 24000 + sum(ord(ch) for ch in router_id) % 10000
-        return {
-            'router_id': router_id,
-            'http_domain': remote_http_domain,
-            'http_url': f'http://{remote_http_domain}',
-            'ws_host': server_host,
-            'ws_port': ws_remote_port,
-            'ws_url': f'ws://{server_host}:{ws_remote_port}',
-        }
-    except Exception:
-        return {}
+    return {}
 
 
 class Handler(BaseHTTPRequestHandler):
