@@ -36,8 +36,8 @@ cp "$SCRIPT_DIR/app.py" "$APP_DIR/app.py"
 [ ! -f "$APP_DIR/admanager_gui.local.json" ] && cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
 [ -f "$SCRIPT_DIR/collector_config.json" ] && [ ! -f "$APP_DIR/collector_config.json" ] && cp "$SCRIPT_DIR/collector_config.json" "$APP_DIR/collector_config.json"
 [ -f "$SCRIPT_DIR/setup_data_disk.sh" ] && cp "$SCRIPT_DIR/setup_data_disk.sh" "$APP_DIR/setup_data_disk.sh"
-rm -f "$APP_DIR/reverse_tunnel.sh" "$APP_DIR/reverse_tunnel_config.json"
-rm -f "$APP_DIR/frpc" "$APP_DIR/frpc_config.json" "$APP_DIR/frpc_template.toml" "$APP_DIR/frpc_setup.py" "$APP_DIR/frpc_run.sh" "$APP_DIR/frpc_boot_loop.sh" "$APP_DIR/frpc.generated.toml" "$APP_DIR/install_frpc_binary.sh"
+rm -f "$APP_DIR/reverse_tunnel.sh" "$APP_DIR/reverse_tunnel_config.json" "$APP_DIR/reverse_tunnel_service.txt"
+rm -f "$APP_DIR/frpc" "$APP_DIR/frpc_config.json" "$APP_DIR/frpc_template.toml" "$APP_DIR/frpc_setup.py" "$APP_DIR/frpc_run.sh" "$APP_DIR/frpc_boot_loop.sh" "$APP_DIR/frpc.generated.toml" "$APP_DIR/install_frpc_binary.sh" "$APP_DIR/frpc_service.txt" "$APP_DIR/frp_registry.json"
 rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
 cp -r "$SCRIPT_DIR/static/." "$APP_DIR/static/"
@@ -101,7 +101,10 @@ exit 0
 EOF
 chmod +x /etc/rc.local
 killall frpc >/dev/null 2>&1 || true
+killall frpc_boot_loop.sh >/dev/null 2>&1 || true
 killall start_frpc_loop.sh >/dev/null 2>&1 || true
+pkill -f '/opt/proxy-manager-v1/frpc_boot_loop.sh' >/dev/null 2>&1 || true
+pkill -f 'frpc.generated.toml' >/dev/null 2>&1 || true
 killall ssh >/dev/null 2>&1 || true
 rm -f /tmp/genrouter-frpc.log /tmp/genrouter-frpc-domain.log
 
