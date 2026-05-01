@@ -110,4 +110,28 @@ if [ -f /etc/init.d/genrouter_server ]; then /etc/init.d/genrouter_server enable
 if [ -f /etc/init.d/proxy-manager ]; then /etc/init.d/proxy-manager restart 2>/dev/null || true; fi
 if [ -f /etc/init.d/genrouter-old-gui ]; then /etc/init.d/genrouter-old-gui restart 2>/dev/null || true; fi
 
-echo "[OK] rolled back full GEN system/app to version $VERSION"
+sleep 3
+VERIFY_FAIL=0
+if ! netstat -lntp 2>/dev/null | grep -q ':9001'; then
+  echo "[ERR] verify failed: port 9001 is not listening"
+  VERIFY_FAIL=1
+fi
+if ! netstat -lntp 2>/dev/null | grep -q ':9000'; then
+  echo "[ERR] verify failed: port 9000 is not listening"
+  echo "[INFO] trying direct genrouter server start once"
+  /etc/genrouter/server --port 9000 >/var/log/gr_server.log 2>&1 &
+  sleep 2
+  netstat -lntp 2>/dev/null | grep -q ':9000' || VERIFY_FAIL=1
+fi
+if command -v wget >/dev/null 2>&1; then
+  wget -qO- http://127.0.0.1:9000/api/router/info >/tmp/genrouter_verify_9000.json 2>/tmp/genrouter_verify_9000.err || VERIFY_FAIL=1
+  wget -qO- http://127.0.0.1:9001/api/pm/router-info >/tmp/genrouter_verify_9001.json 2>/tmp/genrouter_verify_9001.err || VERIFY_FAIL=1
+fi
+if [ "$VERIFY_FAIL" = "1" ]; then
+  echo "[ERR] restored files but runtime verification failed"
+  echo "[ERR] ports:"
+  netstat -lntp 2>/dev/null | grep -E ':9000|:9001|:8000' || true
+  exit 2
+fi
+
+echo "[OK] rolled back full GEN system/app to version $VERSION and verified 9000/9001"
