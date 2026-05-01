@@ -3033,7 +3033,13 @@ class Handler(BaseHTTPRequestHandler):
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                 return self._send_json({'session': session_id, 'name': get_session_display_name(session_id), 'source': str(SESSION_FILES[session_id]), 'rows': extract_rows(load_json(SESSION_FILES[session_id]), session=session_id)})
         if path == '/api/pm/router-network':
-            return self._send_json(call_old_gui('/api/system/network'))
+            try:
+                probe = urllib.request.Request('https://api.ipify.org', headers={'User-Agent': 'pm-network-check'})
+                with urllib.request.urlopen(probe, timeout=8) as resp:
+                    wan_ip = resp.read().decode('utf-8', 'replace').strip()
+                return self._send_json({'ok': True, 'connected': True, 'wan_ip': wan_ip})
+            except Exception as e:
+                return self._send_json({'ok': False, 'connected': False, 'error': str(e)})
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
