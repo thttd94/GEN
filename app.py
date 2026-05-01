@@ -3440,7 +3440,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not machines:
                     raise ValueError('Không tìm thấy máy để remote theo Gán IP')
                 machine = machines[0]
-                return self._send_json({'ok': True, 'url': f"http://{machine['ip']}:{port}/screen.html", 'machine': machine})
+                remote_url = f"/api/xxtouch/remote-screen?machine={quote(machine_no)}&port={quote(port)}"
+                return self._send_json({'ok': True, 'url': remote_url, 'machine': machine})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}
