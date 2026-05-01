@@ -1,0 +1,124 @@
+# Changelog
+
+## v2026.05.01-new9001
+
+- start new clean 9001 workspace from current Proxy Manager baseline
+- keep Proxy Manager behavior and shared GÁN MAC/19123 workflow as the active scope
+- blank/freeze XXTOUCH JOBS tab and remove bundled XXTouch job scripts for later rebuild
+
+
+## v2026.05.01-01
+
+- preserve live config files during install/update instead of overwriting router-specific settings on every reinstall
+- ensure legacy old GUI service is restarted/enabled alongside the 9001 app when old init scripts already exist, so 9000 can keep running in parallel
+
+## v2026.04.29-121
+
+- fix GÁN IP modal loading when session state is not ready by defaulting safely to session 1 instead of requesting an invalid path
+- reduce unnecessary Group3 schedule polling load in the browser by polling every 5 seconds only while active jobs exist
+- keep machine identity semantics unchanged for `machine|proxy_tag|ip`: when a leading machine number exists it remains the real machine id
+
+## v2026.04.29-120
+
+- preserve existing Proxy Manager config files during `install.sh` updates instead of overwriting machine/session data
+- reduce XXTouch scan latency by shortening probe/deviceinfo timeouts and skipping heavy disk-info fetch during normal scan
+- fix severe 9001 GUI lag/freeze symptoms seen from Ver 119 onward while keeping structure and existing features intact
+
+## v2026.04.18-17
+
+- rewrite XXTouch `screen.js` on the fly so remote control posts directly to the device HTTP API and opens websocket against the device IP:46968 instead of browser domain assumptions
+
+## v2026.04.18-16
+
+- proxy XXTouch remote assets (`js/`, `css/`, `mdui/`, `screen.js`, `xxtouch.png`) through router app so remote screen can load over domain instead of breaking on private asset paths
+
+## v2026.04.18-15
+
+- add router-side XXTouch remote-screen proxy endpoint so remote iframe no longer points directly to private `192.15.x.x:46952`
+
+## v2026.04.18-14
+
+- switch FRP client scaffolding from tcp remote-port mode to HTTP subdomain mode
+- derive router URL automatically as `<router_id>.aeg.ooguy.com:8080`
+- simplify install flow by removing old per-router port registry dependency
+
+## v2026.04.18-13
+
+- integrate `setup_data_disk.sh` into `install.sh` so router install auto-checks and auto-creates `/data` when SSD space is still unallocated, while skipping safely if already prepared
+
+## v2026.04.18-12
+
+- add `setup_data_disk.sh` to create and mount a reusable `/data` partition on x86 routers with unallocated SSD space
+
+## v2026.04.18-11
+
+- switch remote access direction to FRP with auto-assigned unique remote ports
+- add FRP registry on server side so each newly installed router gets a non-duplicated port
+- add `frpc` config/template/setup/run files for Genrouter-side deployment
+- extend `install.sh` to deploy FRP client scaffolding and service hooks
+
+## v2026.04.18-10
+
+- add reverse SSH tunnel scaffold for Genrouter outbound remote access
+- add `reverse_tunnel.sh`, `reverse_tunnel_config.json`, and init service template
+- extend `install.sh` to deploy and enable reverse tunnel service when configured
+- keep site-side requirement minimal by relying on router outbound connectivity
+
+## v2026.04.18-09
+
+- redesign `py_gui_server.py` UI into 3 levels: router list -> session list -> proxy list
+- compact router display so central GUI is easier to scan
+- selecting a router now shows its sessions, selecting a session shows all proxies inside it
+
+## v2026.04.18-08
+
+- add `py_gui_server.py` as the final central app combining GUI and embedded router push server
+- add router online/offline state and last seen display
+- keep direct open/copy support for `remote_url`
+- move closer to the final one-app workflow: open one Python app and see all routers
+
+## v2026.04.18-07
+
+- set default collector/server URL to `http://aeg.ooguy.com:9010`
+- enable router client push by default after install
+- default central GUI to read from `aeg.ooguy.com:9010`
+- align naming toward `PY GUI Server` as the router center
+
+## v2026.04.18-06
+
+- add `remote_url` support in collector config and router push payload
+- upgrade `collector_proxy_gui.py` with `Mở 9001` and `Copy URL` actions
+- show remote URL in collector GUI so each discovered router can be opened directly from the central tool
+
+## v2026.04.18-05
+
+- add collector model for remote auto-discovery across routers on different networks
+- add `collector_server.py` to receive router push data centrally
+- add `collector_proxy_gui.py` to read all routers from collector without manual host entry per router
+- add router-side collector config and background push loop in `app.py`
+- keep rollback path via release tags and update/rollback scripts
+
+## v2026.04.18-04
+
+- add `/api/pm/export-all` for remote export of all sessions and proxies per router
+- add `router_proxy_export_gui.py` to scan multiple routers and export aggregated proxy/session data
+- support remote collection by router URL instead of relying only on local LAN usage
+
+## v2026.04.18-03
+
+- add `CHANGELOG.md` for release notes tracking
+- add committed `VERSION.txt` to define current repo release version
+- keep update and rollback workflow standardized
+
+## v2026.04.18-02
+
+- add `RELEASE.md`
+- add `update.sh`
+- add `rollback.sh`
+- standardize release and rollback workflow
+
+## v2026.04.18-01
+
+- update remote machine grid UI
+- add machine grid paging for remote popup
+- keep left remote view and right machine selector panel

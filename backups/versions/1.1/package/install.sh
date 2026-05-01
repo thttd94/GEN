@@ -24,17 +24,6 @@ LAN_CIDR="$(ip -4 -o addr show br-lan 2>/dev/null | awk '{print $4}' | head -n1)
 
 mkdir -p "$APP_DIR"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-GENROUTER_VERSION="${GENROUTER_VERSION:-$(cat "$SCRIPT_DIR/VERSION.txt" 2>/dev/null || echo 1.1)}"
-BACKUP_ROOT="${BACKUP_ROOT:-/root/genrouter_backups/versions}"
-VERSION_BACKUP_DIR="$BACKUP_ROOT/$GENROUTER_VERSION/package"
-mkdir -p "$BACKUP_ROOT"
-if [ ! -d "$VERSION_BACKUP_DIR" ]; then
-  mkdir -p "$VERSION_BACKUP_DIR"
-  cp -a "$SCRIPT_DIR/." "$VERSION_BACKUP_DIR/"
-  echo "[OK] Saved router package backup: $VERSION_BACKUP_DIR"
-else
-  echo "[OK] Router package backup exists: $VERSION_BACKUP_DIR"
-fi
 
 if [ -f "$SCRIPT_DIR/setup_data_disk.sh" ]; then
   echo "[INFO] Checking data disk..."
@@ -42,7 +31,6 @@ if [ -f "$SCRIPT_DIR/setup_data_disk.sh" ]; then
 fi
 
 cp "$SCRIPT_DIR/app.py" "$APP_DIR/app.py"
-[ -f "$SCRIPT_DIR/rollback_version.sh" ] && cp "$SCRIPT_DIR/rollback_version.sh" "$APP_DIR/rollback_version.sh"
 [ -f "$SCRIPT_DIR/VERSION.txt" ] && cp "$SCRIPT_DIR/VERSION.txt" "$APP_DIR/VERSION.txt"
 [ ! -f "$APP_DIR/admanager_gui_config.json" ] && cp "$SCRIPT_DIR/admanager_gui_config.json" "$APP_DIR/admanager_gui_config.json"
 [ ! -f "$APP_DIR/admanager_gui.local.json" ] && cp "$SCRIPT_DIR/admanager_gui.local.json" "$APP_DIR/admanager_gui.local.json"
