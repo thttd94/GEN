@@ -100,7 +100,13 @@ if [ -f /etc/genrouter/core/run_server.sh ] && ! grep -q -- '--port 9000' /etc/g
   echo "[INFO] normalized genrouter_server port to 9000"
 fi
 
-/etc/init.d/network reload 2>/dev/null || true
+# Do not reload/restart network by default during online restore: it can kill
+# the SSH session and leave dropbear/proxy-manager down even when files restored.
+if [ "${RELOAD_NETWORK_AFTER_RESTORE:-0}" = "1" ]; then
+  /etc/init.d/network reload 2>/dev/null || true
+fi
+/etc/init.d/dropbear enable 2>/dev/null || true
+/etc/init.d/dropbear restart 2>/dev/null || /etc/init.d/dropbear start 2>/dev/null || true
 /etc/init.d/cron restart 2>/dev/null || true
 /etc/init.d/proxy-manager-v1 enable 2>/dev/null || true
 /etc/init.d/proxy-manager-v1 restart 2>/dev/null || /etc/init.d/proxy-manager-v1 start 2>/dev/null || python3 "$APP_DIR/app.py" >/tmp/proxy-manager-v1.log 2>&1 &
@@ -112,9 +118,15 @@ if [ -f /etc/init.d/genrouter-old-gui ]; then /etc/init.d/genrouter-old-gui rest
 
 sleep 3
 VERIFY_FAIL=0
+if ! netstat -lntp 2>/dev/null | grep -q ':886'; then
+  echo "[ERR] verify failed: SSH/dropbear port 886 is not listening"
+  VERIFY_FAIL=1
+fi
 if ! netstat -lntp 2>/dev/null | grep -q ':9001'; then
   echo "[ERR] verify failed: port 9001 is not listening"
-  VERIFY_FAIL=1
+  /etc/init.d/proxy-manager-v1 restart 2>/dev/null || /etc/init.d/proxy-manager-v1 start 2>/dev/null || true
+  sleep 2
+  netstat -lntp 2>/dev/null | grep -q ':9001' || VERIFY_FAIL=1
 fi
 if ! netstat -lntp 2>/dev/null | grep -q ':9000'; then
   echo "[ERR] verify failed: port 9000 is not listening"
@@ -134,4 +146,4 @@ if [ "$VERIFY_FAIL" = "1" ]; then
   exit 2
 fi
 
-echo "[OK] rolled back full GEN system/app to version $VERSION and verified 9000/9001"
+echo "[OK] rolled back full GEN system/app to version $VERSION and verified SSH/9000/9001"
