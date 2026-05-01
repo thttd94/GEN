@@ -24,7 +24,8 @@ LAN_CIDR="$(ip -4 -o addr show br-lan 2>/dev/null | awk '{print $4}' | head -n1)
 
 mkdir -p "$APP_DIR"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-GENROUTER_VERSION="${GENROUTER_VERSION:-$(cat "$SCRIPT_DIR/VERSION.txt" 2>/dev/null || echo 1.1)}"
+GENROUTER_VERSION_RAW="${GENROUTER_VERSION:-$(cat "$SCRIPT_DIR/VERSION.txt" 2>/dev/null || echo 1.1)}"
+GENROUTER_VERSION="$(printf '%s' "$GENROUTER_VERSION_RAW" | sed 's/^[Vv]//')"
 if [ -d /data ] && mount | grep -q ' /data '; then
   BACKUP_ROOT="${BACKUP_ROOT:-/data/genrouter_backups/versions}"
 else
@@ -158,4 +159,4 @@ echo "[OK] Installed"
 echo "[OK] Open: http://$LAN_IP:$PORT"
 echo "[OK] XXTouch assets synced to: $APP_DIR/static/xxtouch"
 echo "[OK] XXTouch admin LAN bypass ensured for router $LAN_IP"
-echo "[OK] FRPC and reverse tunnel removed/disabled"
+echo "[OK] Old FRPC/reverse-tunnel cleanup completed (not installed)"
