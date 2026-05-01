@@ -82,6 +82,15 @@ chmod +x "/etc/init.d/$SERVICE_NAME"
 /etc/init.d/$SERVICE_NAME enable || true
 /etc/init.d/$SERVICE_NAME restart || /etc/init.d/$SERVICE_NAME start
 
+if [ -f "/etc/init.d/proxy-manager" ]; then
+  /etc/init.d/proxy-manager enable || true
+  /etc/init.d/proxy-manager restart || /etc/init.d/proxy-manager start || true
+fi
+if [ -f "/etc/init.d/genrouter-old-gui" ]; then
+  /etc/init.d/genrouter-old-gui enable || true
+  /etc/init.d/genrouter-old-gui restart || /etc/init.d/genrouter-old-gui start || true
+fi
+
 for svc in genrouter-reverse-tunnel genrouter-frpc; do
   if [ -f "/etc/init.d/$svc" ]; then
     /etc/init.d/$svc stop || true

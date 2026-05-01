@@ -1,5 +1,10 @@
 # Changelog
 
+## v2026.05.01-01
+
+- preserve live config files during install/update instead of overwriting router-specific settings on every reinstall
+- ensure legacy old GUI service is restarted/enabled alongside the 9001 app when old init scripts already exist, so 9000 can keep running in parallel
+
 ## v2026.04.29-121
 
 - fix GÁN IP modal loading when session state is not ready by defaulting safely to session 1 instead of requesting an invalid path
