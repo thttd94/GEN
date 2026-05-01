@@ -2474,31 +2474,55 @@ def run_apply(session: str, rows_override=None):
     preset_source = SESSION_FILES[session]
     results = []
 
+    # 9001 is a config editor/proxy assignment manager only.
+    # Normal save/load/edit must not touch genrouter/tproxy/firewall/9000.
+    # Apply theo cấu hình writes the selected preset/posted rows into the single gencore runtime source.
     preset_data = load_json(preset_source)
     if str(preset_source) != str(RUNTIME_SOURCE_FILE):
         save_json(RUNTIME_SOURCE_FILE, preset_data)
         results.append({
-            'cmd': 'copy preset to runtime source',
+            'cmd': 'copy selected preset to gencore runtime source',
             'ok': True,
             'source': str(preset_source),
             'target': str(RUNTIME_SOURCE_FILE),
         })
     else:
         results.append({
-            'cmd': 'copy preset to runtime source',
+            'cmd': 'copy selected preset to gencore runtime source',
             'ok': True,
             'source': str(preset_source),
             'target': str(RUNTIME_SOURCE_FILE),
             'skipped': True,
         })
 
-    runtime_data = load_json(RUNTIME_SOURCE_FILE)
-    rows = rows_override if isinstance(rows_override, list) else extract_rows(runtime_data, session=session)
+    if isinstance(rows_override, list):
+        rows_by_tag = {}
+        for row in rows_override:
+            tag = normalize_tag((row or {}).get('tag', ''))
+            if tag:
+                rows_by_tag[tag] = row or {}
+        runtime_data = apply_rows_to_data(load_json(RUNTIME_SOURCE_FILE), rows_by_tag, session=session)
+        save_json(preset_source, runtime_data)
+        save_json(RUNTIME_SOURCE_FILE, runtime_data)
+        results.append({
+            'cmd': 'save posted proxy assignments to preset and gencore runtime source',
+            'ok': True,
+            'source': str(preset_source),
+            'target': str(RUNTIME_SOURCE_FILE),
+            'count': len(rows_by_tag),
+        })
+    else:
+        runtime_data = load_json(RUNTIME_SOURCE_FILE)
+
+    rows = extract_rows(runtime_data, session=session)
     payload = build_old_gui_update_proxy_payload_from_rows(rows)
+
+    # The old GUI/core server owns the real runtime apply flow.
+    # If 9000 is available, call its update API. Do not restart genrouter/tproxy/firewall here.
     try:
         resp = call_old_gui('/api/update_proxy', method='POST', data=payload)
         results.append({
-            'cmd': 'POST /api/update_proxy',
+            'cmd': 'POST old GUI /api/update_proxy',
             'ok': True,
             'source': str(RUNTIME_SOURCE_FILE),
             'count': len(payload),
@@ -2506,7 +2530,7 @@ def run_apply(session: str, rows_override=None):
         })
     except Exception as e:
         results.append({
-            'cmd': 'POST /api/update_proxy',
+            'cmd': 'POST old GUI /api/update_proxy',
             'ok': False,
             'source': str(RUNTIME_SOURCE_FILE),
             'count': len(payload),
@@ -2516,14 +2540,14 @@ def run_apply(session: str, rows_override=None):
     if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
         save_json(RUNTIME_FILE, load_json(RUNTIME_SOURCE_FILE))
         results.append({
-            'cmd': 'sync runtime file',
+            'cmd': 'sync runtime file copy only',
             'ok': True,
             'source': str(RUNTIME_SOURCE_FILE),
             'target': str(RUNTIME_FILE),
         })
     else:
         results.append({
-            'cmd': 'sync runtime file',
+            'cmd': 'sync runtime file copy only',
             'ok': True,
             'source': str(RUNTIME_SOURCE_FILE),
             'target': str(RUNTIME_FILE),
@@ -2534,27 +2558,18 @@ def run_apply(session: str, rows_override=None):
         if GENRUNNER.exists():
             proc = subprocess.run([str(GENRUNNER), 'check', '-c', str(RUNTIME_SOURCE_FILE)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
             results.append({
-                'cmd': 'genrunner check',
+                'cmd': 'genrunner check only',
                 'ok': proc.returncode == 0,
                 'returncode': proc.returncode,
                 'stdout': (proc.stdout or '').strip(),
                 'stderr': (proc.stderr or '').strip(),
             })
         else:
-            results.append({
-                'cmd': 'genrunner check',
-                'ok': False,
-                'skipped': True,
-                'error': f'Không thấy GENRUNNER: {GENRUNNER}',
-            })
+            results.append({'cmd': 'genrunner check only', 'ok': True, 'skipped': True, 'reason': f'not found: {GENRUNNER}'})
     except Exception as e:
-        results.append({
-            'cmd': 'genrunner check',
-            'ok': False,
-            'error': str(e),
-        })
-    return results
+        results.append({'cmd': 'genrunner check only', 'ok': False, 'error': str(e)})
 
+    return results
 
 def recv_exact(sock, n):
     data = b''

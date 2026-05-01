@@ -137,12 +137,6 @@
           <div class="top-work-card">
             <div class="bulk-card-title">GÁN 1 PROXY CHO TOÀN BỘ CẤU HÌNH ĐANG MỞ</div>
             <input id="bulkProxy" placeholder="server:port:user:pass">
-            <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <select id="bulkProxyType" style="max-width:110px;">
-                <option value="socks5" selected>SOCKS5</option>
-                <option value="http">HTTP</option>
-              </select>
-            </div>
             <div class="bulk-actions-inline">
               <button class="btn" onclick="assignAllProxy()">GÁN 1 ALL</button>
               <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
@@ -170,7 +164,6 @@
             <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
           </div>
                   </div>
-        <button class="btn save-strong" onclick="saveCurrent()">SAVE</button>
       </div>
 
       <div class="grid">
@@ -211,13 +204,53 @@
         <div style="font-size:18px; font-weight:900; color:#92400e;">XXTOUCH JOBS đang tạm ẩn chức năng thao tác</div>
         <div class="sub" style="color:#92400e;">V2.1 giữ lại tab và toàn bộ form/nút để phát triển sau; các nút hiện chỉ hiển thị, chưa chạy action thật.</div>
       </div>
-
-      <div class="panel" style="padding:28px; text-align:center;">
-        <div style="font-size:22px; font-weight:900; color:#111827; margin-bottom:8px;">XXTOUCH JOBS</div>
-        <div class="sub" style="font-size:16px; color:#6b7280;">Tab n├áy ─æ├ú ─æ╞░ß╗úc xo├í trß║»ng/─æ├│ng b─âng ─æß╗â ph├ít triß╗ân lß║íi sau. Proxy Manager v├á G├üN MAC giß╗» nguy├¬n.</div>
-      </div>
-    </div>
-
+
+
+      <div class="panel" style="padding:28px; text-align:center;">
+
+        <div style="font-size:22px; font-weight:900; color:#111827; margin-bottom:8px;">XXTOUCH JOBS</div>
+
+        <div class="sub" style="font-size:16px; color:#6b7280;">Tab n├áy ─æ├ú ─æ╞░ß╗úc xo├í trß║»ng/─æ├│ng b─âng ─æß╗â ph├ít triß╗ân lß║íi sau. Proxy Manager v├á G├üN MAC giß╗» nguy├¬n.</div>
+
+      </div>
+
+    </div>
+
+
+
+    <div class="modal" id="sessionManagerModal">
+    <div class="modal-card" style="width:min(760px, 94vw)">
+      <div class="modal-head">
+        <b>QUẢN LÝ CẤU HÌNH</b>
+        <button class="btn small" onclick="closeSessionManager()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub">Quản lý tất cả cấu hình ở một chỗ. Có thể ẩn/hiện hoặc xóa cấu hình phụ.</div>
+        <div id="sessionManagerList" style="display:grid; gap:10px;"></div>
+      </div>
+    </div>
+  </div>
+
+<div class="modal" id="routerModal">
+    <div class="modal-card" style="width:min(520px, 92vw)">
+      <div class="modal-head">
+        <b>Set up Router</b>
+        <button class="btn small" onclick="closeRouterModal()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>LAN IP</label>
+          <input id="routerIp" placeholder="192.168.1.1">
+        </div>
+        <div class="sub" id="routerInfo">Chỉ sửa LAN IP của router</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="closeRouterModal()">Hủy</button>
+        <button class="btn apply" onclick="submitRouterSetup()">Lưu LAN IP</button>
+      </div>
+    </div>
+  </div>
+
 <div class="modal" id="ipMacModal">
     <div class="modal-card">
       <div class="modal-head">
@@ -510,7 +543,7 @@
 
     function renderNotesSummary() {
       const box = document.getElementById('notesSummary');
-      const lines = getVisibleRows().filter(r => String(r.note || '').trim()).map(r => `${r.ip} | ${r.tag || '-'} | ${r.note.trim()}`);
+      const lines = getVisibleRows().filter(r => String(r.note || '').trim()).map(r => `Máy ${String(r.machine || '').trim() || '?'} : ${String(r.note || '').trim()}`);
       if (!lines.length) {
         box.innerHTML = '<span class="notes-summary-empty">Chưa có note</span>';
         return;
@@ -846,7 +879,7 @@
 
     function assignAllProxy() {
       const value = document.getElementById('bulkProxy').value.trim();
-      const proxyType = String(document.getElementById('bulkProxyType')?.value || document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
+      const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
       getVisibleRows().forEach(r => {
         r.proxy = value;
         r.proxyType = proxyType;

@@ -1,5 +1,12 @@
 # Changelog
 
+## V2.2
+
+- restore SETUP ROUTER popup: read current LAN IP and submit LAN IP changes through existing router endpoints
+- remove standalone SAVE button above CHECK ALL
+- restore gear/session manager popup for hiding/showing/deleting added configurations
+- simplify NOTE TỔNG display to `Máy <số máy> : <note>` without IP/proxy tag noise
+
 ## V2.1
 
 - keep GUI 9001 as the active app
