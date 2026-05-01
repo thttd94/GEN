@@ -58,9 +58,17 @@ mkdir -p "$DEST"
 cp -a "$SRC/package" "$DEST/package"
 cp -a "$SRC/system" "$DEST/system"
 
+# Use the bootstrap rollback script from current Git when available because it
+# contains the latest restore safety logic (network preservation, service fixes).
+if [ -f "./rollback_version.sh" ]; then
+  cp ./rollback_version.sh "$DEST/package/rollback_version.sh"
+elif [ -f "/opt/proxy-manager-v1/rollback_version.sh" ]; then
+  cp /opt/proxy-manager-v1/rollback_version.sh "$DEST/package/rollback_version.sh"
+fi
+
 if [ -f "$DEST/package/rollback_version.sh" ]; then
   chmod +x "$DEST/package/rollback_version.sh"
-  SKIP_PRE_ROLLBACK="${SKIP_PRE_ROLLBACK:-1}" sh "$DEST/package/rollback_version.sh" "$VERSION"
+  PRESERVE_NETWORK="${PRESERVE_NETWORK:-1}" SKIP_PRE_ROLLBACK="${SKIP_PRE_ROLLBACK:-1}" sh "$DEST/package/rollback_version.sh" "$VERSION"
 else
   echo "[ERR] rollback_version.sh missing in artifact package"
   exit 1
