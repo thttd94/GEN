@@ -6,7 +6,6 @@
 - remove standalone SAVE button above CHECK ALL
 - restore gear/session manager popup for hiding/showing/deleting added configurations
 - simplify NOTE TỔNG display to `Máy <số máy> : <note>` without IP/proxy tag noise
-- package V2.2 under `gen_backup/versions/2.2/package` for offline/online rollback via `rollback_version.sh 2.2`
 
 ## V2.1
 

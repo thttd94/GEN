@@ -1,0 +1,1891 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Genrouter</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#eef2f7; color:#111827; margin:0; }
+    .wrap { max-width: 1780px; margin: 0 auto; padding: 14px; }
+    .titlebar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .titlebar-left { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .project-tabs { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .title { font-size:26px; font-weight:800; }
+    .brand { font-size:14px; font-weight:700; color:#2563eb; }
+    .titlebar-right { display:flex; align-items:center; gap:8px; }
+    .toolbar { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px; }
+    .toolbar.hidden { display:none; }
+    .toolbar-left,.toolbar-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .toolbar-right { justify-content:flex-end; }
+    .conn-badge { display:inline-flex; align-items:center; justify-content:center; min-width:110px; padding:9px 14px; border-radius:10px; font-weight:800; font-size:13px; border:1px solid transparent; }
+    .version-btn { position:relative; display:inline-flex; align-items:center; gap:8px; min-width:240px; justify-content:center; }
+    .version-dot { width:10px; height:10px; border-radius:999px; background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.18), 0 0 12px rgba(34,197,94,.35); }
+    .version-dot.has-update { background:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.18), 0 0 12px rgba(239,68,68,.55); }
+    .conn-badge.connected { background:#dcfce7; color:#166534; border-color:#86efac; }
+    .conn-badge.disconnected { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
+    .btn { border:1px solid #d1d5db; background:#fff; padding:9px 13px; border-radius:10px; cursor:pointer; font-weight:700; }
+    .btn.tab.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+    .btn.apply { background:#16a34a; color:#fff; border-color:#16a34a; }
+    .btn.warn { background:#f59e0b; color:#fff; border-color:#f59e0b; }
+    .btn.save-strong { background:#7c3aed; color:#fff; border-color:#7c3aed; padding:11px 18px; font-size:14px; box-shadow:0 10px 22px rgba(124,58,237,.28); }
+    .btn.small { padding:6px 10px; font-size:12px; }
+    .status { display:inline-flex; align-items:center; min-height:20px; padding:10px 14px; border-radius:999px; background:linear-gradient(135deg,#dbeafe 0%,#eff6ff 100%); border:1px solid #93c5fd; color:#1d4ed8; font-size:14px; font-weight:900; margin-left:6px; box-shadow:0 6px 18px rgba(37,99,235,.16), inset 0 1px 0 rgba(255,255,255,.85); }
+    .status.adm-status { margin-left:0; }
+    .adm-log { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:10px 12px; font-size:13px; line-height:1.45; min-height:170px; max-height:260px; overflow:auto; resize:vertical; background:#f9fafb; white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .adm-log-line { margin:0 0 6px 0; }
+    .adm-log-line:last-child { margin-bottom:0; }
+    .adm-log-muted { color:#6b7280; font-size:12px; }
+    .adm-router-lock { min-width:120px; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; background:#fff; font-weight:700; color:#111827; }
+    .panel { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; }
+    .meta { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; gap:10px; }
+    .meta-left { display:flex; align-items:center; gap:8px; justify-self:start; min-width:0; }
+    .meta-center { display:flex; align-items:center; justify-content:center; }
+    .meta-center.status-stack { flex-direction:column; gap:4px; }
+    .meta-right { display:flex; align-items:center; gap:10px; justify-self:end; text-align:right; }
+    .session-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .icon-btn { border:1px solid #d1d5db; background:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
+    .notes-wrap { padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
+    .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:105px; max-height:165px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
+    .top-work-grid { display:grid; grid-template-columns: 1fr 1fr 2fr; gap:12px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; align-items:stretch; }
+    .top-work-card { display:grid; gap:8px; align-content:start; }
+    .notes-summary-empty { color:#9ca3af; }
+    .bulkbar { display:grid; grid-template-columns: 1fr; gap:12px; padding:0; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
+    .bulk-card { display:grid; gap:8px; align-content:start; }
+    .bulk-card-title { font-size:13px; font-weight:800; color:#111827; }
+    .bulk-actions-inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .bulk-actions { display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; justify-content:flex-end; }
+    .view-tabs { display:flex; gap:0; align-items:center; margin-top:10px; }
+    .view-tab { border:1px solid #7c2d12; background:#7c2d12; color:#fde68a; padding:10px 16px; cursor:pointer; font-weight:900; opacity:.55; transition:.18s ease; }
+    .view-tab:first-child { border-radius:10px 0 0 10px; }
+    .view-tab:last-child { border-radius:0 10px 10px 0; }
+    .view-tab.active { background:#06b6d4; border-color:#0891b2; color:#fff; opacity:1; box-shadow:0 8px 20px rgba(8,145,178,.28); }
+    .sub { color:#6b7280; font-size:12px; margin-top:5px; }
+    .grid { max-height:76vh; overflow:auto; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:10px 8px; border-bottom:1px solid #edf2f7; font-size:14px; vertical-align:middle; }
+    th { text-align:left; background:#f8fafc; position:sticky; top:0; z-index:1; }
+    input, textarea { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:8px 10px; font-size:14px; }
+    textarea { min-height:90px; resize:vertical; }
+    .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; }
+    .online { background:#dcfce7; color:#166534; }
+    .offline { background:#fee2e2; color:#991b1b; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .proxy-cell { min-width:420px; }
+    .note-cell { min-width:220px; }
+    .check-ok { color:#15803d; font-weight:800; }
+    .check-bad { color:#b91c1c; font-weight:800; }
+    .check-wait { color:#2563eb; font-weight:700; }
+    .th-check { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:9999; }
+    .modal.show { display:flex; }
+    .modal-card { width:min(920px, 95vw); background:#fff; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+    .modal-head { display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-bottom:1px solid #e5e7eb; }
+    .modal-body { padding:16px 18px; display:grid; gap:12px; }
+    .modal-foot { padding:16px 18px; border-top:1px solid #e5e7eb; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+    .field label { display:block; font-size:13px; font-weight:700; margin-bottom:6px; }
+    .cfg-text { min-height:360px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .checkline { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+    .checkline label { display:flex; gap:8px; align-items:center; font-size:14px; }
+    .embedded-app { background:#fff; border:1px solid #dbe3ee; border-radius:14px; overflow:hidden; min-height:78vh; }
+    .embedded-frame { width:100%; height:78vh; border:0; display:block; background:#fff; }
+    .group3-action-line { display:grid; grid-template-columns:minmax(220px,1fr) 74px 90px 110px 44px; gap:8px; align-items:center; }
+    .group3-schedule-time, .group3-schedule-count { height:38px; border:1px solid #d1d5db; border-radius:10px; padding:0 10px; font-size:16px; font-weight:700; text-align:center; box-sizing:border-box; }
+    .group3-schedule-time[disabled], .group3-schedule-count[disabled] { background:#e5e7eb; color:#6b7280; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="titlebar">
+      <div class="titlebar-left">
+        <div class="project-tabs">
+          <button class="btn tab active" id="projectTabProxy" onclick="switchProjectTab('proxy')">TIKTOK 03 PROXY MANAGER - HGTHAI</button>
+          <button class="btn tab" id="projectTabXXTouch" onclick="switchProjectTab('xxtouch')">XXTOUCH JOBS</button>
+        </div>
+        <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
+      </div>
+      <div class="titlebar-right">
+        <button class="btn version-btn" id="versionBtn" onclick="handleVersionClick()"><span>Version: <span id="versionText">đang nạp...</span></span><span class="version-dot" id="versionDot"></span></button>
+        <div class="conn-badge disconnected" id="connBadge">Disconnected</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="toolbar-left" id="sessionTabs">
+        <button class="btn" id="addSessionBtn" onclick="addSession()">+ THÊM CẤU HÌNH</button>
+        <button class="btn apply" onclick="applyCurrentSession()">NẠP & APPLY CẤU HÌNH ĐANG MỞ</button>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn warn" onclick="openIpMacConfig()">GÁN IP</button>
+        <button class="btn warn" onclick="openMacAssignPage()">GÁN MAC</button>
+        <button class="btn warn" onclick="openSetupRouter()">SETUP ROUTER</button>
+        <button class="btn warn" onclick="rebootRouter()">REBOOT ROUTER</button>
+      </div>
+    </div>
+
+    <div class="panel" id="proxyPanel">
+      <div class="meta">
+        <div class="meta-left session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Sửa tên hiển thị cấu hình">✏️</button><button class="icon-btn" onclick="openSessionManager()" title="Quản lý cấu hình" id="manageSessionBtn">⚙️</button></div>
+        <div class="meta-center" style="display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center;">
+          <div id="proxyMachineNote" class="sub" style="font-weight:800; color:#1d4ed8;">Máy trong router này: đang nạp...</div>
+          <span class="status" id="status">Ready</span>
+        </div>
+        <div class="meta-right"><div class="sub" id="countLabel">0 rows</div></div>
+      </div>
+
+      <div class="bulkbar">
+        <div class="top-work-grid">
+          <div class="top-work-card">
+            <div class="bulk-card-title">GÁN 1 PROXY CHO TOÀN BỘ CẤU HÌNH ĐANG MỞ</div>
+            <input id="bulkProxy" placeholder="server:port:user:pass">
+            <div class="bulk-actions-inline">
+              <button class="btn" onclick="assignAllProxy()">GÁN 1 ALL</button>
+              <button class="btn" onclick="clearAllProxy()">Clear Proxy</button>
+              <button class="btn" onclick="clearAllNotes()">Clear Notes</button>
+            </div>
+          </div>
+          <div class="top-work-card">
+            <div class="bulk-card-title">GÁN PROXY HÀNG LOẠT THEO SỐ MÁY (AUTO MAP VỀ PROXY TAG)</div>
+            <textarea id="bulkMap" placeholder="225|1.2.3.4:1080:user:pass
+225;1.2.3.4:1080:user:pass
+225 1.2.3.4:1080:user:pass"></textarea>
+            <div class="bulk-actions"><button class="btn" onclick="applyBulkMap()">Gán hàng loạt</button></div>
+          </div>
+          <div class="top-work-card">
+            <div class="bulk-card-title">NOTE TỔNG</div>
+            <div class="notes-summary-box" id="notesSummary"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes-wrap" style="padding-top:10px;padding-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div class="view-tabs">
+            <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
+            <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
+          </div>
+                  </div>
+      </div>
+
+      <div class="grid">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:60px;">#</th>
+              <th style="width:170px;">MAC</th>
+              <th style="width:135px; cursor:pointer; user-select:none;" onclick="sortProxyManagerRows('ip')">IP ↑↓</th>
+              <th style="width:95px;">Status</th>
+              <th style="width:90px; cursor:pointer; user-select:none;" onclick="sortProxyManagerRows('machine')">MÁY ↑↓</th>
+              <th style="width:110px;">
+                <div style="display:grid; gap:6px; justify-items:start;">
+                  <span>Proxy Type</span>
+                  <select id="columnProxyType" onchange="applyColumnProxyType()" style="max-width:96px;">
+                    <option value="socks5" selected>SOCKS5</option>
+                    <option value="http">HTTP</option>
+                  </select>
+                </div>
+              </th>
+              <th class="proxy-cell">Proxy</th>
+              <th class="note-cell">Note</th>
+              <th style="width:190px;">
+                <div class="th-check">
+                  <span>Kiểm tra Proxy</span>
+                  <button class="btn small warn" onclick="checkAllProxy()">CHECK ALL</button>
+                </div>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+        <div class="embedded-app" id="xxtouchPanel" style="display:none; padding:14px;">
+      <div class="panel" style="padding:14px; margin-bottom:12px; border:2px dashed #f59e0b; background:#fffbeb;">
+        <div style="font-size:18px; font-weight:900; color:#92400e;">XXTOUCH JOBS đang tạm ẩn chức năng thao tác</div>
+        <div class="sub" style="color:#92400e;">V2.1 giữ lại tab và toàn bộ form/nút để phát triển sau; các nút hiện chỉ hiển thị, chưa chạy action thật.</div>
+      </div>
+
+
+      <div class="panel" style="padding:28px; text-align:center;">
+
+        <div style="font-size:22px; font-weight:900; color:#111827; margin-bottom:8px;">XXTOUCH JOBS</div>
+
+        <div class="sub" style="font-size:16px; color:#6b7280;">Tab n├áy ─æ├ú ─æ╞░ß╗úc xo├í trß║»ng/─æ├│ng b─âng ─æß╗â ph├ít triß╗ân lß║íi sau. Proxy Manager v├á G├üN MAC giß╗» nguy├¬n.</div>
+
+      </div>
+
+    </div>
+
+
+
+    <div class="modal" id="sessionManagerModal">
+    <div class="modal-card" style="width:min(760px, 94vw)">
+      <div class="modal-head">
+        <b>QUẢN LÝ CẤU HÌNH</b>
+        <button class="btn small" onclick="closeSessionManager()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub">Quản lý tất cả cấu hình ở một chỗ. Có thể ẩn/hiện hoặc xóa cấu hình phụ.</div>
+        <div id="sessionManagerList" style="display:grid; gap:10px;"></div>
+      </div>
+    </div>
+  </div>
+
+<div class="modal" id="routerModal">
+    <div class="modal-card" style="width:min(520px, 92vw)">
+      <div class="modal-head">
+        <b>Set up Router</b>
+        <button class="btn small" onclick="closeRouterModal()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label>LAN IP</label>
+          <input id="routerIp" placeholder="192.168.1.1">
+        </div>
+        <div class="sub" id="routerInfo">Chỉ sửa LAN IP của router</div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="closeRouterModal()">Hủy</button>
+        <button class="btn apply" onclick="submitRouterSetup()">Lưu LAN IP</button>
+      </div>
+    </div>
+  </div>
+
+<div class="modal" id="ipMacModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <b>ĐỊNH DANH IP</b>
+        <button class="btn small" onclick="closeIpMacModal()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub">Mỗi dòng: <b>số_máy|proxy_x|ip</b> — ví dụ: <span class="mono">101|proxy_1|192.15.4.1</span> · vẫn nhận format cũ <span class="mono">proxy_1|192.15.4.1</span> · tối đa 1000 dòng · sẽ ép gencore.json match đúng proxy tag và IP đã nhập</div>
+        <div class="sub" style="color:#2563eb;font-weight:700;">Cấu hình này dùng chung cho tất cả cấu hình/session. GÁN MAC cũng là dữ liệu dùng chung của router.</div>
+        <textarea id="ipMacText" class="cfg-text" spellcheck="false"></textarea>
+        <div class="checkline">
+          <label><input type="checkbox" id="cfgApplyRuntime" checked> Apply runtime ngay</label>
+          <label><input type="checkbox" id="cfgRebootRouter"> Reboot router sau khi lưu</label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="loadDefaultIpMacMap()">Nạp mặc định theo proxy</button>
+        <button class="btn" onclick="closeIpMacModal()">Hủy</button>
+        <button class="btn apply" onclick="submitIpMacConfig()">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="versionCodeModal">
+    <div class="modal-card" style="width:min(460px, 92vw)">
+      <div class="modal-head">
+        <b>NHẬP MÃ UPDATE</b>
+        <button class="btn small" onclick="closeVersionCodeModal()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub" id="versionCodeHint">Nhập mã update để kiểm tra và tự update</div>
+        <input id="versionCodeInput" type="password" placeholder="Nhập mã update" autocomplete="off">
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="closeVersionCodeModal()">Hủy</button>
+        <button class="btn apply" onclick="submitVersionCodeUpdate()">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="dupModal">
+    <div class="modal-card" style="max-width:680px;">
+      <div class="modal-head">
+        <b>TRÙNG IP</b>
+        <button class="btn small" onclick="closeDupModal()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <textarea id="dupText" class="cfg-text" spellcheck="false" readonly></textarea>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentSession = '1';
+    let currentRows = [];
+    let viewMode = 'configured';
+    let availableSessions = [];
+    let allSessions = [];
+    let sessionMeta = {};
+    let sessionNames = {};
+    const sessionCache = {};
+    let networkPollTimer = null;
+    let versionCheckTimer = null;
+    let appTitlePrefix = 'Genrouter';
+    let versionState = { current_label: 'đang nạp...', latest_label: '', has_update: false };
+    let currentProjectTab = 'proxy';
+    let admConfig = null;
+    let admRows = [];
+    let admSummary = [];
+    let admInfoRows = [];
+    let admInfoVisible = false;
+    let admInfoSortKey = 'index';
+    let admInfoSortDir = 1;
+    let admSelectedFiles = [];
+    let admScanBusy = false;
+    let admLastScanKey = '';
+    let admRemoteVisible = false;
+    let admRemoteMachines = [];
+    let admRemoteIndex = 0;
+    let admMachineNote = '';
+    let admMachineIndexes = [];
+
+    function formatMachineRanges(nums){
+      const values = [...new Set((nums || []).map(x => Number(x)).filter(Number.isFinite))].sort((a,b)=>a-b);
+      if (!values.length) return 'Chưa có dữ liệu Gán IP';
+      const ranges = [];
+      let start = values[0], prev = values[0];
+      for (const cur of values.slice(1)) {
+        if (cur === prev + 1) {
+          prev = cur;
+          continue;
+        }
+        ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+        start = prev = cur;
+      }
+      ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+      return ranges.join(', ');
+    }
+    function getConfiguredMachineIndexes(){
+      return [...new Set((currentRows || []).map(r => Number(String(r?.machine || '').trim())).filter(Number.isFinite))].sort((a,b)=>a-b);
+    }
+
+    let proxyManagerSortKey = '';
+    let proxyManagerSortDir = 1;
+    function setStatus(msg) { document.getElementById('status').textContent = msg; }
+    function compareProxyIp(a, b){
+      const pa = String(a || '').trim().split('.').map(v => Number(v));
+      const pb = String(b || '').trim().split('.').map(v => Number(v));
+      const va = pa.length === 4 && pa.every(Number.isFinite) ? (((pa[0]*256)+pa[1])*256+pa[2])*256+pa[3] : String(a || '').trim().toLowerCase();
+      const vb = pb.length === 4 && pb.every(Number.isFinite) ? (((pb[0]*256)+pb[1])*256+pb[2])*256+pb[3] : String(b || '').trim().toLowerCase();
+      if (va < vb) return -1;
+      if (va > vb) return 1;
+      return 0;
+    }
+    function sortProxyManagerRows(key){
+      if (proxyManagerSortKey === key) proxyManagerSortDir *= -1;
+      else { proxyManagerSortKey = key; proxyManagerSortDir = 1; }
+      currentRows = [...currentRows].sort((a, b) => {
+        let cmp = 0;
+        if (key === 'ip') cmp = compareProxyIp(a?.ip, b?.ip);
+        else if (key === 'machine') cmp = (Number(a?.machine || 0) - Number(b?.machine || 0));
+        if (cmp === 0) cmp = compareProxyIp(a?.ip, b?.ip);
+        return cmp * proxyManagerSortDir;
+      });
+      render();
+    }
+    function proxyMachineNoteText(){
+      const nums = [...new Set((currentRows || []).map(r => Number(String(r?.machine || '').trim())).filter(Number.isFinite))].sort((a,b)=>a-b);
+      if (!nums.length) return 'Máy trong router này: chưa có dữ liệu';
+      const ranges = [];
+      let start = nums[0], prev = nums[0];
+      for (const cur of nums.slice(1)) {
+        if (cur === prev + 1) {
+          prev = cur;
+          continue;
+        }
+        ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+        start = prev = cur;
+      }
+      ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+      return `Máy trong router này: ${ranges.join(', ')}`;
+    }
+    function renderProxyMachineNote(){
+      const el = document.getElementById('proxyMachineNote');
+      if (el) el.textContent = proxyMachineNoteText();
+    }
+    function renderAppTitle() {
+      const prefix = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
+      const full = `${prefix} PROXY MANAGER - HGTHAI`;
+      const titleEl = document.getElementById('projectTabProxy');
+      if (titleEl) titleEl.textContent = full;
+      document.title = prefix;
+    }
+    function setConnectionBadge(isConnected) {
+      const el = document.getElementById('connBadge');
+      if (!el) return;
+      el.className = 'conn-badge ' + (isConnected ? 'connected' : 'disconnected');
+      el.textContent = isConnected ? 'Connected' : 'Disconnected';
+    }
+    function setVersionInfo(info) {
+      versionState = info || versionState || {};
+      const textEl = document.getElementById('versionText');
+      const dotEl = document.getElementById('versionDot');
+      const btnEl = document.getElementById('versionBtn');
+      const rawLabel = String(versionState.current_label || versionState.current_short || 'unknown').trim();
+      const match = rawLabel.match(/Ver\s*\d+/i);
+      const label = match ? match[0].replace(/^ver/i, 'Ver') : rawLabel;
+      if (textEl) textEl.textContent = label;
+      const hasUpdate = !!versionState.has_update;
+      if (dotEl) dotEl.className = 'version-dot' + (hasUpdate ? ' has-update' : '');
+      const latest = String(versionState.latest_label || '').trim();
+      if (btnEl) btnEl.title = hasUpdate && latest ? `Có bản mới: ${latest}` : `Bản hiện tại: ${label}`;
+    }
+    async function refreshVersionInfo(silent=false) {
+      try {
+        const data = await fetchJSON('/api/pm/meta');
+        appTitlePrefix = data.app_title_prefix || appTitlePrefix || 'Genrouter';
+        if (data.version) setVersionInfo(data.version);
+        renderAppTitle();
+      } catch (e) {
+        if (!silent) setStatus('Lỗi lấy version: ' + e.message);
+      }
+    }
+    let versionUpdateSubmitting = false;
+    function normalizeVersionCodeInput(value){
+      return String(value || '').toUpperCase().replace(/\s+/g, '').trim();
+    }
+    function openVersionCodeModal(){
+      const latest = String(versionState.latest_label || '').trim();
+      const hint = document.getElementById('versionCodeHint');
+      const input = document.getElementById('versionCodeInput');
+      if (hint) hint.textContent = versionState.has_update && latest ? `Có bản mới: ${latest}. Nhập mã update để tự update.` : 'Nhập mã update để kiểm tra và tự update';
+      if (input) {
+        input.value = '';
+        input.type = 'password';
+        input.oninput = () => { input.value = normalizeVersionCodeInput(input.value); };
+        input.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submitVersionCodeUpdate();
+          }
+        };
+      }
+      versionUpdateSubmitting = false;
+      document.getElementById('versionCodeModal').classList.add('show');
+      setTimeout(() => { try { document.getElementById('versionCodeInput').focus(); } catch {} }, 50);
+    }
+    function closeVersionCodeModal(){
+      document.getElementById('versionCodeModal').classList.remove('show');
+    }
+    async function submitVersionCodeUpdate(){
+      if (versionUpdateSubmitting) return;
+      const input = document.getElementById('versionCodeInput');
+      const password = normalizeVersionCodeInput(input?.value || '');
+      if (input) input.value = password;
+      if (!password) return setStatus('Chưa nhập mã update');
+      versionUpdateSubmitting = true;
+      try {
+        closeVersionCodeModal();
+        setStatus('Đang update phiên bản...');
+        const data = await fetchJSON('/api/pm/version/update', {method:'POST', body: JSON.stringify({password})});
+        setStatus(data.message || (data.updated ? `Đã update: ${data.after}` : 'Đang ở bản mới nhất'));
+        await refreshVersionInfo(true);
+        setTimeout(() => refreshVersionInfo(true), 1500);
+        setTimeout(() => refreshVersionInfo(true), 4000);
+      } catch (e) {
+        setStatus((e && e.message) ? e.message : ('Lỗi update version: ' + e));
+      } finally {
+        versionUpdateSubmitting = false;
+      }
+    }
+    async function handleVersionClick() {
+      openVersionCodeModal();
+    }
+
+    function admFeatureFrozen() {
+      setStatus('XXTOUCH JOBS đang tạm ẩn chức năng, sẽ phát triển lại sau');
+      const el = document.getElementById('admStatus');
+      if (el) el.textContent = 'Tạm ẩn - chưa chạy action thật';
+    }
+
+    function switchProjectTab(tab) {
+      currentProjectTab = tab === 'xxtouch' ? 'xxtouch' : 'proxy';
+      document.getElementById('projectTabProxy').classList.toggle('active', currentProjectTab === 'proxy');
+      document.getElementById('projectTabXXTouch').classList.toggle('active', currentProjectTab === 'xxtouch');
+      document.getElementById('proxyPanel').style.display = currentProjectTab === 'proxy' ? '' : 'none';
+      document.getElementById('xxtouchPanel').style.display = currentProjectTab === 'xxtouch' ? '' : 'none';
+      const toolbar = document.querySelector('.toolbar');
+      if (toolbar) toolbar.classList.toggle('hidden', currentProjectTab === 'xxtouch');
+      const editBtn = document.querySelector('.titlebar-left .icon-btn');
+      if (editBtn) editBtn.style.display = currentProjectTab === 'xxtouch' ? 'none' : '';
+      if (currentProjectTab === 'xxtouch') {
+        if (!admConfig) admInit();
+        setStatus('Đang xem XXTOUCH JOBS');
+      } else {
+        setStatus('Đang xem ' + sessionNameOf(currentSession));
+      }
+    }
+
+    function extractNetworkConnected(data) {
+      if (!data) return false;
+      if (typeof data.success === 'boolean') return data.success;
+      if (typeof data.connected === 'boolean') return data.connected;
+      if (typeof data.ok === 'boolean') return data.ok;
+      const payload = data.data ?? data.result ?? data;
+      if (typeof payload === 'boolean') return payload;
+      if (payload && typeof payload.connected === 'boolean') return payload.connected;
+      if (payload && typeof payload.success === 'boolean') return payload.success;
+      const text = JSON.stringify(payload).toLowerCase();
+      if (text.includes('disconnected') || text.includes('no internet') || text.includes('network issue')) return false;
+      if (text.includes('connected') || text.includes('online') || text.includes('success')) return true;
+      return false;
+    }
+    async function refreshConnectionStatus(silent=false) {
+      try {
+        const data = await fetchJSON('/api/pm/router-network');
+        setConnectionBadge(extractNetworkConnected(data));
+      } catch (e) {
+        setConnectionBadge(false);
+        if (!silent) setStatus('Lỗi mạng router: ' + e.message);
+      }
+    }
+    async function fetchJSON(url, options={}) {
+      const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...options });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+    function esc(v) { return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
+
+    function renderNotesSummary() {
+      const box = document.getElementById('notesSummary');
+      const lines = getVisibleRows().filter(r => String(r.note || '').trim()).map(r => `Máy ${String(r.machine || '').trim() || '?'} : ${String(r.note || '').trim()}`);
+      if (!lines.length) {
+        box.innerHTML = '<span class="notes-summary-empty">Chưa có note</span>';
+        return;
+      }
+      box.textContent = lines.join('\n');
+    }
+
+    function sessionTabLabel(session) {
+      return `CẤU HÌNH ${String(session)}`;
+    }
+    function sessionNameOf(session) {
+      const key = String(session);
+      return sessionNames[key] || sessionTabLabel(key);
+    }
+    function renderSessionTabs() {
+      const host = document.getElementById('sessionTabs');
+      if (!host) return;
+      const addBtn = document.getElementById('addSessionBtn');
+      host.querySelectorAll('.session-tab-wrap').forEach(el => el.remove());
+      for (const session of availableSessions) {
+        const wrap = document.createElement('div');
+        wrap.className = 'session-tab-wrap';
+        const btn = document.createElement('button');
+        btn.className = 'btn tab' + (currentSession === session ? ' active' : '');
+        btn.id = `tab${session}`;
+        btn.textContent = sessionTabLabel(session);
+        btn.onclick = () => switchSession(session);
+        wrap.appendChild(btn);
+        host.insertBefore(wrap, addBtn);
+      }
+      if (addBtn) addBtn.style.display = availableSessions.length >= 5 ? 'none' : '';
+    }
+    function draftKey(session) { return `pm_draft_${session}`; }
+    function exportDraftRows(rows) {
+      return (rows || []).filter(r => r && (r.tag || r.ip)).map(r => ({
+        key: String(r.tag || r.ip || ''),
+        tag: String(r.tag || ''),
+        ip: String(r.ip || ''),
+        proxy: String(r.proxy || ''),
+        proxyType: String(r.proxyType || 'socks5'),
+        note: String(r.note || ''),
+      }));
+    }
+    function persistDraft(session) {
+      sessionStorage.setItem(draftKey(session), JSON.stringify(exportDraftRows(currentRows)));
+    }
+    function loadDraft(session) {
+      try {
+        const draft = JSON.parse(sessionStorage.getItem(draftKey(session)) || '[]');
+        if (!Array.isArray(draft)) return [];
+        return draft.map(item => ({
+          ...item,
+          proxy: String(item?.proxy || ''),
+          proxyType: String(item?.proxyType || 'socks5'),
+          note: String(item?.note || ''),
+        }));
+      } catch {
+        return [];
+      }
+    }
+    function applyDraftToRows(rows, session) {
+      const draft = loadDraft(session);
+      if (!Array.isArray(draft) || !draft.length) return rows;
+      const byKey = new Map(draft.map(x => [String(x.key || x.tag || x.ip || ''), x]));
+      return (rows || []).map(row => {
+        const key = String(row.tag || row.ip || '');
+        const saved = byKey.get(key);
+        if (!saved) return row;
+        return { ...row, proxy: saved.proxy || '', proxyType: saved.proxyType || row.proxyType || 'socks5', note: saved.note || '' };
+      });
+    }
+
+    function cloneRows(rows) {
+      return JSON.parse(JSON.stringify(Array.isArray(rows) ? rows : []));
+    }
+    async function fetchSessionsList(includeHidden=false) {
+      const data = await fetchJSON('/api/pm/sessions' + (includeHidden ? '?include_hidden=1' : ''));
+      const list = (data.sessions || []).map(x => String(x.session)).sort((a,b) => Number(a)-Number(b));
+      if (includeHidden) allSessions = list;
+      else availableSessions = list;
+      for (const item of (data.sessions || [])) {
+        if (item && item.session) {
+          const key = String(item.session);
+          sessionNames[key] = item.name || `CẤU HÌNH ${key}`;
+          sessionMeta[key] = item;
+          if (!(key in sessionCache)) sessionCache[key] = null;
+        }
+      }
+      if (!includeHidden) renderSessionTabs();
+      return data;
+    }
+    async function fetchSessionData(session, force=false) {
+      const key = String(session);
+      if (!force && sessionCache[key]) return cloneRows(sessionCache[key].rows || []), sessionCache[key];
+      const data = await fetchJSON(`/api/pm/sessions/${key}`);
+      sessionCache[key] = { ...data, rows: cloneRows(data.rows || []) };
+      if (data.name) sessionNames[key] = data.name;
+      return sessionCache[key];
+    }
+    function updateSessionCache(session, rows, extra={}) {
+      const key = String(session);
+      sessionCache[key] = {
+        ...(sessionCache[key] || {}),
+        ...extra,
+        rows: cloneRows(rows || []),
+      };
+      if (sessionCache[key]?.name) sessionNames[key] = sessionCache[key].name;
+    }
+
+    async function editAppTitlePrefix() {
+      const current = String(appTitlePrefix || 'Genrouter').trim() || 'Genrouter';
+      const name = prompt('Sửa phần tên đầu tiêu đề', current);
+      if (name === null) return;
+      const clean = String(name || '').trim() || 'Genrouter';
+      try {
+        const data = await fetchJSON('/api/pm/meta', { method:'POST', body: JSON.stringify({ app_title_prefix: clean }) });
+        appTitlePrefix = data.app_title_prefix || clean;
+        renderAppTitle();
+        setStatus('Đã đổi tên tiêu đề');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+    function tagNum(tag) {
+      const m = String(tag || '').trim().match(/^proxy_(\d+)$/i);
+      return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+    }
+    function getVisibleRows() {
+      const rows = currentRows.filter(r => viewMode === 'configured' ? !!r.configured : !r.configured);
+      return rows.slice().sort((a, b) => {
+        const ma = Number(String(a.machine || '').trim());
+        const mb = Number(String(b.machine || '').trim());
+        const validMa = Number.isFinite(ma) ? ma : Number.MAX_SAFE_INTEGER;
+        const validMb = Number.isFinite(mb) ? mb : Number.MAX_SAFE_INTEGER;
+        if (validMa !== validMb) return validMa - validMb;
+        const ta = tagNum(a.tag);
+        const tb = tagNum(b.tag);
+        if (ta !== tb) return ta - tb;
+        return String(a.ip || '').localeCompare(String(b.ip || ''), undefined, { numeric: true });
+      });
+    }
+
+    function switchViewMode(mode) {
+      viewMode = mode === 'unconfigured' ? 'unconfigured' : 'configured';
+      render();
+      setStatus(viewMode === 'configured' ? ('Đang xem ĐÃ CẤU HÌNH của ' + sessionNameOf(currentSession)) : ('Đang xem CHƯA CẤU HÌNH của ' + sessionNameOf(currentSession)));
+    }
+
+    function render() {
+      renderSessionTabs();
+      renderProxyMachineNote();
+      document.getElementById('viewConfiguredBtn').classList.toggle('active', viewMode === 'configured');
+      document.getElementById('viewUnconfiguredBtn').classList.toggle('active', viewMode === 'unconfigured');
+      renderAppTitle();
+      document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
+      document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionTabLabel(currentSession).toUpperCase();
+      const visibleRows = getVisibleRows();
+      document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
+      if (currentProjectTab !== 'proxy') return;
+      document.getElementById('rows').innerHTML = visibleRows.map((row, idx) => `
+        <tr>
+          <td>${idx + 1}</td>
+          <td class="mono">${esc(row.mac || '')}</td>
+          <td class="mono">${esc(row.ip)}</td>
+          <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
+          <td class="mono">${esc(row.machine || '')}</td>
+          <td>
+            <select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxyType" onchange="updateField(this)" style="max-width:96px;">
+              <option value="socks5" ${(String(row.proxyType || 'socks5').toLowerCase()==='socks5') ? 'selected' : ''}>SOCKS5</option>
+              <option value="http" ${(String(row.proxyType || 'socks5').toLowerCase()==='http') ? 'selected' : ''}>HTTP</option>
+            </select>
+          </td>
+          <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
+          <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
+          <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
+        </tr>`).join('');
+      renderNotesSummary();
+    }
+
+    function updateField(el) {
+      const row = currentRows.find(r => {
+        if ((el.dataset.tag || '') && r.tag === el.dataset.tag) return true;
+        return !(el.dataset.tag || '') && String(r.ip || '') === String(el.dataset.ip || '');
+      });
+      if (row) row[el.dataset.field] = el.value;
+      persistDraft(currentSession);
+      if (el.dataset.field === 'note') renderNotesSummary();
+    }
+
+    function openMacAssignPage() {
+      const host = window.location.hostname || '192.168.1.1';
+      const url = `http://${host}:19123`;
+      window.open(url, '_blank');
+      setStatus('Đã mở GÁN MAC');
+    }
+
+    function showDuplicates(items) {
+      const lines = (items || []).map(x => `${x.ip || ""} | ${x.tag || ""}`);
+      document.getElementById("dupText").value = lines.join("\n");
+      document.getElementById("dupModal").classList.add("show");
+    }
+    function closeDupModal() {
+      document.getElementById("dupModal").classList.remove("show");
+    }
+
+    async function checkProxy(tag) {
+      const row = currentRows.find(r => r.tag === tag);
+      const box = document.getElementById(`check-${tag}`);
+      if (!row || !box) return;
+      box.className = 'check-wait';
+      box.textContent = 'CHECK...';
+      try {
+        const data = await fetchJSON('/api/pm/check-proxy', { method:'POST', body: JSON.stringify({ proxy: row.proxy || '', session: currentSession }) });
+        box.className = data.ok ? 'check-ok' : 'check-bad';
+        if (data.ok) {
+          const ip = String(data.ip || data.public_ip || data.result?.ip || '').trim();
+          const duplicates = Array.isArray(data.duplicates) ? data.duplicates : [];
+          let html = ip ? `LIVE | ${ip}` : 'LIVE';
+          if (duplicates.length) {
+            window['__dup_' + tag] = duplicates;
+            html += ` <button class="btn small" onclick="showDuplicates(window['__dup_${tag}'])">Trùng</button>`;
+          }
+          box.innerHTML = html;
+        } else {
+          box.textContent = 'DEAD';
+        }
+      } catch {
+        box.className = 'check-bad';
+        box.textContent = 'DEAD';
+      }
+    }
+
+    async function checkAllProxy() {
+      setStatus('Đang CHECK ALL...');
+      const rows = getVisibleRows().filter(r => r.tag && String(r.proxy || "").trim());
+      try {
+        const resp = await fetchJSON('/api/pm/check-proxy-batch', {
+          method:'POST',
+          body: JSON.stringify({ session: currentSession, items: rows.map(r => ({ tag: r.tag, proxy: r.proxy || '' })) })
+        });
+        const results = resp?.results || {};
+        for (const row of rows) {
+          const data = results[row.tag] || {};
+          const box = document.getElementById(`check-${row.tag}`);
+          if (!box) continue;
+          box.className = data.ok ? 'check-ok' : 'check-bad';
+          if (data.ok) {
+            const ip = String(data.ip || data.public_ip || '').trim();
+            const duplicates = Array.isArray(data.duplicates) ? data.duplicates : [];
+            let html = ip ? `LIVE | ${ip}` : 'LIVE';
+            if (duplicates.length) {
+              window['__dup_' + row.tag] = duplicates;
+              html += ` <button class="btn small" onclick="showDuplicates(window['__dup_${row.tag}'])">Trùng</button>`;
+            }
+            box.innerHTML = html;
+          } else {
+            box.textContent = 'DEAD';
+          }
+        }
+        setStatus('Đã CHECK ALL xong');
+      } catch (e) {
+        setStatus('Lỗi CHECK ALL: ' + (e?.message || e));
+      }
+    }
+    async function rebootRouter() {
+      try {
+        setStatus('Đang reboot router...');
+        await fetchJSON('/api/pm/reboot-router', { method:'POST', body:'{}' });
+        setStatus('Đã gửi lệnh reboot router');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+    async function openSetupRouter() {
+      try {
+        setStatus('Đang lấy IP router...');
+        const info = await fetchJSON('/api/pm/router-info');
+        const ip = info?.data?.data?.lan?.networks?.[0]?.ip || info?.data?.lan?.networks?.[0]?.ip || window.location.hostname || '';
+        document.getElementById('routerIp').value = ip;
+        document.getElementById('routerModal').classList.add('show');
+        setStatus('Đã mở SETUP ROUTER');
+      } catch {
+        document.getElementById('routerIp').value = window.location.hostname || '';
+        document.getElementById('routerModal').classList.add('show');
+        setStatus('Đã mở SETUP ROUTER');
+      }
+    }
+
+    function closeRouterModal() {
+      document.getElementById('routerModal').classList.remove('show');
+    }
+
+    async function submitRouterSetup() {
+      try {
+        const payload = { ip_lan: document.getElementById('routerIp').value.trim() };
+        setStatus('Đang lưu LAN IP router...');
+        await fetchJSON('/api/pm/router-change-lan', { method:'POST', body: JSON.stringify(payload) });
+        closeRouterModal();
+        setStatus('Đã gửi cấu hình đổi LAN IP router');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+    async function editSessionName() {
+      const current = sessionNameOf(currentSession);
+      const name = prompt(`Sửa tên hiển thị dưới của ${sessionTabLabel(currentSession)}`, current);
+      if (name === null) return;
+      const clean = String(name || '').trim() || sessionTabLabel(currentSession);
+      try {
+        await fetchJSON(`/api/pm/sessions/${currentSession}`, { method:'POST', body: JSON.stringify({ rows: currentRows, name: clean }) });
+        sessionNames[currentSession] = clean;
+        render();
+        setStatus('Đã đổi tên session ' + currentSession);
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+    function applyColumnProxyType() {
+      const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
+      getVisibleRows().forEach(r => {
+        r.proxyType = proxyType;
+      });
+      persistDraft(currentSession);
+      render();
+      const el = document.getElementById('columnProxyType');
+      if (el) el.value = proxyType;
+      setStatus('Đã đổi Proxy Type cho toàn bộ cột đang hiển thị của ' + sessionNameOf(currentSession));
+    }
+
+    function assignAllProxy() {
+      const value = document.getElementById('bulkProxy').value.trim();
+      const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
+      getVisibleRows().forEach(r => {
+        r.proxy = value;
+        r.proxyType = proxyType;
+      });
+      persistDraft(currentSession);
+      render();
+      const col = document.getElementById('columnProxyType');
+      if (col) col.value = proxyType;
+      setStatus('Đã gán 1 proxy cho toàn bộ ' + sessionNameOf(currentSession));
+    }
+
+    function clearAllProxy() {
+      getVisibleRows().forEach(r => {
+        r.proxy = '';
+        r.proxyType = 'socks5';
+      });
+      persistDraft(currentSession);
+      render();
+      const bulk = document.getElementById('bulkProxyType');
+      if (bulk) bulk.value = 'socks5';
+      const col = document.getElementById('columnProxyType');
+      if (col) col.value = 'socks5';
+      setStatus('Đã xóa toàn bộ proxy của ' + sessionNameOf(currentSession));
+    }
+
+    function clearAllNotes() {
+      getVisibleRows().forEach(r => r.note = '');
+      persistDraft(currentSession);
+      render();
+      setStatus('Đã xóa toàn bộ note của ' + sessionNameOf(currentSession));
+    }
+
+    function parseBulkLine(line) {
+      let m = line.match(/^\s*(\d+)\s*[|;]\s*(.+)\s*$/);
+      if (m) return { x: m[1], proxy: m[2] };
+      m = line.match(/^\s*(\d+)\s+(.+)\s*$/);
+      if (m) return { x: m[1], proxy: m[2] };
+      return null;
+    }
+
+    function applyBulkMap() {
+      const text = document.getElementById('bulkMap').value.trim();
+      if (!text) return setStatus('Chưa nhập danh sách gán hàng loạt');
+      const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      let changed = 0;
+      for (const line of lines) {
+        const item = parseBulkLine(line);
+        if (!item) continue;
+        const machineText = String(item.x || '').trim();
+        const row = currentRows.find(r => String(r.machine || '').trim() === machineText && String(r.tag || '').startsWith('proxy_'));
+        if (!row) continue;
+        row.proxy = item.proxy.trim();
+        changed++;
+      }
+      persistDraft(currentSession);
+      render();
+      setStatus(`Đã gán hàng loạt ${changed} dòng theo số máy -> proxy tag cho ` + sessionNameOf(currentSession));
+    }
+
+    function closeIpMacModal() {
+      document.getElementById('ipMacModal').classList.remove('show');
+    }
+
+    async function openIpMacConfig() {
+      try {
+        const sessionId = String(currentSession || '1').trim() || '1';
+        setStatus('Đang nạp định danh IP dùng chung...');
+        const data = await fetchJSON(`/api/pm/ip-mac-config/${sessionId}`);
+        currentSession = sessionId;
+        document.getElementById('ipMacText').value = data.text || '';
+        document.getElementById('ipMacModal').classList.add('show');
+        setStatus('Đã nạp GÁN IP dùng chung');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+    function loadDefaultIpMacMap() {
+      const lines = [];
+      for (let i = 1; i <= 1000; i++) {
+        const subnet = 4 + Math.floor((i - 1) / 250);
+        const host = ((i - 1) % 250) + 1;
+        lines.push(`${i}|proxy_${i}|192.15.${subnet}.${host}`);
+      }
+      document.getElementById('ipMacText').value = lines.join('\n');
+      setStatus('Đã nạp mẫu định danh máy|proxy|ip');
+    }
+
+    async function submitIpMacConfig() {
+      try {
+        const sessionId = String(currentSession || '1').trim() || '1';
+        const text = document.getElementById('ipMacText').value;
+        if (!text.trim()) return setStatus('Chưa có dữ liệu IP/MAC');
+        setStatus('Đang lưu GÁN IP dùng chung...');
+        const payload = {
+          text,
+          sync_router: true,
+          apply_runtime: document.getElementById('cfgApplyRuntime').checked,
+          reboot_router: document.getElementById('cfgRebootRouter').checked,
+        };
+        const data = await fetchJSON(`/api/pm/ip-mac-config/${sessionId}`, { method:'POST', body: JSON.stringify(payload) });
+        closeIpMacModal();
+        sessionCache[String(currentSession)] = null;
+        await loadSession(currentSession, true);
+        setStatus(`Đã lưu GÁN IP dùng chung cho tất cả cấu hình (${data.count || 0} dòng)`);
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+
+    function renderSessionManager() {
+      const box = document.getElementById('sessionManagerList');
+      if (!box) return;
+      const rows = allSessions.map(session => {
+        const meta = sessionMeta[String(session)] || {};
+        const isLastVisible = !meta.hidden && availableSessions.length <= 1;
+        const actions = [];
+        if (meta.can_hide) {
+          actions.push(`<button class="btn small" ${isLastVisible ? 'disabled title="Phải giữ lại ít nhất 1 cấu hình hiện"' : ''} onclick="toggleSessionHidden('${session}', ${meta.hidden ? 'false' : 'true'})">${meta.hidden ? 'HIỆN' : 'ẨN'}</button>`);
+        }
+        if (meta.can_delete) {
+          actions.push(`<button class="btn small warn" onclick="deleteSessionById('${session}')">XÓA</button>`);
+        }
+        const primary = sessionTabLabel(session);
+        const secondary = sessionNameOf(session);
+        const subParts = [];
+        if (secondary && secondary !== primary) subParts.push(secondary);
+        subParts.push(`Session ${session}${meta.hidden ? ' • đang ẩn' : ''}`);
+        return `<div style="display:grid;grid-template-columns:180px 1fr auto;gap:10px;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;">
+          <div><b>${esc(primary)}</b>${secondary && secondary !== primary ? ` <span class="sub" style="display:inline;margin:0;">(${esc(secondary)})</span>` : ''}</div>
+          <div class="sub" style="margin:0;">${subParts.join(' • ')}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">${actions.join('')}</div>
+        </div>`;
+      });
+      box.innerHTML = rows.join('') || '<div class="sub">Không có cấu hình</div>';
+    }
+
+    async function openSessionManager() {
+      await fetchSessionsList(true);
+      renderSessionManager();
+      document.getElementById('sessionManagerModal').classList.add('show');
+    }
+
+    function closeSessionManager() {
+      document.getElementById('sessionManagerModal').classList.remove('show');
+    }
+
+    async function toggleSessionHidden(session, hidden) {
+      try {
+        await fetchJSON('/api/pm/sessions/hide', { method:'POST', body: JSON.stringify({ session, hidden }) });
+        await fetchSessionsList(true);
+        await fetchSessionsList(false);
+        renderSessionManager();
+        if (hidden && currentSession === String(session)) {
+          const fallback = availableSessions.find(x => x !== String(session)) || '1';
+          await loadSession(fallback, true);
+        } else {
+          render();
+        }
+        setStatus((hidden ? 'Đã ẩn ' : 'Đã hiện ') + sessionNameOf(session));
+      } catch (e) {
+        setStatus('Lỗi ẩn/hiện cấu hình: ' + e.message);
+      }
+    }
+
+    async function toggleCurrentSessionHidden() {
+      const meta = sessionMeta[String(currentSession)] || {};
+      if (!meta.can_hide) return;
+      return toggleSessionHidden(currentSession, !meta.hidden);
+    }
+
+    async function deleteSessionById(session) {
+      try {
+        const meta = sessionMeta[String(session)] || {};
+        if (!meta.can_delete) return setStatus('Không thể xóa cấu hình này');
+        if (!confirm('Xóa hẳn ' + sessionNameOf(session) + '?')) return;
+        await fetchJSON('/api/pm/sessions/delete', { method:'POST', body: JSON.stringify({ session }) });
+        delete sessionCache[String(session)];
+        delete sessionNames[String(session)];
+        delete sessionMeta[String(session)];
+        allSessions = allSessions.filter(x => x !== String(session));
+        availableSessions = availableSessions.filter(x => x !== String(session));
+        await fetchSessionsList(true);
+        await fetchSessionsList(false);
+        renderSessionManager();
+        if (currentSession === String(session)) {
+          await loadSession('1', true);
+        } else {
+          render();
+        }
+        setStatus('Đã xóa cấu hình ' + session);
+      } catch (e) {
+        setStatus('Lỗi xóa cấu hình: ' + e.message);
+      }
+    }
+
+    async function deleteCurrentSession() {
+      return deleteSessionById(currentSession);
+    }
+
+    async function addSession() {
+      try {
+        if (availableSessions.length >= 5) return setStatus('Đã đủ 5 cấu hình');
+        const next = String(Math.max(...availableSessions.map(x => Number(x))) + 1);
+        setStatus('Đang tạo cấu hình mới...');
+        const data = await fetchJSON('/api/pm/sessions/create', {
+          method:'POST',
+          body: JSON.stringify({ session: next, source_session: currentSession, current_session: currentSession })
+        });
+        sessionNames[next] = data.name || `CẤU HÌNH ${next}`;
+        sessionCache[next] = null;
+        await fetchSessionsList(false);
+        await fetchSessionsList(true);
+        await loadSession(next, true);
+        setStatus('Đã tạo ' + sessionNameOf(next));
+      } catch (e) {
+        setStatus('Lỗi tạo cấu hình: ' + e.message);
+      }
+    }
+
+    async function loadSession(session, force=false) {
+      viewMode = 'configured';
+      setStatus('Đang mở ' + sessionNameOf(session));
+      const data = await fetchSessionData(session, force);
+      currentSession = String(session);
+      currentRows = applyDraftToRows(cloneRows(data.rows || []), session);
+      render();
+      renderProxyMachineNote();
+      if (admConfig) admInit();
+      setStatus('Đang mở ' + sessionNameOf(currentSession));
+    }
+
+    async function switchSession(session) {
+      try { await loadSession(session); } catch (e) { setStatus('Lỗi: ' + e.message); }
+    }
+
+    async function saveSession(session, rowsOverride=null) {
+      const rows = Array.isArray(rowsOverride) ? rowsOverride : currentRows;
+      setStatus('Đang lưu nguồn cấu hình ' + sessionNameOf(session) + '...');
+      const resp = await fetchJSON(`/api/pm/sessions/${session}`, { method:'POST', body: JSON.stringify({ rows, name: sessionNameOf(session) }) });
+      updateSessionCache(session, rows, { name: resp.name || sessionNameOf(session) });
+      setStatus('Đã lưu nguồn cấu hình ' + sessionNameOf(session));
+    }
+
+    async function saveCurrent() {
+      try {
+        persistDraft(currentSession);
+        setStatus('Đã lưu nguồn cấu hình nguồn cấu hình ' + sessionNameOf(currentSession) + ' (chưa apply)');
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+    async function applyCurrentSession() {
+      return applySession(currentSession);
+    }
+
+    async function applySession(session) {
+      try {
+        if (currentSession !== session) await loadSession(session);
+        persistDraft(session);
+        const mergedRows = applyDraftToRows(currentRows, session);
+        currentRows = mergedRows;
+        await saveSession(session, mergedRows);
+        setStatus('Đang nạp và apply ' + sessionNameOf(session) + '...');
+        const data = await fetchJSON(`/api/pm/apply/${session}`, { method:'POST', body: JSON.stringify({ rows: mergedRows }) });
+        const bad = Array.isArray(data.results) ? data.results.find(x => x && (x.error || x.ok === false || (typeof x.code === 'number' && x.code !== 0))) : null;
+        if (bad) {
+          setStatus('Apply ' + sessionNameOf(session) + ' lỗi: ' + (bad.cmd || '') + ' ' + (bad.stderr || bad.error || ('code ' + bad.code)));
+          return;
+        }
+        setStatus('Đã nạp & apply ' + sessionNameOf(session));
+      } catch (e) {
+        setStatus('Lỗi: ' + e.message);
+      }
+    }
+
+    function admSetStatus(msg){ const el=document.getElementById('admStatus'); if(el) el.textContent = msg; const hint=document.getElementById('admStatusHint'); if(hint) hint.textContent = ''; }
+    function admClearLog(){ const el=document.getElementById('admLog'); if(el) el.innerHTML = ''; }
+    function admLog(msg){
+      const el=document.getElementById('admLog');
+      if(!el) return;
+      String(msg == null ? '' : msg).split(/\r?\n/).forEach(part => {
+        const text = String(part || '').trim();
+        if (!text) return;
+        const line = document.createElement('div');
+        line.className = 'adm-log-line';
+        line.textContent = text;
+        el.appendChild(line);
+      });
+      el.scrollTop = el.scrollHeight;
+    }
+    function admActionLabel(action){
+      const map = {
+        reboot: 'Reboot',
+        home: 'Home',
+        lock_home: 'Lock Home',
+        clear_app: 'Clear App',
+        open_app_manager: 'App Manager',
+        remove_tiktok_lite: 'Gỡ TikTok Lite',
+        remove_tiktok: 'Gỡ TikTok',
+        install_tiktok: 'Cài TikTok',
+        install_tiktok_lite: 'Cài TikTok Lite',
+        quit_apps: 'Đóng Ứng Dụng',
+        nurture_tiktok: 'Nuôi Phôi',
+        event_video_180_tiktok: 'Chạy Event Video 180',
+        event_dd_20p_tiktok_lite: 'Chạy Event DD 20p',
+        stop_script: 'Stop Script',
+      };
+      return map[action] || String(action || '').trim() || 'Action';
+    }
+    function admSetScanBusy(busy){
+      admScanBusy = !!busy;
+      const btn = document.getElementById('admScanBtn');
+      if (btn) {
+        btn.disabled = admScanBusy;
+        btn.textContent = admScanBusy ? 'ĐANG SCAN...' : 'SCAN';
+        btn.style.opacity = admScanBusy ? '.7' : '1';
+        btn.style.cursor = admScanBusy ? 'default' : 'pointer';
+      }
+    }
+    function toggleAdmMachineInputs(){
+      const mode = document.getElementById('admMachineMode').value;
+      const group = document.getElementById('admMachineGroup');
+      const list = document.getElementById('admMachineList');
+      if (group) {
+        group.style.display = mode === 'group' ? '' : 'none';
+        if (mode !== 'group') group.value = '';
+      }
+      if (list) {
+        list.style.display = mode === 'list' ? '' : 'none';
+        if (mode !== 'list') list.value = '';
+      }
+      const remote = document.getElementById('admRemoteMachine');
+      if (remote) remote.style.display = '';
+    }
+    function admApplySavedMachineState(ui = {}){
+      const mode = ui.machineMode === 'range' ? 'group' : (ui.machineMode || 'all');
+      const groupVal = ui.machineGroup || ui.machineRange || '';
+      const listVal = ui.machineList || '';
+      document.getElementById('admMachineMode').value = mode;
+      document.getElementById('admMachineGroup').value = mode === 'group' ? groupVal : '';
+      document.getElementById('admMachineList').value = mode === 'list' ? listVal : '';
+      const group3App = document.getElementById('admGroup3App');
+      if (group3App) group3App.value = ui.group3App || 'tiktok_lite';
+      toggleAdmMachineInputs();
+    }
+    let admActionCooldownUntil = 0;
+    function admState(){
+      return {
+        machineMode: document.getElementById('admMachineMode').value,
+        machineGroup: document.getElementById('admMachineGroup').value,
+        machineList: document.getElementById('admMachineList').value,
+        remoteMachine: document.getElementById('admRemoteMachine').value,
+        group3App: document.getElementById('admGroup3App')?.value || 'tiktok_lite',
+      };
+    }
+    function admCheckActionCooldown(label){
+      const now = Date.now();
+      if (now < admActionCooldownUntil) {
+        const remain = Math.ceil((admActionCooldownUntil - now) / 1000);
+        admSetStatus(`Chờ ${remain}s trước khi chạy lệnh tiếp theo`);
+        admLog(`[WAIT] ${label}: còn ${remain}s mới chạy lệnh tiếp theo`);
+        return false;
+      }
+      admActionCooldownUntil = now + 5000;
+      return true;
+    }
+    function admSetMachineNote(note){
+      const fallback = formatMachineRanges(admMachineIndexes);
+      admMachineNote = String(note || '').trim() || fallback || 'Chưa có dữ liệu Gán IP';
+      const el = document.getElementById('admMachineNote');
+      if (el) {
+        el.textContent = `Máy trong router này: ${admMachineNote}`;
+        el.style.display = '';
+      }
+    }
+    function admParseMachineTokens(raw){
+      const text = String(raw || '').trim();
+      if (!text) return [];
+      const out = [];
+      const seen = new Set();
+      const parts = text.split(',').map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (m) {
+          let a = Number(m[1]);
+          let b = Number(m[2]);
+          if (a > b) [a, b] = [b, a];
+          for (let i = a; i <= b; i++) {
+            if (!seen.has(i)) {
+              seen.add(i);
+              out.push(i);
+            }
+          }
+          continue;
+        }
+        if (/^\d+$/.test(part)) {
+          const n = Number(part);
+          if (!seen.has(n)) {
+            seen.add(n);
+            out.push(n);
+          }
+        }
+      }
+      return out;
+    }
+    function admGetInvalidMachinesForState(state){
+      const available = new Set((admMachineIndexes || []).map(Number));
+      if (!available.size) return [];
+      const mode = String(state?.machineMode || 'all').trim().toLowerCase();
+      if (mode === 'all') return [];
+      const raw = mode === 'group' ? state.machineGroup : state.machineList;
+      const selected = admParseMachineTokens(raw);
+      return selected.filter(n => !available.has(Number(n)));
+    }
+    function admValidateMachineState(state, label='Chọn máy'){
+      const invalid = admGetInvalidMachinesForState(state);
+      if (!invalid.length) return { ok:true, invalid:[] };
+      const msg = `Máy này không nằm trong router này: ${invalid.join(', ')}. Dải hợp lệ: ${admMachineNote || 'không rõ'}`;
+      admSetStatus(msg);
+      admLog(`[ERR] ${label}: ${msg}`);
+      return { ok:false, invalid, message: msg };
+    }
+    function admValidateRemoteInput(raw){
+      const available = new Set((admMachineIndexes || []).map(Number));
+      const selected = admParseMachineTokens(raw);
+      if (!selected.length) return { ok:false, message:'Phải nhập số máy để remote' };
+      const invalid = selected.filter(n => !available.has(Number(n)));
+      if (!invalid.length) return { ok:true, invalid:[] };
+      const msg = `Máy này không nằm trong router này: ${invalid.join(', ')}. Dải hợp lệ: ${admMachineNote || 'không rõ'}`;
+      admSetStatus(msg);
+      admLog(`[ERR] REMOTE: ${msg}`);
+      return { ok:false, invalid, message: msg };
+    }
+    function admSelectedMachineText(){
+      const s = admState();
+      if (s.machineMode === 'all') return `ALL MÁY`;
+      if (s.machineMode === 'group') return `${s.machineGroup || '(chưa nhập nhóm)'}`;
+      return `${s.machineList || '(chưa nhập list)'}`;
+    }
+    function admRenderInfo(){
+      const body = document.getElementById('admInfoRows');
+      if(!body) return;
+      const rows = [...admInfoRows].sort((a,b)=>{
+        const k = admInfoSortKey;
+        let av = a?.[k], bv = b?.[k];
+        if (k === 'index' || k === 'free_percent') { av = Number(av||0); bv = Number(bv||0); }
+        else { av = String(av||''); bv = String(bv||''); }
+        if (av < bv) return -1 * admInfoSortDir;
+        if (av > bv) return 1 * admInfoSortDir;
+        return 0;
+      });
+      body.innerHTML = rows.map(r => `<tr><td>${r.index||''}</td><td>${esc(r.model||'Đang chờ dữ liệu')}</td><td>${esc(r.ios||'Đang chờ dữ liệu')}</td><td>${esc(r.capacity_label||'—')}</td><td>${esc(r.free_label||'—')}</td><td>${esc(r.ip||'')}</td><td><span class="badge ${(r.status==='online'?'online':(r.status==='waiting'?'warn':'offline'))}">${r.status||''}</span></td></tr>`).join('');
+      const countEl = document.getElementById('admCountLabel');
+      if (countEl) countEl.textContent = `${admInfoRows.length} máy`;
+    }
+    function admSortInfo(key){
+      if (admInfoSortKey === key) admInfoSortDir *= -1;
+      else { admInfoSortKey = key; admInfoSortDir = 1; }
+      admRenderInfo();
+    }
+    function admToggleDevicesInfo(){
+      admInfoVisible = !admInfoVisible;
+      const wrap = document.getElementById('admInfoWrap');
+      if (wrap) wrap.style.display = admInfoVisible ? '' : 'none';
+      if (admInfoVisible) admRenderInfo();
+      admSetStatus(admInfoVisible ? 'Đang hiện bảng DEVICES INFO' : 'Đã ẩn DEVICES INFO');
+    }
+    function admSetRemoteVisible(visible){
+      admRemoteVisible = !!visible;
+      const wrap = document.getElementById('admRemoteWrap');
+      const frame = document.getElementById('admRemoteFrame');
+      if (wrap) wrap.style.display = admRemoteVisible ? '' : 'none';
+      if (!admRemoteVisible) {
+        admRemoteMachines = [];
+        admRemoteIndex = 0;
+        if (frame) frame.src = 'about:blank';
+      }
+      admSetStatus(admRemoteVisible ? 'Đang hiện REMOTE' : 'Đã ẩn REMOTE');
+    }
+    function admParseRemoteMachines(raw){
+      const text = String(raw || '').trim();
+      if (!text) return [];
+      const out = [];
+      const seen = new Set();
+      const parts = text.split(',').map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (m) {
+          let a = Number(m[1]);
+          let b = Number(m[2]);
+          if (a > b) [a, b] = [b, a];
+          for (let i = a; i <= b; i++) {
+            const key = String(i);
+            if (!seen.has(key)) {
+              seen.add(key);
+              out.push(key);
+            }
+          }
+          continue;
+        }
+        const single = part.match(/^\d+$/);
+        if (single) {
+          const key = String(Number(part));
+          if (!seen.has(key)) {
+            seen.add(key);
+            out.push(key);
+          }
+        }
+      }
+      return out;
+    }
+    function admRenderRemoteNav(){
+      const total = admRemoteMachines.length;
+      const current = total ? admRemoteMachines[admRemoteIndex] : '';
+      const title = document.getElementById('admRemoteTitle');
+      const subTitle = document.getElementById('admRemoteSubTitle');
+      const pager = document.getElementById('admRemotePager');
+      const pagePrevBtn = document.getElementById('admRemotePagePrevBtn');
+      const pageNextBtn = document.getElementById('admRemotePageNextBtn');
+      const grid = document.getElementById('admRemoteMachineGrid');
+      const pageSize = 64;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const currentPage = total ? Math.floor(admRemoteIndex / pageSize) + 1 : 1;
+      const start = (currentPage - 1) * pageSize;
+      const end = Math.min(start + pageSize, total);
+      if (title) title.textContent = current ? `MÁY ${current}` : 'REMOTE';
+      if (subTitle) subTitle.textContent = current ? `Đang xem remote máy ${current}` : 'Chưa chọn máy';
+      if (pager) pager.textContent = `${currentPage}/${totalPages}`;
+      if (pagePrevBtn) pagePrevBtn.disabled = currentPage <= 1;
+      if (pageNextBtn) pageNextBtn.disabled = currentPage >= totalPages;
+      if (grid) {
+        const items = admRemoteMachines.slice(start, end).map((machine, idx) => {
+          const realIndex = start + idx;
+          const active = realIndex === admRemoteIndex;
+          return `<button class="btn" type="button" onclick="admLoadRemoteAt(${realIndex})" style="min-width:0; width:100%; height:32px; padding:0 4px; border-radius:4px; border:2px solid ${active ? '#22c55e' : '#e5e7eb'}; background:${active ? '#dcfce7' : '#ffffff'}; color:#111827; font-weight:800; box-shadow:${active ? '0 0 0 1px rgba(34,197,94,.25)' : 'none'};">${machine}</button>`;
+        });
+        grid.innerHTML = items.join('');
+      }
+    }
+    async function admStepRemotePage(step){
+      if (!admRemoteMachines.length) return;
+      const pageSize = 64;
+      const currentPage = Math.floor(admRemoteIndex / pageSize);
+      const totalPages = Math.ceil(admRemoteMachines.length / pageSize);
+      const nextPage = currentPage + Number(step || 0);
+      if (nextPage < 0 || nextPage >= totalPages) return;
+      const nextIndex = nextPage * pageSize;
+      try {
+        await admLoadRemoteAt(nextIndex);
+      } catch (e) {
+        admLog(`[ERR] remote page: ${e.message}`);
+        admSetStatus('Lỗi chuyển trang remote');
+      }
+    }
+    async function admLoadRemoteAt(index){
+      if (!admRemoteMachines.length) return;
+      admRemoteIndex = Math.max(0, Math.min(index, admRemoteMachines.length - 1));
+      admRenderRemoteNav();
+      const machine = String(admRemoteMachines[admRemoteIndex] || '').trim();
+      const frame = document.getElementById('admRemoteFrame');
+      if (frame) frame.src = 'about:blank';
+      await new Promise(r => setTimeout(r, 120));
+      const data = await fetchJSON('/api/xxtouch/remote-link', {method:'POST', body: JSON.stringify({...admState(), machine})});
+      if (!data.url) throw new Error('Không lấy được link remote');
+      if (frame) frame.src = String(data.url || 'about:blank');
+      admSetStatus(`Đang hiện REMOTE máy ${machine}`);
+    }
+    function admRemoteKeyHandler(ev){
+      if (!admRemoteVisible) return;
+      const tag = String(ev.target?.tagName || '').toUpperCase();
+      const editable = ev.target?.isContentEditable || ['INPUT','TEXTAREA','SELECT'].includes(tag);
+      if (editable) return;
+      if (ev.key === 'ArrowLeft') {
+        ev.preventDefault();
+        admStepRemote(-1);
+      } else if (ev.key === 'ArrowRight') {
+        ev.preventDefault();
+        admStepRemote(1);
+      }
+    }
+    async function admStepRemote(step){
+      if (!admRemoteMachines.length) return;
+      const nextIndex = admRemoteIndex + Number(step || 0);
+      if (nextIndex < 0 || nextIndex >= admRemoteMachines.length) return;
+      try {
+        await admLoadRemoteAt(nextIndex);
+      } catch (e) {
+        admLog(`[ERR] remote: ${e.message}`);
+        admSetStatus('Lỗi remote');
+      }
+    }
+    function admRenderSelectedFiles(){
+      const el = document.getElementById('admSelectedFilesCount');
+      if (el) el.value = `${admSelectedFiles.length} file`;
+    }
+    function admClearFiles(){
+      admSelectedFiles = [];
+      admRenderSelectedFiles();
+      admLog('Đã xoá toàn bộ file đã chọn');
+    }
+    async function admChooseFiles(){
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.onchange = () => {
+        admSelectedFiles = [...(input.files || [])];
+        admRenderSelectedFiles();
+        admLog(`Đã chọn ${admSelectedFiles.length} file`);
+      };
+      input.click();
+    }
+    async function admSendFiles(){
+      if (!admCheckActionCooldown('SEND FILE')) return;
+      if (!admSelectedFiles.length) {
+        admSetStatus('Chưa chọn file');
+        admLog('Chưa có file nào được chọn');
+        return;
+      }
+      const targetMachines = admInfoRows.filter(r => r && r.status === 'online').map(r => ({router: r.router, index: r.index, ip: r.ip, machine: r.machine}));
+      if (!targetMachines.length) {
+        admSetStatus('Cần SCAN trước');
+        admLog('Chưa có máy online từ kết quả SCAN');
+        admLog('Hãy bấm SCAN trước rồi mới SEND FILE');
+        return;
+      }
+      admClearLog();
+      admLog(`Bắt đầu gửi ${admSelectedFiles.length} file`);
+      admLog(`Máy: ${admSelectedMachineText()}`);
+      admLog(`Target online: ${targetMachines.map(x => `${x.machine}@${x.ip}`).join(', ')}`);
+      admSetStatus('Đang đọc file...');
+      try {
+        const files = await Promise.all(admSelectedFiles.map(async (file, idx) => {
+          admLog(`Đang đọc file ${idx + 1}/${admSelectedFiles.length}: ${file.name}`);
+          return {
+            name: file.name,
+            content_b64: await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const text = String(reader.result || '');
+                const idx = text.indexOf(',');
+                resolve(idx >= 0 ? text.slice(idx + 1) : text);
+              };
+              reader.onerror = () => reject(new Error(`Không đọc được file ${file.name}`));
+              reader.readAsDataURL(file);
+            })
+          };
+        }));
+        admSetStatus('Đang gửi file...');
+        const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action:'send_files', files, targetMachines})});
+        (data.logs || []).forEach(line => admLog(line));
+        admSetStatus(data.message || 'Gửi file xong');
+      } catch (e) {
+        admLog(`Lỗi gửi file: ${e.message}`);
+        admSetStatus('Gửi file lỗi');
+      }
+    }
+    function admMarkDeveloping(name){
+      admSetStatus('Đang phát triển');
+      admLog(`[DEV] ${name}: đang phát triển`);
+    }
+    let admGroup3SchedulePoller = null;
+    function admParseScheduleMmSs(value){
+      const m = String(value || '').trim().match(/^(\d{1,2})\s*[:.]\s*(\d{1,2})$/);
+      if (!m) return 0;
+      const mm = Number(m[1] || 0);
+      const ss = Number(m[2] || 0);
+      if (!Number.isFinite(mm) || !Number.isFinite(ss) || mm < 0 || ss < 0 || ss >= 60) return 0;
+      return (mm * 60) + ss;
+    }
+    function admFormatScheduleMmSs(total){
+      const safe = Math.max(0, Number(total) || 0);
+      const mm = Math.floor(safe / 60);
+      const ss = safe % 60;
+      return `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+    }
+    function admSetGroup3ScheduleUiState(action, active, job=null){
+      const timeInput = document.getElementById(`group3Timer_${action}`);
+      const countInput = document.getElementById(`group3Count_${action}`);
+      const schedBtn = document.getElementById(`group3ScheduleBtn_${action}`);
+      const cancelBtn = document.getElementById(`group3CancelBtn_${action}`);
+      if (timeInput) {
+        timeInput.disabled = !!active;
+        if (active && job) {
+          const remain = Math.max(0, Number(job.remaining_seconds || 0));
+          timeInput.value = admFormatScheduleMmSs(remain);
+        } 
+      }
+      if (countInput) {
+        countInput.disabled = !!active;
+        if (active && job) countInput.value = String(job.remaining_runs || '');
+
+      }
+      if (schedBtn) {
+        schedBtn.disabled = !!active;
+        if (active && job) {
+          const status = String(job.status || '').trim().toLowerCase();
+          schedBtn.textContent = status === 'running' ? 'ĐANG CHẠY' : 'ĐANG ĐẾM';
+        } else {
+          schedBtn.textContent = 'HẸN GIỜ';
+        }
+      }
+      if (cancelBtn) cancelBtn.disabled = !active;
+    }
+    async function admRefreshGroup3ScheduleAction(action){
+      const data = await fetchJSON('/api/xxtouch/group3-schedule/status', { method:'POST', body: JSON.stringify({ ...admState(), action }) });
+      const job = data?.job || null;
+      admSetGroup3ScheduleUiState(action, !!job, job);
+      if (job) {
+        const remain = Math.max(0, Number(job.remaining_seconds || 0));
+        const runs = Number(job.remaining_runs || 0);
+        const status = String(job.status || '').trim().toLowerCase();
+        const label = admActionLabel(action);
+        if (status === 'running') admSetStatus(`${label}: đang chạy, còn ${runs} lượt`);
+        else admSetStatus(`${label}: còn ${admFormatScheduleMmSs(remain)}, còn ${runs} lượt`);
+      }
+      return job;
+    }
+    async function admRefreshAllGroup3Schedules(){
+      const actions = ['nurture_tiktok','event_video_180_tiktok','event_dd_20p_tiktok_lite','maintenance'];
+      let hasActiveJob = false;
+      for (const action of actions) {
+        try {
+          const job = await admRefreshGroup3ScheduleAction(action);
+          if (job) hasActiveJob = true;
+        } catch (_) {}
+      }
+      return hasActiveJob;
+    }
+    function admStopGroup3SchedulePolling(){
+      if (!admGroup3SchedulePoller) return;
+      clearInterval(admGroup3SchedulePoller);
+      admGroup3SchedulePoller = null;
+    }
+    function admEnsureGroup3SchedulePolling(){
+      if (admGroup3SchedulePoller) return;
+      admGroup3SchedulePoller = setInterval(async () => {
+        const hasActiveJob = await admRefreshAllGroup3Schedules();
+        if (!hasActiveJob) admStopGroup3SchedulePolling();
+      }, 5000);
+    }
+    async function admScheduleUiOnly(name, action){
+      const seconds = admParseScheduleMmSs(document.getElementById(`group3Timer_${action}`)?.value || '');
+      const runs = parseInt(document.getElementById(`group3Count_${action}`)?.value || '', 10);
+      if (!seconds) {
+        admSetStatus(`${name}: nhập thời gian MM:SS hợp lệ`);
+        return;
+      }
+      if (!Number.isFinite(runs) || runs <= 0) {
+        admSetStatus(`${name}: nhập SL chạy hợp lệ`);
+        return;
+      }
+      const body = { ...admState(), action, interval_seconds: seconds, run_count: runs };
+      const data = await fetchJSON('/api/xxtouch/group3-schedule/create', { method:'POST', body: JSON.stringify(body) });
+      admSetGroup3ScheduleUiState(action, true, data?.job || null);
+      admSetStatus(data.message || `${name}: đã lưu lịch hẹn giờ`);
+      admLog(`[SCHEDULE] ${name}: interval=${seconds}s, runs=${runs}`);
+      admEnsureGroup3SchedulePolling();
+      await admRefreshGroup3ScheduleAction(action);
+    }
+    async function admCancelScheduleUiOnly(name, action){
+      const data = await fetchJSON('/api/xxtouch/group3-schedule/cancel', { method:'POST', body: JSON.stringify({ ...admState(), action }) });
+      const timeInput = document.getElementById(`group3Timer_${action}`);
+      const countInput = document.getElementById(`group3Count_${action}`);
+      if (timeInput) timeInput.value = '00:00';
+      if (countInput) countInput.value = '';
+      admSetGroup3ScheduleUiState(action, false);
+      admSetStatus(data.message || `${name}: đã hủy lịch hẹn giờ`);
+      admLog(`[SCHEDULE] ${name}: đã hủy lịch`);
+      setTimeout(() => { admRefreshAllGroup3Schedules().then(active => { if (!active) admStopGroup3SchedulePolling(); }); }, 100);
+    }
+    async function admRunGroup3Action(name, action=''){
+      const appValue = document.getElementById('admGroup3App')?.value || 'tiktok_lite';
+      const appLabel = appValue === 'tiktok' ? 'TikTok' : 'TikTok Lite';
+      admPersistUiState();
+      if (action === 'maintenance') {
+        admSetStatus(`${name} đang bảo trì`);
+        admLog(`[MAINTENANCE] ${name}: tạm khóa, sẽ mở lại sau`);
+        return;
+      }
+      if (action === 'nurture_tiktok') {
+        if (appValue !== 'tiktok') {
+          admSetStatus('Nuôi Phôi hiện chỉ chạy cho TikTok');
+          admLog(`[DEV] ${name}: chỉ hỗ trợ TikTok`);
+          return;
+        }
+        return admRunSimpleAction(action);
+      }
+      if (action === 'event_dd_20p_tiktok_lite') {
+        if (appValue !== 'tiktok_lite') {
+          admSetStatus('Chạy Event DD 20p hiện chỉ chạy cho TikTok Lite');
+          admLog(`[DEV] ${name}: chỉ hỗ trợ TikTok Lite`);
+          return;
+        }
+        return admRunSimpleAction(action);
+      }
+      if (action === 'event_video_180_tiktok') {
+        if (appValue !== 'tiktok') {
+          admSetStatus('Chạy Event Video 180 hiện chỉ chạy cho TikTok');
+          admLog(`[DEV] ${name}: chỉ hỗ trợ TikTok`);
+          return;
+        }
+        return admRunSimpleAction(action);
+      }
+      admSetStatus(`Đã chọn ${appLabel} cho nhóm 3`);
+      admLog(`[DEV] ${name}: đang chọn app ${appLabel}`);
+    }
+    async function admInit(){
+      const data = await fetchJSON('/api/admanager/config');
+      admConfig = data.config || {};
+      admMachineIndexes = Array.isArray(data.machine_indexes) ? data.machine_indexes.map(Number).filter(Number.isFinite) : [];
+      if (!admMachineIndexes.length) admMachineIndexes = getConfiguredMachineIndexes();
+      const ui = admConfig.uiState || {};
+      const routersObj = admConfig.routers || {};
+      const routerKeys = Object.keys(routersObj);
+      admApplySavedMachineState(ui);
+      const remoteInput = document.getElementById('admRemoteMachine');
+      if (remoteInput) remoteInput.value = ui.remoteMachine || '';
+      const noteText = String(data.machine_note || '').trim() || formatMachineRanges(admMachineIndexes);
+      admSetMachineNote(noteText);
+      setTimeout(() => {
+        admRefreshAllGroup3Schedules().then(active => {
+          if (active) admEnsureGroup3SchedulePolling();
+        });
+      }, 300);
+      admSetStatus('Sẵn sàng');
+      admClearLog();
+      admLog(`Đã nạp config - ${Math.max(routerKeys.length, 0)} router`);
+      admLog(`Map máy đang lấy theo Gán IP: ${admMachineNote}`);
+    }
+    async function admSaveConfig(){
+      const state = admState();
+      admConfig = admConfig || {};
+      admConfig.uiState = {...(admConfig.uiState||{}), ...state, machineRange: state.machineGroup};
+      await fetchJSON('/api/admanager/save-config', {method:'POST', body: JSON.stringify({config: admConfig})});
+      admSetStatus('Đã lưu config');
+    }
+    function admBuildPersistPayload(){
+      const state = admState();
+      admConfig = admConfig || {};
+      admConfig.uiState = {...(admConfig.uiState||{}), ...state, machineRange: state.machineGroup};
+      return JSON.stringify({config: admConfig});
+    }
+    let admPersistTimer = null;
+    function admPersistUiState(){
+      if (!admConfig) return;
+      const payload = admBuildPersistPayload();
+      if (admPersistTimer) clearTimeout(admPersistTimer);
+      admPersistTimer = setTimeout(async () => {
+        try {
+          await fetchJSON('/api/admanager/save-config', {method:'POST', body: payload});
+        } catch (e) {}
+      }, 250);
+    }
+    function admPersistUiStateSync(){
+      if (!admConfig || !navigator.sendBeacon) return;
+      try {
+        const payload = admBuildPersistPayload();
+        const blob = new Blob([payload], {type:'application/json'});
+        navigator.sendBeacon('/api/admanager/save-config', blob);
+      } catch (e) {}
+    }
+    async function admScanDevices(){
+      if (admScanBusy) return;
+      const state = admState();
+      const validated = admValidateMachineState(state, 'SCAN');
+      if (!validated.ok) {
+        admLastScanKey = '';
+        return;
+      }
+      const scanKey = JSON.stringify({mode: state.machineMode, group: state.machineGroup, list: state.machineList});
+      if (scanKey === admLastScanKey && admInfoRows.length) {
+        admSetStatus('Giữ kết quả scan trước');
+        admClearLog();
+        admLog(`Máy đã scan rồi: ${admSelectedMachineText()}`);
+        admLog(`Kết quả hiện tại: ${admInfoRows.length} máy`);
+        return;
+      }
+      admLastScanKey = scanKey;
+      admSetScanBusy(true);
+      admSetStatus('Đang scan...');
+      admClearLog();
+      admLog(`Máy: ${admSelectedMachineText()}`);
+      try {
+        const summarizeScanRows = (rows) => {
+          const grouped = new Map();
+          (rows || []).forEach(r => {
+            const reason = String(r?.error || 'unknown').trim() || 'unknown';
+            if (!grouped.has(reason)) grouped.set(reason, []);
+            grouped.get(reason).push(String(r?.index || '').trim());
+          });
+          return Array.from(grouped.entries()).map(([reason, indexes]) => `${reason}: ${indexes.join(', ')}`);
+        };
+        const data = await fetchJSON('/api/xxtouch/scan-devices', {method:'POST', body: JSON.stringify(state)});
+        admInfoRows = data.rows || [];
+        admRenderInfo();
+        const onlineRows = admInfoRows.filter(r => r.status === 'online');
+        const waitingRows = admInfoRows.filter(r => r.status === 'waiting');
+        const offlineRows = admInfoRows.filter(r => !['online','waiting'].includes(r.status));
+        admLog(`Online: ${onlineRows.length} máy`);
+        summarizeScanRows(waitingRows).forEach(line => admLog(`Đang scan >> ${line}`));
+        summarizeScanRows(offlineRows).forEach(line => admLog(`Offline >> ${line}`));
+        admSetStatus(`Online ${onlineRows.length} / Waiting ${waitingRows.length} / Offline ${offlineRows.length}`);
+      } catch (e) {
+        admInfoRows = [];
+        admRenderInfo();
+        admLastScanKey = '';
+        admLog(`Lỗi scan: ${e.message}`);
+        admSetStatus('Scan lỗi');
+      } finally {
+        admSetScanBusy(false);
+      }
+    }
+    async function admRunSimpleAction(action){
+      const label = admActionLabel(action);
+      if (!admCheckActionCooldown(label)) return;
+      const validated = admValidateMachineState(admState(), label);
+      if (!validated.ok) return;
+      admClearLog();
+      admLog(`Bắt đầu ${label}`);
+      admSetStatus(`Bắt đầu ${label}`);
+      try {
+        const data = await fetchJSON('/api/xxtouch/action', {method:'POST', body: JSON.stringify({...admState(), action})});
+        const msg = String(data.message || 'Xong').trim();
+        const okMatch = msg.match(/thành công cho\s+(\d+)\/(\d+)/i);
+        const failMatch = msg.match(/(\d+)\s+máy\s+lỗi[^:]*:\s*(.+)$/i);
+        const okCount = okMatch ? Number(okMatch[1] || 0) : 0;
+        const totalCount = okMatch ? Number(okMatch[2] || 0) : 0;
+        if (totalCount > 0) {
+          admLog(`${label} >> OK ${okCount}/${totalCount} máy`);
+          if (failMatch) {
+            admLog(`${label} >> Lỗi: ${String(failMatch[2] || '').trim()}`);
+          }
+          admSetStatus(msg);
+          return;
+        }
+        admLog(msg || `${label} xong`);
+        admSetStatus(msg || `${label} xong`);
+      } catch (e) {
+        const msg = String(e.message || e || '').trim() || 'Unknown error';
+        const failMatch = msg.match(/(\d+)\s+máy\s+lỗi[^:]*:\s*(.+)$/i);
+        if (failMatch) {
+          admLog(`${label} >> Lỗi: ${String(failMatch[2] || '').trim()}`);
+          admSetStatus(msg);
+          return;
+        }
+        admLog(`${label} >> Lỗi: ${msg}`);
+        admSetStatus(`Lỗi ${label}`);
+      }
+    }
+    async function admOpenRemote(){
+      if (admRemoteVisible) {
+        admSetRemoteVisible(false);
+        return;
+      }
+      const rawMachine = String(document.getElementById('admRemoteMachine').value || '').trim();
+      const remoteValidated = admValidateRemoteInput(rawMachine);
+      if (!remoteValidated.ok) {
+        if (!rawMachine) admSetStatus(remoteValidated.message || 'Phải nhập số máy để remote');
+        return;
+      }
+      const machines = admParseRemoteMachines(rawMachine);
+      if (!machines.length) {
+        admSetStatus('Phải nhập số máy để remote');
+        return;
+      }
+      try {
+        admRemoteMachines = machines;
+        admRemoteIndex = 0;
+        admSetRemoteVisible(true);
+        admRenderRemoteNav();
+        await admLoadRemoteAt(0);
+      } catch (e) {
+        admLog(`[ERR] remote: ${e.message}`);
+        admSetRemoteVisible(false);
+        admSetStatus(e.message || 'Lỗi remote');
+      }
+    }
+
+    async function bootstrap() {
+      try {
+        const meta = await fetchJSON('/api/pm/meta');
+        appTitlePrefix = meta.app_title_prefix || 'Genrouter';
+        if (meta.version) setVersionInfo(meta.version);
+      } catch {}
+      renderAppTitle();
+      setConnectionBadge(false);
+      setStatus('Đang mở ' + sessionNameOf(currentSession));
+      refreshConnectionStatus(true);
+      if (networkPollTimer) clearInterval(networkPollTimer);
+      networkPollTimer = setInterval(() => refreshConnectionStatus(true), 30000);
+      if (versionCheckTimer) clearInterval(versionCheckTimer);
+      versionCheckTimer = setInterval(() => refreshVersionInfo(true), 60000);
+      await fetchSessionsList(false);
+      await fetchSessionsList(true);
+      loadSession('1', true);
+    }
+
+    bootstrap();
+    window.addEventListener('beforeunload', admPersistUiStateSync);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') admPersistUiStateSync();
+    });
+    document.addEventListener('keydown', admRemoteKeyHandler);
+  </script>
+</body>
+</html>

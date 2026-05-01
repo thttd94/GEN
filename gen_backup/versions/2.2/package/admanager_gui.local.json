@@ -1,0 +1,22 @@
+{
+  "backupCommands": {
+    "TikTok": "echo BACKUP_TIKTOK",
+    "TikTok Lite": "echo BACKUP_TIKTOK_LITE"
+  },
+  "defaultOutput": "E:/OpenClaw/Genrouter_jobs/XXtouch_Jobs",
+  "uiState": {
+    "router": "All",
+    "port": "46952",
+    "machineMode": "all",
+    "machineRange": "209-448",
+    "machineList": "1,2,3",
+    "dateMode": "range",
+    "dateStart": "01/01",
+    "dateEnd": "15/03",
+    "appFilter": "TikTok",
+    "fullScan": false,
+    "doBackupBeforePull": true,
+    "deleteAfterPull": true,
+    "outputRoot": "E:/OpenClaw/Genrouter_jobs/XXtouch_Jobs"
+  }
+}

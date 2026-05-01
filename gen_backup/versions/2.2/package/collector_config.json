@@ -1,0 +1,7 @@
+{
+  "collector_url": "http://aeg.ooguy.com:9010",
+  "router_id": "",
+  "remote_url": "",
+  "enabled": true,
+  "push_interval_sec": 60
+}
