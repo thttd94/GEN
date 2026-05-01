@@ -25,7 +25,11 @@ LAN_CIDR="$(ip -4 -o addr show br-lan 2>/dev/null | awk '{print $4}' | head -n1)
 mkdir -p "$APP_DIR"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 GENROUTER_VERSION="${GENROUTER_VERSION:-$(cat "$SCRIPT_DIR/VERSION.txt" 2>/dev/null || echo 1.1)}"
-BACKUP_ROOT="${BACKUP_ROOT:-/root/genrouter_backups/versions}"
+if [ -d /data ] && mount | grep -q ' /data '; then
+  BACKUP_ROOT="${BACKUP_ROOT:-/data/genrouter_backups/versions}"
+else
+  BACKUP_ROOT="${BACKUP_ROOT:-/root/genrouter_backups/versions}"
+fi
 VERSION_BACKUP_DIR="$BACKUP_ROOT/$GENROUTER_VERSION/package"
 GEN_EMBEDDED_BACKUP_DIR="$SCRIPT_DIR/gen_backup/versions/$GENROUTER_VERSION/package"
 mkdir -p "$BACKUP_ROOT"
