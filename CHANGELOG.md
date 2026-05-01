@@ -1,5 +1,12 @@
 # Changelog
 
+## v2026.05.01-new9001
+
+- start new clean 9001 workspace from current Proxy Manager baseline
+- keep Proxy Manager behavior and shared GÁN MAC/19123 workflow as the active scope
+- blank/freeze XXTOUCH JOBS tab and remove bundled XXTouch job scripts for later rebuild
+
+
 ## v2026.05.01-01
 
 - preserve live config files during install/update instead of overwriting router-specific settings on every reinstall
