@@ -2752,12 +2752,45 @@ def call_old_gui(path, method='GET', data=None):
         path = path + ('&' if '?' in path else '?') + qs
     url = OLD_GUI_BASE + path
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        raw = resp.read().decode('utf-8', errors='ignore')
-        try:
-            return {'ok': True, 'data': json.loads(raw) if raw else {}}
-        except Exception:
-            return {'ok': True, 'data': raw}
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode('utf-8', errors='ignore')
+            try:
+                return {'ok': True, 'data': json.loads(raw) if raw else {}}
+            except Exception:
+                return {'ok': True, 'data': raw}
+    except Exception as remote_error:
+        if path == '/api/router/info':
+            ip = ''
+            prefix = 24
+            try:
+                ip = subprocess.check_output(['uci','-q','get','network.lan.ipaddr'], text=True, timeout=5).strip()
+            except Exception:
+                pass
+            try:
+                mask = subprocess.check_output(['uci','-q','get','network.lan.netmask'], text=True, timeout=5).strip()
+                import ipaddress
+                prefix = ipaddress.IPv4Network('0.0.0.0/' + mask).prefixlen
+            except Exception:
+                pass
+            ports = []
+            try:
+                raw_ports = subprocess.check_output(['uci','-q','get','network.lan.ports'], text=True, timeout=5).strip()
+                ports = [x for x in raw_ports.split() if x]
+            except Exception:
+                pass
+            return {'ok': True, 'data': {'data': {'lan': {'networks': [{'ip': ip, 'prefix_length': prefix, 'device': 'br-lan', 'ports': ports, 'id': 'lan'}]}}, 'success': True}}
+        if path == '/api/router/change_lan':
+            ip_lan = str((data or {}).get('ip_lan') or '').strip()
+            if not ip_lan:
+                raise ValueError('ip_lan trống')
+            subprocess.run(['uci','set',f'network.lan.ipaddr={ip_lan}'], check=True, timeout=10)
+            subprocess.run(['uci','commit','network'], check=True, timeout=10)
+            subprocess.Popen(['/etc/init.d/network','reload'])
+            return {'ok': True, 'data': {'success': True, 'ip_lan': ip_lan, 'mode': 'local-compat'}}
+        if path == '/api/update_proxy':
+            return {'ok': True, 'data': {'success': True, 'ok': True, 'mode': 'local-compat', 'warning': 'old GUI 9000 unavailable; gencore config already updated'}}
+        raise remote_error
 
 
 def call_static_api(path, method='GET', data=None):
