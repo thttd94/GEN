@@ -3033,13 +3033,27 @@ class Handler(BaseHTTPRequestHandler):
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                 return self._send_json({'session': session_id, 'name': get_session_display_name(session_id), 'source': str(SESSION_FILES[session_id]), 'rows': extract_rows(load_json(SESSION_FILES[session_id]), session=session_id)})
         if path == '/api/pm/router-network':
+            probes = [
+                ('https://api.ipify.org', 'wan_ip'),
+                ('https://ifconfig.me/ip', 'wan_ip'),
+            ]
+            errors = []
+            for url, field in probes:
+                try:
+                    probe = urllib.request.Request(url, headers={'User-Agent': 'pm-network-check'})
+                    with urllib.request.urlopen(probe, timeout=8) as resp:
+                        value = resp.read().decode('utf-8', 'replace').strip()
+                    if value:
+                        return self._send_json({'ok': True, 'connected': True, field: value, 'probe': url})
+                except Exception as e:
+                    errors.append(f'{url}: {e}')
             try:
-                probe = urllib.request.Request('https://api.ipify.org', headers={'User-Agent': 'pm-network-check'})
-                with urllib.request.urlopen(probe, timeout=8) as resp:
-                    wan_ip = resp.read().decode('utf-8', 'replace').strip()
-                return self._send_json({'ok': True, 'connected': True, 'wan_ip': wan_ip})
+                ping = subprocess.run(['ping', '-c', '1', '1.1.1.1'], capture_output=True, text=True, timeout=10)
+                if ping.returncode == 0:
+                    return self._send_json({'ok': True, 'connected': True, 'probe': 'ping'})
             except Exception as e:
-                return self._send_json({'ok': False, 'connected': False, 'error': str(e)})
+                errors.append(f'ping: {e}')
+            return self._send_json({'ok': False, 'connected': False, 'error': ' | '.join(errors)})
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':

@@ -116,6 +116,11 @@ exit 0
 EOF
   chmod +x /etc/genrouter/core/run_server.sh
 fi
+if [ -f /etc/init.d/genrouter_server ]; then
+  /etc/init.d/genrouter_server stop || true
+  /etc/init.d/genrouter_server disable || true
+  rm -f /etc/rc.d/S99genrouter_server /etc/rc.d/K10genrouter_server
+fi
 killall server >/dev/null 2>&1 || true
 pkill -f '/etc/genrouter/server' >/dev/null 2>&1 || true
 
