@@ -30,9 +30,14 @@ if [ -z "$PKG_DIR" ]; then
 fi
 
 TS="$(date +%Y%m%d_%H%M%S 2>/dev/null || echo now)"
-mkdir -p "$BACKUP_ROOT/_pre_rollback"
-if [ -d "$APP_DIR" ]; then
-  cp -a "$APP_DIR" "$BACKUP_ROOT/_pre_rollback/app_before_${VERSION}_${TS}"
+if [ "${SKIP_PRE_ROLLBACK:-0}" = "1" ]; then
+  echo "[WARN] SKIP_PRE_ROLLBACK=1, not saving current app before rollback"
+elif mkdir -p "$BACKUP_ROOT/_pre_rollback" 2>/dev/null; then
+  if [ -d "$APP_DIR" ]; then
+    cp -a "$APP_DIR" "$BACKUP_ROOT/_pre_rollback/app_before_${VERSION}_${TS}" 2>/dev/null || echo "[WARN] pre-rollback copy failed/skipped (likely not enough space)"
+  fi
+else
+  echo "[WARN] cannot create pre-rollback directory, continue without it"
 fi
 
 restore_tar() {
