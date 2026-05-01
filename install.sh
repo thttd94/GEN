@@ -27,10 +27,15 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 GENROUTER_VERSION="${GENROUTER_VERSION:-$(cat "$SCRIPT_DIR/VERSION.txt" 2>/dev/null || echo 1.1)}"
 BACKUP_ROOT="${BACKUP_ROOT:-/root/genrouter_backups/versions}"
 VERSION_BACKUP_DIR="$BACKUP_ROOT/$GENROUTER_VERSION/package"
+GEN_EMBEDDED_BACKUP_DIR="$SCRIPT_DIR/gen_backup/versions/$GENROUTER_VERSION/package"
 mkdir -p "$BACKUP_ROOT"
 if [ ! -d "$VERSION_BACKUP_DIR" ]; then
   mkdir -p "$VERSION_BACKUP_DIR"
-  cp -a "$SCRIPT_DIR/." "$VERSION_BACKUP_DIR/"
+  if [ -d "$GEN_EMBEDDED_BACKUP_DIR" ]; then
+    cp -a "$GEN_EMBEDDED_BACKUP_DIR/." "$VERSION_BACKUP_DIR/"
+  else
+    cp -a "$SCRIPT_DIR/." "$VERSION_BACKUP_DIR/"
+  fi
   echo "[OK] Saved router package backup: $VERSION_BACKUP_DIR"
 else
   echo "[OK] Router package backup exists: $VERSION_BACKUP_DIR"

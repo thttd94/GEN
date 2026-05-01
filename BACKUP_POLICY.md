@@ -7,9 +7,9 @@
 
 ## Git-side backups
 
-- Version snapshots are stored under `backups/versions/<version>/`.
-- `backups/versions/1.1/` is the immutable baseline snapshot.
-- Future versions may add `backups/versions/<version>/` without removing previous snapshots.
+- Version snapshots are stored inside GEN under `gen_backup/versions/<version>/`.
+- `gen_backup/versions/1.1/` is the immutable baseline snapshot.
+- Future versions may add `gen_backup/versions/<version>/` without removing previous snapshots.
 
 ## Router-side backups
 
@@ -21,7 +21,7 @@
 
 When the user asks to return to version `1.1`, restore the package snapshot at:
 
-- Git: `backups/versions/1.1/package/`
+- Git / inside GEN: `gen_backup/versions/1.1/package/`
 - Router: `/root/genrouter_backups/versions/1.1/package/`
 
 The restore should replace app/runtime files needed by the GUI while preserving the backup directory itself.
