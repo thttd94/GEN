@@ -207,12 +207,17 @@
     </div>
 
         <div class="embedded-app" id="xxtouchPanel" style="display:none; padding:14px;">
-      <div class="panel" style="padding:28px; text-align:center;">
-        <div style="font-size:22px; font-weight:900; color:#111827; margin-bottom:8px;">XXTOUCH JOBS</div>
-        <div class="sub" style="font-size:16px; color:#6b7280;">Tab này đã được xoá trắng/đóng băng để phát triển lại sau. Proxy Manager và GÁN MAC giữ nguyên.</div>
+      <div class="panel" style="padding:14px; margin-bottom:12px; border:2px dashed #f59e0b; background:#fffbeb;">
+        <div style="font-size:18px; font-weight:900; color:#92400e;">XXTOUCH JOBS đang tạm ẩn chức năng thao tác</div>
+        <div class="sub" style="color:#92400e;">V2.1 giữ lại tab và toàn bộ form/nút để phát triển sau; các nút hiện chỉ hiển thị, chưa chạy action thật.</div>
       </div>
-    </div>
-
+
+      <div class="panel" style="padding:28px; text-align:center;">
+        <div style="font-size:22px; font-weight:900; color:#111827; margin-bottom:8px;">XXTOUCH JOBS</div>
+        <div class="sub" style="font-size:16px; color:#6b7280;">Tab n├áy ─æ├ú ─æ╞░ß╗úc xo├í trß║»ng/─æ├│ng b─âng ─æß╗â ph├ít triß╗ân lß║íi sau. Proxy Manager v├á G├üN MAC giß╗» nguy├¬n.</div>
+      </div>
+    </div>
+
 <div class="modal" id="ipMacModal">
     <div class="modal-card">
       <div class="modal-head">
@@ -447,6 +452,13 @@
     async function handleVersionClick() {
       openVersionCodeModal();
     }
+
+    function admFeatureFrozen() {
+      setStatus('XXTOUCH JOBS đang tạm ẩn chức năng, sẽ phát triển lại sau');
+      const el = document.getElementById('admStatus');
+      if (el) el.textContent = 'Tạm ẩn - chưa chạy action thật';
+    }
+
     function switchProjectTab(tab) {
       currentProjectTab = tab === 'xxtouch' ? 'xxtouch' : 'proxy';
       document.getElementById('projectTabProxy').classList.toggle('active', currentProjectTab === 'proxy');

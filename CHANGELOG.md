@@ -1,5 +1,13 @@
 # Changelog
 
+## V2.1
+
+- keep GUI 9001 as the active app
+- keep Proxy Manager behavior as the main supported scope
+- keep XXTOUCH JOBS tab, form, and button layout visible for later redevelopment
+- freeze XXTOUCH JOBS actions so buttons do not execute real device operations yet
+
+
 ## v2026.05.01-new9001
 
 - start new clean 9001 workspace from current Proxy Manager baseline
