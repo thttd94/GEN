@@ -1,5 +1,12 @@
 # Changelog
 
+## Ver 2.4
+
+- remove XXTouch Jobs tab, panel and adm cluster from the UI while keeping all backend functions/routes/constants intact
+- move the license pill (ACTIVE/hạn) out of the title bar into the table meta row; row count label moves under the tab row
+- add Reboot Router button on the license lock screen; exempt `/api/pm/reboot-router` from the license gate so an inactive machine can still reboot its router
+- simplify tab switching to the single Proxy Manager tab
+
 ## Ver 2.3
 
 - re-add license gate block (ACTIVE_URL + get_machine_id + license_active/license_public_payload/license_check_loop/gate_ok) that upstream removed; expose GET /api/license before the root route

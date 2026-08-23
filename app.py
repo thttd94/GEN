@@ -3426,7 +3426,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         ensure_sessions_exist()
         path = urlparse(self.path).path
-        if not license_gate_ok():
+        if path != '/api/pm/reboot-router' and not license_gate_ok():
             return self._send_json({'error': 'License inactive or expired', 'license_required': True}, 403)
         if path.startswith('/api/xxtouch/remote-proxy/'):
             try:
