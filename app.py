@@ -368,6 +368,15 @@ def update_repo_from_remote(password: str):
         shutil.rmtree(tmp_root, ignore_errors=True)
         after_label = read_current_version_label()
         changed = after_label != before_label
+        restart_scheduled = False
+        try:
+            subprocess.Popen(
+                ['sh', '-c', 'sleep 2; /etc/init.d/proxy-manager-v1 restart >/dev/null 2>&1'],
+                start_new_session=True,
+            )
+            restart_scheduled = True
+        except Exception:
+            pass
         return {
             'ok': True,
             'updated': changed,
@@ -376,7 +385,8 @@ def update_repo_from_remote(password: str):
             'current_label': after_label,
             'current_commit': '',
             'current_short': latest_short,
-            'message': 'Đã update lên bản mới' if changed else 'Đã update xong',
+            'message': ('Đã update lên bản mới' if changed else 'Đã update xong') + (' – đang tự restart service' if restart_scheduled else ''),
+            'restarting': restart_scheduled,
         }
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
