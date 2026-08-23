@@ -5,3 +5,10 @@ __pycache__/
 server.log
 .env
 .DS_Store
+collector_config.json
+admanager_gui_config.json
+admanager_gui.local.json
+notes.json
+group3_schedules.json
+license.json
+update_tmp/
