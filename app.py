@@ -17,6 +17,7 @@ import re
 import threading
 import base64
 import hashlib
+from datetime import datetime, timedelta
 import os
 
 
@@ -164,10 +165,39 @@ def ensure_update_codes_for_version(version_label: str, count=DEFAULT_PER_VERSIO
     }
 
 
+def consume_update_key_via_gas(key):
+    "Xac thuc + tieu thu update key GENUP-... qua Google Sheet (Key Router)."
+    code = str(key or '').strip().upper()
+    if not code.startswith('GENUP-'):
+        raise PermissionError('Key khong hop le')
+    try:
+        sep = '&' if '?' in ACTIVE_URL else '?'
+        qs = urlencode({
+            'action': 'use_update_key',
+            'machine_id': get_machine_id(),
+            'key': code,
+            't': int(time.time()),
+        })
+        req = urllib.request.Request(ACTIVE_URL + sep + qs, headers={'User-Agent': 'genrouter-license'})
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = json.loads(resp.read().decode('utf-8', 'replace'))
+    except PermissionError:
+        raise
+    except Exception as exc:
+        raise PermissionError('Khong kiem tra duoc key: %s' % exc)
+    if isinstance(data, dict) and data.get('ok'):
+        return data
+    msg = str(data.get('error')) if isinstance(data, dict) and data.get('error') else 'Key khong hop le hoac da dung'
+    raise PermissionError(msg)
+
+
 def consume_update_code(update_code: str, target_version: str):
     code = str(update_code or '').strip()
     if not code:
         raise PermissionError('Mã không hợp lệ')
+    if code.upper().startswith('GENUP-'):
+        info = consume_update_key_via_gas(code)
+        return {'admin': False, 'sheet_key': True, 'version': normalize_version_key(target_version), 'code': code, 'info': info}
     store = load_update_codes_store()
     admin_code = str(store.get('admin_code') or DEFAULT_ADMIN_UPDATE_CODE).strip() or DEFAULT_ADMIN_UPDATE_CODE
     version_key = normalize_version_key(target_version)
@@ -1852,6 +1882,252 @@ def export_all_sessions_payload(include_hidden=True):
     }
 
 
+# ---------------- License gate (XXTE-style) ----------------
+LICENSE_FILE = BASE_DIR / 'license.json'
+ACTIVE_URL = "https://script.google.com/macros/s/AKfycbx0nfNl1O3cOHpGA2c69nAZgUHib9T7WQch-4ZzdfV8GD-HxT7m5eAg-zro2fmqmV1T/exec"
+LICENSE_CHECK_INTERVAL = 45
+_license_state = {'data': {}, 'ok': False, 'lock': threading.Lock()}
+
+
+def _read_hw_value(path):
+    try:
+        return Path(path).read_text(encoding='utf-8', errors='replace').strip()
+    except Exception:
+        return ''
+
+
+def get_machine_id():
+    parts = [
+        _read_hw_value('/etc/machine-id'),
+        _read_hw_value('/sys/class/net/eth0/address'),
+        _read_hw_value('/sys/class/dmi/id/product_uuid'),
+        socket.gethostname(),
+    ]
+    raw = 'GEN-V1|' + '|'.join(p.lower() for p in parts if p)
+    digest = hashlib.sha256(raw.encode('utf-8')).hexdigest().upper()
+    groups = [digest[i * 5:(i + 1) * 5] for i in range(6)]
+    return 'GEN-' + '-'.join(groups)
+
+
+def load_license():
+    try:
+        data = json.loads(LICENSE_FILE.read_text(encoding='utf-8'))
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {}
+
+
+def save_license(data):
+    try:
+        LICENSE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception:
+        pass
+
+
+def _parse_expire_datetime(value):
+    s = str(value or '').strip()
+    if not s:
+        return None
+    # JS Date string tu GAS: 'Sun Jun 07 3333 00:00:00 GMT+0700 (...)'
+    try:
+        base = s.split(' GMT')[0].split(' (')[0].strip()
+        return datetime.strptime(base, '%a %b %d %Y %H:%M:%S')
+    except Exception:
+        pass
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d', '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M', '%d/%m/%Y'):
+        try:
+            sample = s[:19] if ' ' in s else s[:10]
+            dt = datetime.strptime(sample, fmt)
+            if fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+                dt = dt.replace(hour=23, minute=59, second=59)
+            return dt
+        except Exception:
+            pass
+    try:
+        return datetime.fromisoformat(s.replace('Z', '+00:00')).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _now_vn():
+    return datetime.utcnow() + timedelta(hours=7)
+
+
+def license_active(data=None):
+    d = data if isinstance(data, dict) else load_license()
+    machine_id = str(d.get('machine_id') or '').strip().upper()
+    current = get_machine_id().upper()
+    active = bool(d.get('active')) or str(d.get('status') or '').strip().lower() in ('active', 'ok', 'valid')
+    if not active:
+        return False
+    if machine_id and machine_id != current:
+        return False
+    exp = _parse_expire_datetime(d.get('expire') or d.get('expires_at') or d.get('expiry'))
+    if exp is None:
+        return False
+    return _now_vn() <= exp
+
+
+def format_active_info(data=None):
+    d = data if isinstance(data, dict) else load_license()
+    if not license_active(d):
+        return 'CHƯA ACTIVE – gửi ID máy cho admin để kích hoạt'
+    plan = str(d.get('plan') or 'FULL').upper()
+    exp = _parse_expire_datetime(d.get('expire') or d.get('expires_at') or d.get('expiry'))
+    total = int((exp - _now_vn()).total_seconds()) if exp else 0
+    days, rem = divmod(max(total, 0), 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    expire = f'Còn {days} ngày {hours:02d}:{minutes:02d}' if days < 366 else (f'Còn {days // 365} năm {days % 365} ngày' if days < 3650 else f'Còn {days // 365} năm')
+    customer = str(d.get('customer') or '').strip()
+    max_devices = str(d.get('max_devices') or '').strip()
+    device_text = '' if not max_devices or max_devices.lower() in ('0', 'unlimited', 'no_limit') else f' | Giới hạn: {max_devices} máy'
+    extra = f' | {customer}' if customer else ''
+    return f'ACTIVE: {plan} | Hạn: {expire}{device_text}{extra}'
+
+
+def license_public_payload():
+    mid = get_machine_id()
+    lic = load_license()
+    msg = str(lic.get('message') or lic.get('status') or '')
+    return {
+        'ok': True,
+        'machine_id': mid,
+        'active': bool(license_active(lic)),
+        'info': format_active_info(lic),
+        'message': msg,
+        'checked_at': int(time.time()),
+    }
+
+
+def license_check_loop():
+    while True:
+        ok_now = False
+        try:
+            sep = '&' if '?' in ACTIVE_URL else '?'
+            url = ACTIVE_URL + sep + urlencode({'machine_id': get_machine_id(), 't': int(time.time())})
+            req = urllib.request.Request(url, headers={'User-Agent': 'genrouter-license'})
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                data = json.loads(resp.read().decode('utf-8', 'replace'))
+            if isinstance(data, dict):
+                data['machine_id'] = get_machine_id()
+                data['checked_at'] = int(time.time())
+                ok_now = license_active(data)
+                with _license_state['lock']:
+                    _license_state['data'] = data
+                    _license_state['ok'] = ok_now
+                save_license(data)
+        except Exception:
+            pass
+        if ok_now:
+            try:
+                push_proxies_to_sheet_once()
+            except Exception:
+                pass
+        time.sleep(LICENSE_CHECK_INTERVAL)
+
+
+def license_gate_ok():
+    with _license_state['lock']:
+        if _license_state['ok']:
+            return True
+        cached = load_license()
+        ok = license_active(cached)
+        _license_state['data'] = cached
+        _license_state['ok'] = ok
+        return ok
+
+
+# ---- Sync proxy len Google Sheet (tab theo ten router, cap cot A=hien tai / B=truoc do) ----
+_proxy_sync_state = {'hash': '', 'fail_count': 0, 'last_fail': 0}
+
+
+def build_proxy_sync_payload():
+    try:
+        exported = export_all_sessions_payload(include_hidden=True)
+    except Exception:
+        return None
+    configs = []
+    for item in exported.get('sessions', []):
+        proxies = []
+        for row in item.get('rows', []):
+            if not row.get('configured'):
+                continue
+            proxy = str(row.get('proxy', '')).strip()
+            if proxy:
+                proxies.append(proxy)
+        sid = str(item.get('session', '')).strip()
+        name = str(item.get('name') or '').strip() or ('Session ' + sid)
+        configs.append({'name': name, 'session': sid, 'proxies': proxies})
+    if not configs:
+        return None
+    return {
+        'action': 'sync_proxies',
+        'machine_id': get_machine_id(),
+        'router_name': get_app_title_prefix(),
+        'hostname': socket.gethostname(),
+        'exported_at': int(time.time()),
+        'configs': configs,
+    }
+
+
+def push_proxies_to_sheet_once(force=False):
+    payload = build_proxy_sync_payload()
+    if not payload:
+        return False
+    blob = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    new_hash = hashlib.sha256(blob.encode('utf-8')).hexdigest()
+    with _license_state['lock']:
+        if not force:
+            if new_hash == _proxy_sync_state['hash']:
+                return False
+            if _proxy_sync_state['fail_count'] >= 5 and time.time() - _proxy_sync_state.get('last_fail', 0) < 900:
+                return False
+        _proxy_sync_state['hash'] = new_hash
+    req = urllib.request.Request(
+        ACTIVE_URL,
+        data=blob.encode('utf-8'),
+        method='POST',
+        headers={'Content-Type': 'application/json; charset=utf-8', 'User-Agent': 'genrouter-license'},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            resp.read()
+        with _license_state['lock']:
+            _proxy_sync_state['fail_count'] = 0
+            _proxy_sync_state['last_fail'] = 0
+        return True
+    except Exception:
+        with _license_state['lock']:
+            _proxy_sync_state['fail_count'] += 1
+            _proxy_sync_state['last_fail'] = time.time()
+            if _proxy_sync_state['fail_count'] < 5:
+                _proxy_sync_state['hash'] = ''
+        raise
+
+
+# ---- Push proxy len sheet theo ten router (spawn thread, khong block API) ----
+PROXY_SHEET_STATE_FILE = BASE_DIR / 'sheet_sync_state.json'
+
+
+def spawn_proxy_sheet_push():
+    def _worker():
+        try:
+            push_proxies_to_sheet_once()
+        except Exception:
+            try:
+                with _license_state['lock']:
+                    _proxy_sync_state['fail_count'] += 1
+            except Exception:
+                pass
+    try:
+        threading.Thread(target=_worker, daemon=True).start()
+    except Exception:
+        pass
+
+
 def load_collector_config():
     cfg = {
         'collector_url': DEFAULT_COLLECTOR_URL,
@@ -2569,6 +2845,11 @@ def run_apply(session: str, rows_override=None):
     except Exception as e:
         results.append({'cmd': 'genrunner check only', 'ok': False, 'error': str(e)})
 
+    if any(r.get('ok') for r in results):
+        try:
+            spawn_proxy_sheet_push()
+        except Exception:
+            pass
     return results
 
 def recv_exact(sock, n):
@@ -3069,6 +3350,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             except Exception as e:
                 return self._send_json({'ok': False, 'error': f'Remote screen lỗi: {e}'}, 502)
+        if path == '/api/license':
+            return self._send_json(license_public_payload())
+
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/xxtouch' or path.startswith('/xxtouch/'):
@@ -3190,6 +3474,10 @@ class Handler(BaseHTTPRequestHandler):
                         name = set_session_display_name(session_id, name)
                     else:
                         name = get_session_display_name(session_id)
+                    try:
+                        spawn_proxy_sheet_push()
+                    except Exception:
+                        pass
                     return self._send_json({'ok': True, 'session': session_id, 'name': name})
             if path.startswith('/api/pm/apply/'):
                 session_id = path.rsplit('/', 1)[-1]
@@ -3210,6 +3498,10 @@ class Handler(BaseHTTPRequestHandler):
                     if isinstance(ip_text, dict) and '1' in ip_text:
                         ip_text['2'] = ip_text['1']
                     save_session_state(state)
+                try:
+                    spawn_proxy_sheet_push()
+                except Exception:
+                    pass
                 return self._send_json({'ok': True})
             if path == '/api/pm/meta':
                 prefix = set_app_title_prefix(payload.get('app_title_prefix', 'Genrouter'))
@@ -3701,5 +3993,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     ensure_sessions_exist()
     ensure_xxtouch_workspace()
+    threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()

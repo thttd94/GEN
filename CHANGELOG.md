@@ -1,5 +1,12 @@
 # Changelog
 
+## Ver 2.3
+
+- re-add license gate block (ACTIVE_URL + get_machine_id + license_active/license_public_payload/license_check_loop/gate_ok) that upstream removed; expose GET /api/license before the root route
+- re-add proxy sync-sheet push hooks: run_apply ok branch, POST sessions save, clone 1-to-2, plus PROXY_SHEET_STATE_FILE state cache
+- route GENUP-* update codes through the GAS Key Router (action=use_update_key) consumed server-side with LockService; legacy ADMIN2026GEN and per-version codes keep the old path
+- import datetime for license expiry display
+
 ## V2.2
 
 - restore SETUP ROUTER popup: read current LAN IP and submit LAN IP changes through existing router endpoints
