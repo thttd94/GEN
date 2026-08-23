@@ -365,6 +365,7 @@ def update_repo_from_remote(password: str):
                 shutil.copytree(item, target)
             else:
                 shutil.copy2(item, target)
+        shutil.rmtree(tmp_root, ignore_errors=True)
         after_label = read_current_version_label()
         changed = after_label != before_label
         return {

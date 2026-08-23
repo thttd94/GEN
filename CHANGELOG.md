@@ -6,6 +6,8 @@
 - move the license pill (ACTIVE/hạn) out of the title bar into the table meta row; row count label moves under the tab row
 - add Reboot Router button on the license lock screen; exempt `/api/pm/reboot-router` from the license gate so an inactive machine can still reboot its router
 - simplify tab switching to the single Proxy Manager tab
+- slim the update package: stop shipping legacy gen_backup/versions/1.1 package and per-router update_codes.json state
+- updater now removes its update_tmp working dir after a successful run so routers do not accumulate ~10MB per update
 
 ## Ver 2.3
 
