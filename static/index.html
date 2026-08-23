@@ -91,9 +91,24 @@
     .group3-action-line { display:grid; grid-template-columns:minmax(220px,1fr) 74px 90px 110px 44px; gap:8px; align-items:center; }
     .group3-schedule-time, .group3-schedule-count { height:38px; border:1px solid #d1d5db; border-radius:10px; padding:0 10px; font-size:16px; font-weight:700; text-align:center; box-sizing:border-box; }
     .group3-schedule-time[disabled], .group3-schedule-count[disabled] { background:#e5e7eb; color:#6b7280; }
+    .lic-line { display:inline-block; max-width:420px; font-weight:800; font-size:12px; padding:4px 10px; border-radius:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .lic-ok { background:#ecfdf5; color:#047857; }
+    .lic-bad { background:#fef2f2; color:#b91c1c; }
+    .lock-screen { position:fixed; inset:0; background:#0f172aee; z-index:10000; display:none; align-items:center; justify-content:center; flex-direction:column; gap:14px; text-align:center; padding:24px; }
+    .lock-screen h1 { color:#f87171; font-size:26px; margin:0; font-weight:900; }
+    .lock-screen p { color:#e5e7eb; margin:0; }
+    .lock-id { background:#020617; color:#38bdf8; font-family:ui-monospace,Menlo,monospace; font-size:20px; font-weight:800; padding:14px 22px; border-radius:12px; cursor:pointer; user-select:all; }
+    .lock-btn { background:#06b6d4; color:#fff; border:0; border-radius:10px; padding:10px 18px; font-weight:800; cursor:pointer; }
   </style>
 </head>
 <body>
+  <div class="lock-screen" id="lockScreen">
+    <h1>PHẦN MỀM CHƯA ĐƯỢC KÍCH HOẠT</h1>
+    <p>Vui lòng gửi ID máy cho admin để active. Khi chưa active, toàn bộ chức năng bị khoá.</p>
+    <div class="lock-id" id="lockMachineId" onclick="copyMachineId()" title="Bấm để copy">...</div>
+    <button class="lock-btn" onclick="refreshLicense(false)">Kiểm tra active</button>
+  </div>
+
   <div class="wrap">
     <div class="titlebar">
       <div class="titlebar-left">
@@ -106,6 +121,7 @@
       <div class="titlebar-right">
         <button class="btn version-btn" id="versionBtn" onclick="handleVersionClick()"><span>Version: <span id="versionText">đang nạp...</span></span><span class="version-dot" id="versionDot"></span></button>
         <div class="conn-badge disconnected" id="connBadge">Disconnected</div>
+          <span class="lic-line" id="licBar" style="display:none">...</span>
       </div>
     </div>
 
@@ -1887,5 +1903,52 @@
     });
     document.addEventListener('keydown', admRemoteKeyHandler);
   </script>
+
+<script>
+  // ---- License lock (ported from vendor GUI) ----
+  let licenseState = { active: false, info: '', machineId: '', loaded: false };
+  function applyLicenseLockUI() {
+    const bar = document.getElementById('licBar');
+    const lock = document.getElementById('lockScreen');
+    const wrap = document.querySelector('.wrap');
+    if (!lock || !licenseState.loaded) return;
+    if (bar) {
+      bar.style.display = '';
+      if (licenseState.active) {
+        bar.textContent = licenseState.info;
+        bar.className = 'lic-line lic-ok';
+      } else {
+        bar.textContent = 'CHUA ACTIVE';
+        bar.className = 'lic-line lic-bad';
+      }
+      bar.title = licenseState.machineId;
+    }
+    if (wrap) {
+      wrap.style.filter = licenseState.active ? '' : 'blur(4px)';
+      wrap.style.pointerEvents = licenseState.active ? '' : 'none';
+    }
+    const mid = document.getElementById('lockMachineId');
+    if (mid) mid.textContent = licenseState.machineId || '...';
+    lock.style.display = licenseState.active ? 'none' : 'flex';
+  }
+  async function refreshLicense(silent=true) {
+    try {
+      const res = await fetch('/api/license');
+      const data = await res.json();
+      licenseState.active = !!data.active;
+      licenseState.info = String(data.info || '');
+      licenseState.machineId = String(data.machine_id || '');
+      licenseState.loaded = true;
+    } catch (e) {
+      if (!silent && typeof setStatus === 'function') setStatus('Loi check license: ' + e.message);
+    }
+    applyLicenseLockUI();
+  }
+  async function copyMachineId() {
+    try { await navigator.clipboard.writeText(licenseState.machineId); if (typeof setStatus === 'function') setStatus('Da copy ID may'); } catch (e) {}
+  }
+  refreshLicense(true);
+  setInterval(() => refreshLicense(true), 60000);
+</script>
 </body>
 </html>
