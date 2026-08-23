@@ -8,6 +8,7 @@
 - simplify tab switching to the single Proxy Manager tab
 - slim the update package: stop shipping legacy gen_backup/versions/1.1 package and per-router update_codes.json state
 - updater now removes its update_tmp working dir after a successful run so routers do not accumulate ~10MB per update
+- version label regex keeps minor version so Ver 2.4 no longer displays as Ver 2
 
 ## Ver 2.3
 

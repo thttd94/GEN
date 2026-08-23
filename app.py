@@ -136,7 +136,7 @@ def save_update_codes_store(data):
 
 def normalize_version_key(label: str):
     text = str(label or '').strip()
-    m = re.search(r'(Ver\s*\d+)', text, re.IGNORECASE)
+    m = re.search(r'(Ver\s*[\d.]+)', text, re.IGNORECASE)
     return m.group(1).replace('ver', 'Ver') if m else text
 
 
@@ -237,13 +237,13 @@ def read_current_version_label():
         text = VERSION_FILE.read_text(encoding='utf-8', errors='replace').strip()
         if text:
             first = text.splitlines()[0].strip()
-            m = re.search(r'(Ver\s*\d+)', first, re.IGNORECASE)
+            m = re.search(r'(Ver\s*[\d.]+)', first, re.IGNORECASE)
             return m.group(1).replace('ver', 'Ver') if m else first
     except Exception:
         pass
     try:
         msg = run_git_command(['log', '-1', '--pretty=%s'])
-        m = re.search(r'(Ver\s*\d+)', msg, re.IGNORECASE)
+        m = re.search(r'(Ver\s*[\d.]+)', msg, re.IGNORECASE)
         if m:
             return m.group(1).replace('ver', 'Ver')
         short = run_git_command(['rev-parse', '--short', 'HEAD'])
@@ -337,7 +337,7 @@ def update_repo_from_remote(password: str):
             remote_commit = str(payload.get('sha') or '').strip()
             remote_subject = str((((payload.get('commit') or {}).get('message') or '').splitlines() or [''])[0]).strip()
             latest_short = remote_commit[:7] if remote_commit else ''
-            m = re.search(r'(Ver\s*\d+)', remote_subject, re.IGNORECASE)
+            m = re.search(r'(Ver\s*[\d.]+)', remote_subject, re.IGNORECASE)
             latest_label = m.group(1).replace('ver', 'Ver') if m else (remote_subject or '')
         except Exception:
             latest_label = ''
