@@ -81,6 +81,15 @@ fi
 VT="$LABEL"
 [ -n "$SHORT" ] && VT="$LABEL ($SHORT)"
 
+# ---- self-install: chay tu dau (pipe wget / tmp / GUI package) cung tu dong vao /root ----
+SELF="$(readlink -f "$0" 2>/dev/null || echo "$0")"
+if [ "$SELF" != "/root/gen_update.sh" ]; then
+  if fetch 'https://raw.githubusercontent.com/thttd94/GEN/main/gen_update.sh' /root/.gen_update.sh.new 2>/dev/null && mv /root/.gen_update.sh.new /root/gen_update.sh; then
+    chmod 755 /root/gen_update.sh
+    log "self-install: /root/gen_update.sh (lan sau chi can go: sh /root/gen_update.sh)"
+  fi
+fi
+
 md5f(){ md5sum "$1" 2>/dev/null | awk '{print $1}'; }
 
 # ============================== CHECK MODE ==============================

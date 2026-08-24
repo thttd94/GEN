@@ -373,6 +373,14 @@ def update_repo_from_remote(password: str):
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
+        # tu cai dat ban gen_update.sh moi nhat vao /root (SSH update cho cac lan sau)
+        try:
+            _gu_src = BASE_DIR / 'gen_update.sh'
+            if _gu_src.exists():
+                shutil.copy(str(_gu_src), '/root/gen_update.sh')
+                os.chmod('/root/gen_update.sh', 0o755)
+        except Exception:
+            pass
         shutil.rmtree(tmp_root, ignore_errors=True)
         after_label = read_current_version_label()
         changed = after_label != before_label
