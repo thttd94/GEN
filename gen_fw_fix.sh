@@ -13,6 +13,7 @@ set -u
 
 FIXFW="/etc/genrouter_fix_fw.sh"
 MARK_ALL="gen_fw_fix_v1"
+MARK_HIDE="hide_gen_ports_8000_9000"
 
 LAN_IP="$(uci -q get network.lan.ipaddr 2>/dev/null || echo 192.168.1.1)"
 
