@@ -64,13 +64,18 @@ SRC="$(find "$WORK" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 mv "$SRC" "$PKG" 2>/dev/null || PKG="$SRC"
 
 # ---- resolve version label (GitHub API best-effort, same rule as web updater) ----
+# Parse bang cut -d'"' de chay dung tren moi busybox (grep -o + sed \{40\} bat cap tren mot so build)
 LABEL=""
 SHORT=""
 api="$(fetch 'https://api.github.com/repos/thttd94/GEN/commits/main' /dev/stdout 2>/dev/null || true)"
 if [ -n "${api:-}" ]; then
-  SHORT="$(printf '%s' "$api" | grep -o '"sha": *"[0-9a-f]\{40\}"' | head -n1 | sed 's/.*"\([0-9a-f]\{40\}\)"$/\1/' | cut -c1-7)"
-  SUBJ="$(printf '%s' "$api" | grep -o '"message": *"[^"]*"' | head -n1 | sed 's/^"message": *"//; s/"$//')"
-  LABEL="$(printf '%s' "$SUBJ" | sed -n 's/.*\([Vv]er[ ][0-9][0-9.]*\).*/\1/p' | sed 's/^v/V/' )"
+  SHORT="$(printf '%s\n' "$api" | grep '"sha"' | head -n1 | cut -d'"' -f4 | cut -c1-7)"
+  case "$SHORT" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+    *) SHORT="" ;;
+  esac
+  SUBJ="$(printf '%s\n' "$api" | grep '"message"' | head -n1 | cut -d'"' -f4)"
+  LABEL="$(printf '%s' "$SUBJ" | tr ',' '\n' | sed -n 's/.*\([Vv]er[ ][0-9][0-9.]*\).*/\1/p' | head -n1 | sed 's/^v/V/')"
 fi
 [ -n "$LABEL" ] || LABEL="$(cat "$PKG/VERSION.txt" 2>/dev/null || echo unknown)"
 VT="$LABEL"
