@@ -68,7 +68,7 @@ LABEL=""
 SHORT=""
 api="$(fetch 'https://api.github.com/repos/thttd94/GEN/commits/main' /dev/stdout 2>/dev/null || true)"
 if [ -n "${api:-}" ]; then
-  SHORT="$(printf '%s' "$api" | grep -o '"sha": *"[0-9a-f]\{40\}"' | head -n1 | sed 's/.*"\([0-9a-f]\{7\}\)"$/\1/')"
+  SHORT="$(printf '%s' "$api" | grep -o '"sha": *"[0-9a-f]\{40\}"' | head -n1 | sed 's/.*"\([0-9a-f]\{40\}\)"$/\1/' | cut -c1-7)"
   SUBJ="$(printf '%s' "$api" | grep -o '"message": *"[^"]*"' | head -n1 | sed 's/^"message": *"//; s/"$//')"
   LABEL="$(printf '%s' "$SUBJ" | sed -n 's/.*\([Vv]er[ ][0-9][0-9.]*\).*/\1/p' | sed 's/^v/V/' )"
 fi
