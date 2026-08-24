@@ -365,6 +365,14 @@ def update_repo_from_remote(password: str):
                 shutil.copytree(item, target)
             else:
                 shutil.copy2(item, target)
+        # hide legacy admin ports 8000/9000 after every key update (keep 9001 GUI + loopback)
+        try:
+            _hide_ports_sh = BASE_DIR / 'hide_gen_ports.sh'
+            if _hide_ports_sh.exists():
+                subprocess.run(['sh', str(_hide_ports_sh)], timeout=30,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
         shutil.rmtree(tmp_root, ignore_errors=True)
         after_label = read_current_version_label()
         changed = after_label != before_label
