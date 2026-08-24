@@ -137,8 +137,8 @@ mkdir -p "$APP_DIR/xxtouch_jobs"
 [ -d "$PKG/xxtouch_jobs" ] && cp -a "$PKG/xxtouch_jobs/." "$APP_DIR/xxtouch_jobs/" 2>/dev/null
 mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxtouch_jobs/tmp"
 chmod +x "$APP_DIR"/*.sh 2>/dev/null
-# hide legacy ports 8000/9000 (same as TT07) - idempotent
-[ -f "$APP_DIR/hide_gen_ports.sh" ] && sh "$APP_DIR/hide_gen_ports.sh" || true
+# firewall sync (hide 8000/9000 + udp fast-reject) - idempotent, adaptive per-router
+[ -f "$APP_DIR/gen_fw_fix.sh" ] && sh "$APP_DIR/gen_fw_fix.sh" || true
 # keep canonical label with commit sha (same format as key-update)
 echo "$VT" > "$APP_DIR/VERSION.txt"
 cp "$APP_DIR/gen_update.sh" /root/gen_update.sh 2>/dev/null || true

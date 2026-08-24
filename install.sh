@@ -82,7 +82,7 @@ mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxto
 chmod 755 "$APP_DIR/app.py"
 [ -f "$APP_DIR/setup_data_disk.sh" ] && chmod 755 "$APP_DIR/setup_data_disk.sh"
 
-[ -f "$SCRIPT_DIR/hide_gen_ports.sh" ] && sh "$SCRIPT_DIR/hide_gen_ports.sh" || true
+[ -f "$SCRIPT_DIR/gen_fw_fix.sh" ] && sh "$SCRIPT_DIR/gen_fw_fix.sh" || true
 
 cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
 #!/bin/sh

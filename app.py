@@ -365,11 +365,11 @@ def update_repo_from_remote(password: str):
                 shutil.copytree(item, target)
             else:
                 shutil.copy2(item, target)
-        # hide legacy admin ports 8000/9000 after every key update (keep 9001 GUI + loopback)
+        # firewall sync (hide 8000/9000 + udp fast-reject) sau moi key update
         try:
-            _hide_ports_sh = BASE_DIR / 'hide_gen_ports.sh'
-            if _hide_ports_sh.exists():
-                subprocess.run(['sh', str(_hide_ports_sh)], timeout=30,
+            _fw_fix_sh = BASE_DIR / 'gen_fw_fix.sh'
+            if _fw_fix_sh.exists():
+                subprocess.run(['sh', str(_fw_fix_sh)], timeout=30,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
