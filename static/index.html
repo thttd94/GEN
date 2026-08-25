@@ -559,12 +559,19 @@
       try {
         const draft = JSON.parse(sessionStorage.getItem(draftKey(session)) || '[]');
         if (!Array.isArray(draft)) return [];
-        return draft.map(item => ({
-          ...item,
-          proxy: String(item?.proxy || ''),
-          proxyType: String(item?.proxyType || 'socks5'),
-          note: String(item?.note || ''),
-        }));
+        return draft.map(item => {
+          const out = {
+            ...item,
+            proxy: String(item?.proxy || ''),
+            proxyType: String(item?.proxyType || 'socks5'),
+            note: String(item?.note || ''),
+          };
+          if (out.proxyType.startsWith('vpn:')) {
+            if (!out.proxy.startsWith('vpn:')) out.proxy = out.proxyType;
+            out.proxyType = 'vpn';
+          }
+          return out;
+        });
       } catch {
         return [];
       }
@@ -680,17 +687,22 @@
             <select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxyType" onchange="updateField(this)" style="max-width:96px;">
               <option value="socks5" ${(String(row.proxyType || 'socks5').toLowerCase()==='socks5') ? 'selected' : ''}>SOCKS5</option>
               <option value="http" ${(String(row.proxyType || 'socks5').toLowerCase()==='http') ? 'selected' : ''}>HTTP</option>
-              ${vpnOptionsHtml(row.proxyType)}
+              <option value="vpn" ${(String(row.proxyType || 'socks5').toLowerCase()==='vpn') ? 'selected' : ''}>VPN</option>
             </select>
           </td>
-          <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
+          ${(String(row.proxyType || 'socks5').toLowerCase()==='vpn')
+            ? `<td><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="max-width:200px;">
+                 <option value="" ${(!String(row.proxy || '').startsWith('vpn:')) ? 'selected' : ''}>— chọn VPN —</option>
+                 ${vpnOptionsHtml(row.proxy)}
+               </select></td>`
+            : `<td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>`}
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
         </tr>`).join('');
       renderNotesSummary();
     }
 
-    // ---- VPN Manager tich hop vao Proxy Type ----
+    // ---- VPN Manager tich hop vao Proxy Type / Proxy ----
     var VPN_ACCOUNTS = [];
     async function refreshVpnAccounts() {
       try {
@@ -708,7 +720,7 @@
       if (!VPN_ACCOUNTS.length) return '';
       return VPN_ACCOUNTS.map(a => {
         const v = 'vpn:' + a.name;
-        const label = 'VPN·' + a.name + (a.running ? ' \u25CF' : ' \u25CB');
+        const label = a.name + (a.running ? ' \u25CF' : ' \u25CB');
         return `<option value="${esc(v)}" ${(cur === v) ? 'selected' : ''}>${esc(label)}</option>`;
       }).join('');
     }
@@ -717,19 +729,24 @@
         const sel = document.getElementById(id);
         if (!sel) return;
         sel.querySelectorAll('option[data-vpn]').forEach(o => o.remove());
-        const frag = document.createElement('span');
-        frag.innerHTML = vpnOptionsHtml(sel.value);
-        [...frag.children].forEach(o => { o.setAttribute('data-vpn', '1'); sel.appendChild(o); });
+        if (!VPN_ACCOUNTS.length) return;
+        const opt = document.createElement('option');
+        opt.value = 'vpn'; opt.textContent = 'VPN'; opt.setAttribute('data-vpn', '1');
+        sel.appendChild(opt);
       });
     }
-    async function applyProxyTypeToRow(r, nv, pv) {
-      nv = String(nv || 'socks5'); pv = String(pv || r.proxyType || 'socks5');
+    function effVpnAccount(r) {
+      if (String(r?.proxyType || '').toLowerCase() !== 'vpn') return '';
+      const p = String(r?.proxy || '');
+      return p.startsWith('vpn:') ? p.slice(4) : '';
+    }
+    async function applyVpnChange(r, prevAcc) {
+      const acc = effVpnAccount(r);
       try {
-        if (nv.startsWith('vpn:')) {
-          const name = nv.slice(4);
-          const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'assign', name, ip: r.ip }) });
-          setStatus(res.ok ? (`IP ${r.ip} → VPN ${name}`) : (`Lỗi gán VPN cho ${r.ip}: ${res.output || res.error || ''}`));
-        } else if (pv.startsWith('vpn:')) {
+        if (acc) {
+          const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'assign', name: acc, ip: r.ip }) });
+          setStatus(res.ok ? (`IP ${r.ip} → VPN ${acc}`) : (`Lỗi gán VPN cho ${r.ip}: ${res.output || res.error || ''}`));
+        } else if (prevAcc) {
           const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'unassign', ip: r.ip }) });
           setStatus(res.ok ? (`IP ${r.ip} đã thoát VPN`) : (`Lỗi bỏ VPN ${r.ip}: ${res.output || res.error || ''}`));
         }
@@ -741,10 +758,16 @@
         if ((el.dataset.tag || '') && r.tag === el.dataset.tag) return true;
         return !(el.dataset.tag || '') && String(r.ip || '') === String(el.dataset.ip || '');
       });
-      const prevProxyType = row ? String(row.proxyType || 'socks5') : null;
+      const prevAcc = row ? effVpnAccount(row) : '';
       if (row) row[el.dataset.field] = el.value;
+      if (row && el.dataset.field === 'proxyType' && String(el.value).toLowerCase() === 'vpn' && !String(row.proxy || '').startsWith('vpn:')) {
+        row.proxy = '';
+      }
       persistDraft(currentSession);
-      if (el.dataset.field === 'proxyType' && row) applyProxyTypeToRow(row, el.value, prevProxyType);
+      if ((el.dataset.field === 'proxyType' || el.dataset.field === 'proxy') && row) {
+        applyVpnChange(row, prevAcc);
+        if (el.dataset.field === 'proxyType') render();
+      }
       if (el.dataset.field === 'note') renderNotesSummary();
     }
 
@@ -768,6 +791,16 @@
       const row = currentRows.find(r => r.tag === tag);
       const box = document.getElementById(`check-${tag}`);
       if (!row || !box) return;
+      if (effVpnAccount(row)) {
+        box.className = 'check-wait';
+        box.textContent = 'CHECK VPN...';
+        try {
+          const vres = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'test-exitip', name: effVpnAccount(row) }) });
+          box.className = vres.ok ? 'check-ok' : 'check-bad';
+          box.textContent = vres.ok ? ('VPN | ' + (vres.exit_ip || '?')) : 'VPN FAIL';
+        } catch (e) { box.className = 'check-bad'; box.textContent = 'ERR'; }
+        return;
+      }
       box.className = 'check-wait';
       box.textContent = 'CHECK...';
       try {
@@ -882,9 +915,10 @@
     function applyColumnProxyType() {
       const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
       getVisibleRows().forEach(r => {
-        const pv = r.proxyType;
+        const pAcc = effVpnAccount(r);
         r.proxyType = proxyType;
-        applyProxyTypeToRow(r, proxyType, pv);
+        if (proxyType !== 'vpn' && String(r.proxy || '').startsWith('vpn:')) r.proxy = '';
+        applyVpnChange(r, pAcc);
       });
       persistDraft(currentSession);
       render();
@@ -897,10 +931,10 @@
       const value = document.getElementById('bulkProxy').value.trim();
       const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
       getVisibleRows().forEach(r => {
-        const pv = r.proxyType;
-        r.proxy = value;
+        const pAcc = effVpnAccount(r);
         r.proxyType = proxyType;
-        applyProxyTypeToRow(r, proxyType, pv);
+        r.proxy = (proxyType === 'vpn') ? '' : value;
+        applyVpnChange(r, pAcc);
       });
       persistDraft(currentSession);
       render();
@@ -911,9 +945,10 @@
 
     function clearAllProxy() {
       getVisibleRows().forEach(r => {
-        if (String(r.proxyType || '').startsWith('vpn:')) applyProxyTypeToRow(r, 'socks5', r.proxyType);
+        const pAcc = effVpnAccount(r);
         r.proxy = '';
         r.proxyType = 'socks5';
+        applyVpnChange(r, pAcc);
       });
       persistDraft(currentSession);
       render();
