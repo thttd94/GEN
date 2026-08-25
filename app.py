@@ -3258,6 +3258,86 @@ def get_xxtouch_remote_online_info():
     return {}
 
 
+# ---------------- VPN manager (da dung: openvpn/expressvpn/wireguard) ----------------
+VPN_MGR = '/data/vpn/vpn_mgr.sh'
+VPN_HOSTS_FILE = '/data/vpn/express_hosts.txt'
+
+
+def vpn_run(args, timeout=150):
+    try:
+        p = subprocess.run(['/bin/sh', VPN_MGR] + [str(a) for a in args], capture_output=True, text=True, timeout=timeout)
+        return {'ok': p.returncode == 0, 'rc': p.returncode, 'output': ((p.stdout or '') + (p.stderr or '')).strip()}
+    except Exception as e:
+        return {'ok': False, 'output': str(e)}
+
+
+def vpn_status_json():
+    r = vpn_run(['json'])
+    try:
+        return json.loads((r.get('output') or '[]').strip() or '[]')
+    except Exception:
+        return []
+
+
+def vpn_exit_ip(name):
+    acc = next((a for a in vpn_status_json() if a.get('name') == name), None)
+    if not acc:
+        return {'ok': False, 'error': f'khong co tai khoan {name}'}
+    if not acc.get('running'):
+        return {'ok': False, 'error': 'tunnel chua UP'}
+    dev, tbl = acc.get('dev'), str(acc.get('table'))
+    lip = ''
+    try:
+        out = subprocess.run(['ip', '-4', 'addr', 'show', dev], capture_output=True, text=True).stdout
+        m = re.search(r'inet (\d+\.\d+\.\d+\.\d+)', out or '')
+        if m:
+            lip = m.group(1)
+    except Exception:
+        pass
+    if not lip:
+        return {'ok': False, 'error': 'khong lay duoc IP trong tunnel'}
+    added = subprocess.run(['ip', 'rule', 'add', 'from', lip, 'table', tbl, 'priority', '5'], capture_output=True).returncode == 0
+    ip_out, err = '', ''
+    try:
+        s = socket.socket()
+        s.settimeout(8)
+        s.bind((lip, 0))
+        s.connect(('api.ipify.org', 80))
+        s.sendall(b'GET / HTTP/1.0\r\nHost: api.ipify.org\r\n\r\n')
+        data = b''
+        while True:
+            chunk = s.recv(512)
+            if not chunk:
+                break
+            data += chunk
+        ip_out = data.decode('utf-8', 'replace').split('\r\n\r\n')[-1].strip()
+    except Exception as e:
+        err = str(e)
+    finally:
+        if added:
+            subprocess.run(['ip', 'rule', 'del', 'from', lip, 'table', tbl, 'priority', '5'], capture_output=True)
+    if err:
+        return {'ok': False, 'error': err}
+    return {'ok': True, 'exit_ip': ip_out, 'local_tunnel_ip': lip, 'dev': dev}
+
+
+def vpn_add_openvpn_text(name, text, user='', password=''):
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix='vpn_upload_', suffix='.ovpn')
+    with os.fdopen(fd, 'w', encoding='utf-8', errors='replace') as f:
+        f.write(text.replace('\r\n', '\n'))
+    try:
+        args = ['add-openvpn', name, tmp]
+        if user:
+            args += [user, password]
+        return vpn_run(args)
+    finally:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send_no_cache_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -3420,6 +3500,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/pm/meta':
             version_info = get_repo_version_info()
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info})
+        if path == '/vpn':
+            return self._send_file(STATIC_DIR / 'vpn.html')
+        if path == '/api/vpn/status':
+            return self._send_json({'ok': True, 'accounts': vpn_status_json()})
+        if path == '/api/vpn/express-hosts':
+            hosts = []
+            try:
+                with open(VPN_HOSTS_FILE, 'r', encoding='utf-8', errors='replace') as f:
+                    hosts = [ln.strip() for ln in f if ln.strip()]
+            except Exception:
+                pass
+            return self._send_json({'ok': True, 'hosts': hosts})
         if path == '/api/pm/export-all':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             return self._send_json(export_all_sessions_payload(include_hidden=include_hidden))
@@ -4014,6 +4106,45 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/router-change-lan':
                 ip_lan = str(payload.get('ip_lan', '')).strip()
                 return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data={'ip_lan': ip_lan}))
+            if path == '/api/vpn/action':
+                action = str(payload.get('action', '')).strip()
+                name = str(payload.get('name', '')).strip()
+                ipaddr = str(payload.get('ip', '')).strip()
+                if action != 'unassign' and not re.match(r'^[A-Za-z0-9_.-]{1,64}$', name):
+                    return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
+                if action == 'up':
+                    return self._send_json(vpn_run(['up', name]))
+                if action == 'down':
+                    return self._send_json(vpn_run(['down', name]))
+                if action == 'del':
+                    return self._send_json(vpn_run(['del', name]))
+                if action in ('autostart_on', 'autostart_off'):
+                    return self._send_json(vpn_run(['autostart', name, 'on' if action == 'autostart_on' else 'off']))
+                if action == 'assign':
+                    if not re.match(r'^\d{1,3}(\.\d{1,3}){3}$', ipaddr):
+                        return self._send_json({'ok': False, 'error': 'IP khong hop le'})
+                    return self._send_json(vpn_run(['assign', name, ipaddr]))
+                if action == 'unassign':
+                    if not re.match(r'^\d{1,3}(\.\d{1,3}){3}$', ipaddr):
+                        return self._send_json({'ok': False, 'error': 'IP khong hop le'})
+                    return self._send_json(vpn_run(['unassign', ipaddr]))
+                if action == 'add-express':
+                    host = str(payload.get('host', '')).strip()
+                    user = str(payload.get('username', '')).strip()
+                    pwd = str(payload.get('password', ''))
+                    if not host or not user:
+                        return self._send_json({'ok': False, 'error': 'thieu host/username'})
+                    return self._send_json(vpn_run(['add-express', name, host, user, pwd]))
+                if action == 'add-openvpn':
+                    ovpn_text = str(payload.get('ovpn_text', '') or '')
+                    user = str(payload.get('username', '')).strip()
+                    pwd = str(payload.get('password', ''))
+                    if len(ovpn_text) < 50:
+                        return self._send_json({'ok': False, 'error': 'thieu noi dung file .ovpn'})
+                    return self._send_json(vpn_add_openvpn_text(name, ovpn_text, user, pwd))
+                if action == 'test-exitip':
+                    return self._send_json(vpn_exit_ip(name))
+                return self._send_json({'ok': False, 'error': f'action khong ho tro: {action}'})
             return self._send_json({'error': 'Not found'}, 404)
         except urllib.error.HTTPError as e:
             return self._send_json({'ok': False, 'error': f'HTTP {e.code}'}, 400)
