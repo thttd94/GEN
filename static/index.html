@@ -680,6 +680,7 @@
             <select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxyType" onchange="updateField(this)" style="max-width:96px;">
               <option value="socks5" ${(String(row.proxyType || 'socks5').toLowerCase()==='socks5') ? 'selected' : ''}>SOCKS5</option>
               <option value="http" ${(String(row.proxyType || 'socks5').toLowerCase()==='http') ? 'selected' : ''}>HTTP</option>
+              ${vpnOptionsHtml(row.proxyType)}
             </select>
           </td>
           <td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>
@@ -689,13 +690,61 @@
       renderNotesSummary();
     }
 
+    // ---- VPN Manager tich hop vao Proxy Type ----
+    var VPN_ACCOUNTS = [];
+    async function refreshVpnAccounts() {
+      try {
+        const d = await (await fetch('/api/vpn/status')).json();
+        const list = Array.isArray(d.accounts) ? d.accounts : [];
+        const sig = JSON.stringify(list.map(a => [a.name, a.running]));
+        const oldSig = JSON.stringify(VPN_ACCOUNTS.map(a => [a.name, a.running]));
+        VPN_ACCOUNTS = list;
+        syncVpnSelects();
+        if (sig !== oldSig && typeof currentRows !== 'undefined' && typeof render === 'function') render();
+      } catch (e) {}
+    }
+    function vpnOptionsHtml(selected) {
+      const cur = String(selected || '');
+      if (!VPN_ACCOUNTS.length) return '';
+      return VPN_ACCOUNTS.map(a => {
+        const v = 'vpn:' + a.name;
+        const label = 'VPN·' + a.name + (a.running ? ' \u25CF' : ' \u25CB');
+        return `<option value="${esc(v)}" ${(cur === v) ? 'selected' : ''}>${esc(label)}</option>`;
+      }).join('');
+    }
+    function syncVpnSelects() {
+      ['columnProxyType', 'bulkProxyType'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        sel.querySelectorAll('option[data-vpn]').forEach(o => o.remove());
+        const frag = document.createElement('span');
+        frag.innerHTML = vpnOptionsHtml(sel.value);
+        [...frag.children].forEach(o => { o.setAttribute('data-vpn', '1'); sel.appendChild(o); });
+      });
+    }
+    async function applyProxyTypeToRow(r, nv, pv) {
+      nv = String(nv || 'socks5'); pv = String(pv || r.proxyType || 'socks5');
+      try {
+        if (nv.startsWith('vpn:')) {
+          const name = nv.slice(4);
+          const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'assign', name, ip: r.ip }) });
+          setStatus(res.ok ? (`IP ${r.ip} → VPN ${name}`) : (`Lỗi gán VPN cho ${r.ip}: ${res.output || res.error || ''}`));
+        } else if (pv.startsWith('vpn:')) {
+          const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'unassign', ip: r.ip }) });
+          setStatus(res.ok ? (`IP ${r.ip} đã thoát VPN`) : (`Lỗi bỏ VPN ${r.ip}: ${res.output || res.error || ''}`));
+        }
+      } catch (e) { setStatus('Lỗi VPN: ' + e.message); }
+    }
+
     function updateField(el) {
       const row = currentRows.find(r => {
         if ((el.dataset.tag || '') && r.tag === el.dataset.tag) return true;
         return !(el.dataset.tag || '') && String(r.ip || '') === String(el.dataset.ip || '');
       });
+      const prevProxyType = row ? String(row.proxyType || 'socks5') : null;
       if (row) row[el.dataset.field] = el.value;
       persistDraft(currentSession);
+      if (el.dataset.field === 'proxyType' && row) applyProxyTypeToRow(row, el.value, prevProxyType);
       if (el.dataset.field === 'note') renderNotesSummary();
     }
 
@@ -833,7 +882,9 @@
     function applyColumnProxyType() {
       const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
       getVisibleRows().forEach(r => {
+        const pv = r.proxyType;
         r.proxyType = proxyType;
+        applyProxyTypeToRow(r, proxyType, pv);
       });
       persistDraft(currentSession);
       render();
@@ -846,8 +897,10 @@
       const value = document.getElementById('bulkProxy').value.trim();
       const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
       getVisibleRows().forEach(r => {
+        const pv = r.proxyType;
         r.proxy = value;
         r.proxyType = proxyType;
+        applyProxyTypeToRow(r, proxyType, pv);
       });
       persistDraft(currentSession);
       render();
@@ -858,6 +911,7 @@
 
     function clearAllProxy() {
       getVisibleRows().forEach(r => {
+        if (String(r.proxyType || '').startsWith('vpn:')) applyProxyTypeToRow(r, 'socks5', r.proxyType);
         r.proxy = '';
         r.proxyType = 'socks5';
       });
@@ -1198,6 +1252,8 @@
   }
   refreshLicense(true);
   setInterval(() => refreshLicense(true), 60000);
+  refreshVpnAccounts();
+  setInterval(() => refreshVpnAccounts(), 30000);
 </script>
 </body>
 </html>
