@@ -45,8 +45,8 @@
     .session-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .icon-btn { border:1px solid #d1d5db; background:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
     .notes-wrap { padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#fff; }
-    .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:105px; max-height:165px; overflow:auto; padding:10px 12px; white-space:pre-wrap; font-size:14px; line-height:1.45; }
-    .top-work-grid { display:grid; grid-template-columns: 1fr 1fr 2fr; gap:12px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; align-items:stretch; }
+    .notes-summary-box { border:1px solid #d1d5db; border-radius:10px; background:#fff; min-height:40px; max-height:90px; overflow:auto; padding:6px 10px; white-space:pre-wrap; font-size:12.5px; line-height:1.35; }
+    .top-work-grid { display:grid; grid-template-columns: 1fr 1fr 1.3fr 1fr; gap:12px; padding:12px 14px; border-bottom:1px solid #e5e7eb; background:#f8fafc; align-items:stretch; }
     .top-work-card { display:grid; gap:8px; align-content:start; }
     .notes-summary-empty { color:#9ca3af; }
     .bulkbar { display:grid; grid-template-columns: 1fr; gap:12px; padding:0; border-bottom:1px solid #e5e7eb; background:#f8fafc; }
@@ -132,6 +132,7 @@
       </div>
       <div class="toolbar-right">
         <button class="btn warn" onclick="openIpMacConfig()">GÁN IP</button>
+        <button class="btn warn" onclick="window.open('/vpn','_blank')" title="Trang cấu hình VPN">VPN</button>
         <button class="btn warn" onclick="openMacAssignPage()">GÁN MAC</button>
         <button class="btn warn" onclick="openSetupRouter()">SETUP ROUTER</button>
         <button class="btn warn" onclick="rebootRouter()">REBOOT ROUTER</button>
@@ -167,6 +168,12 @@
             <div class="bulk-actions"><button class="btn" onclick="applyBulkMap()">Gán hàng loạt</button></div>
           </div>
           <div class="top-work-card">
+            <div class="bulk-card-title">GÁN VPN THEO SỐ MÁY</div>
+            <input id="vpnMachines" placeholder="all | 1,2,3,5 | 1-9">
+            <select id="vpnPick"></select>
+            <div class="bulk-actions"><button class="btn apply" onclick="applyBulkVpn()">GÁN VPN</button></div>
+          </div>
+          <div class="top-work-card" style="justify-self:end; width:100%; max-width:400px;">
             <div class="bulk-card-title">NOTE TỔNG</div>
             <div class="notes-summary-box" id="notesSummary"></div>
           </div>
@@ -734,6 +741,61 @@
         opt.value = 'vpn'; opt.textContent = 'VPN'; opt.setAttribute('data-vpn', '1');
         sel.appendChild(opt);
       });
+      const pick = document.getElementById('vpnPick');
+      if (pick) {
+        const cur = pick.value;
+        pick.innerHTML = VPN_ACCOUNTS.filter(a => a.running)
+          .map(a => `<option value="${esc('vpn:' + a.name)}">${esc(a.name)}</option>`).join('')
+          || '<option value="">— không có VPN active —</option>';
+        if ([...pick.options].some(o => o.value === cur)) pick.value = cur;
+      }
+    }
+    function parseMachinesSpec(spec, max) {
+      const s = String(spec || '').trim().toLowerCase();
+      if (!s) return null;
+      if (s === 'all') return 'all';
+      const set = new Set();
+      for (const part of s.split(',')) {
+        const p = part.trim();
+        if (!p) continue;
+        const m = p.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (m) {
+          let a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+          if (isNaN(a) || isNaN(b) || a < 1 || b > max) return null;
+          if (a > b) { const t = a; a = b; b = t; }
+          for (let i = a; i <= b; i++) set.add(i);
+        } else if (/^\d+$/.test(p)) {
+          const n = parseInt(p, 10);
+          if (n < 1 || n > max) return null;
+          set.add(n);
+        } else return null;
+      }
+      return [...set].sort((x, y) => x - y);
+    }
+    async function applyBulkVpn() {
+      const vis = getVisibleRows();
+      if (!vis.length) return setStatus('Không có máy nào trong bảng');
+      const specRaw = String(document.getElementById('vpnMachines')?.value || '').trim();
+      const parsed = parseMachinesSpec(specRaw, vis.length);
+      if (!parsed) return setStatus('Số máy không hợp lệ (all | 1,2,3 | 1-9)');
+      const accSel = String(document.getElementById('vpnPick')?.value || '');
+      if (!accSel.startsWith('vpn:')) return setStatus('Chưa có VPN active — bật tunnel ở trang VPN trước');
+      const acc = accSel.slice(4);
+      const targets = (parsed === 'all') ? vis : parsed.map(n => vis[n - 1]).filter(Boolean);
+      if (!targets.length) return setStatus('Không map được máy nào');
+      let okN = 0, failN = 0;
+      for (const r of targets) {
+        const pAcc = effVpnAccount(r);
+        r.proxyType = 'vpn';
+        r.proxy = accSel;
+        try {
+          const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'assign', name: acc, ip: r.ip }) });
+          if (res.ok) okN++; else { failN++; setStatus(`Lỗi gán ${r.ip}: ${res.output || res.error || ''}`); }
+        } catch (e) { failN++; }
+      }
+      persistDraft(currentSession);
+      render();
+      setStatus(`GÁN VPN ${acc}: OK ${okN}/${targets.length} máy` + (failN ? ` (${failN} lỗi)` : ''));
     }
     function effVpnAccount(r) {
       if (String(r?.proxyType || '').toLowerCase() !== 'vpn') return '';
