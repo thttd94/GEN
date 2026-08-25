@@ -156,8 +156,13 @@ async function refresh() {
   } else {
     tb.innerHTML = ACCOUNTS.map(a => {
       const st = a.running ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
-      const chips = (a.clients||[]).map(ip =>
-        `<span class="chip">${esc(ip)}<a title="bỏ gán" onclick="act('unassign',{ip:'${esc(ip)}'})">×</a></span>`).join('') || '<span class="muted">—</span>';
+      const cl = a.clients || [];
+      let chips;
+      if (!cl.length) chips = '<span class="muted">—</span>';
+      else if (cl.length <= 3) chips = cl.map(ip =>
+        `<span class="chip">${esc(ip)}<a title="bỏ gán" onclick="act('unassign',{ip:'${esc(ip)}'})">×</a></span>`).join('');
+      else chips = `<span class="chip" style="border-color:#2ea043;color:#3fb950;cursor:help" title="${esc(cl.join('\n'))}">🟢 ${cl.length} máy</span>`
+        + ` <a class="muted" style="cursor:pointer;font-size:11.5px" onclick="unassignAll('${esc(a.name)}')">bỏ hết</a>`;
       const main = a.running
         ? `<button class="bad" onclick="act('down',{name:'${esc(a.name)}'})">▼ DOWN</button>
            <button onclick="act('test-exitip',{name:'${esc(a.name)}'})">🌐 Exit-IP</button>`
@@ -176,6 +181,14 @@ async function refresh() {
   const cur = sel.value;
   sel.innerHTML = ACCOUNTS.map(a=>`<option value="${esc(a.name)}">${esc(a.name)}</option>`).join('');
   if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+}
+
+async function unassignAll(name) {
+  const a = (ACCOUNTS || []).find(x => x.name === name);
+  if (!a || !(a.clients || []).length) return;
+  if (!confirm(`Bỏ gán ${a.clients.length} máy khỏi ${name}?`)) return;
+  for (const ip of a.clients) { try { await act('unassign', {ip}); } catch(e){} }
+  refresh();
 }
 
 (async () => {

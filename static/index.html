@@ -172,6 +172,7 @@
             <input id="vpnMachines" placeholder="all | 1,2,3,5 | 1-9">
             <select id="vpnPick"></select>
             <div class="bulk-actions"><button class="btn apply" onclick="applyBulkVpn()">GÁN VPN</button></div>
+            <div id="vpnAssignedList" style="font-size:11.5px;color:#8b949e;margin-top:6px;line-height:1.4;"></div>
           </div>
           <div class="top-work-card" style="justify-self:end; width:100%; max-width:400px;">
             <div class="bulk-card-title">NOTE TỔNG</div>
@@ -707,6 +708,29 @@
           <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
         </tr>`).join('');
       renderNotesSummary();
+      renderVpnAssigned();
+    }
+    function compressRanges(nums) {
+      if (!nums.length) return '';
+      nums = [...new Set(nums)].sort((a, b) => a - b);
+      const parts = [];
+      let s = nums[0], p = nums[0];
+      for (let i = 1; i <= nums.length; i++) {
+        if (nums[i] === p + 1) { p = nums[i]; continue; }
+        parts.push(s === p ? `${s}` : (p - s === 1 ? `${s},${p}` : `${s}-${p}`));
+        s = nums[i]; p = nums[i];
+      }
+      return parts.join(',');
+    }
+    function renderVpnAssigned() {
+      const el = document.getElementById('vpnAssignedList');
+      if (!el) return;
+      const vis = getVisibleRows();
+      const nums = [];
+      vis.forEach((r, i) => { if (effVpnAccount(r)) nums.push(i + 1); });
+      el.textContent = nums.length
+        ? `Đang qua VPN (số máy): ${compressRanges(nums)} — tổng ${nums.length} máy`
+        : 'Chưa có máy nào qua VPN';
     }
 
     // ---- VPN Manager tich hop vao Proxy Type / Proxy ----
@@ -727,7 +751,7 @@
       if (!VPN_ACCOUNTS.length) return '';
       return VPN_ACCOUNTS.map(a => {
         const v = 'vpn:' + a.name;
-        const label = a.name + (a.running ? ' \u25CF' : ' \u25CB');
+        const label = a.name + (a.running ? ' 🟢' : ' ⚪');
         return `<option value="${esc(v)}" ${(cur === v) ? 'selected' : ''}>${esc(label)}</option>`;
       }).join('');
     }
@@ -745,7 +769,7 @@
       if (pick) {
         const cur = pick.value;
         pick.innerHTML = VPN_ACCOUNTS.filter(a => a.running)
-          .map(a => `<option value="${esc('vpn:' + a.name)}">${esc(a.name)}</option>`).join('')
+          .map(a => `<option value="${esc('vpn:' + a.name)}">🟢 ${esc(a.name)}</option>`).join('')
           || '<option value="">— không có VPN active —</option>';
         if ([...pick.options].some(o => o.value === cur)) pick.value = cur;
       }
@@ -991,7 +1015,8 @@
 
     function assignAllProxy() {
       const value = document.getElementById('bulkProxy').value.trim();
-      const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
+      let proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
+      if (proxyType === 'vpn') proxyType = 'socks5'; // GÁN 1 ALL là gán proxy: luôn thoát VPN
       getVisibleRows().forEach(r => {
         const pAcc = effVpnAccount(r);
         r.proxyType = proxyType;
@@ -1047,7 +1072,10 @@
         const machineText = String(item.x || '').trim();
         const row = currentRows.find(r => String(r.machine || '').trim() === machineText && String(r.tag || '').startsWith('proxy_'));
         if (!row) continue;
+        const pAcc = effVpnAccount(row);
+        row.proxyType = 'socks5'; // gán proxy theo số máy = thoát VPN cho máy đó
         row.proxy = item.proxy.trim();
+        applyVpnChange(row, pAcc);
         changed++;
       }
       persistDraft(currentSession);
