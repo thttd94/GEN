@@ -1317,7 +1317,13 @@
       versionCheckTimer = setInterval(() => refreshVersionInfo(true), 60000);
       await fetchSessionsList(false);
       await fetchSessionsList(true);
-      loadSession('1', true);
+      let startSession = '1';
+      try {
+        const m = await fetchJSON('/api/pm/meta');
+        const act = String((m && m.active_session) || '').trim();
+        if (act && allSessions.includes(act)) startSession = act;
+      } catch {}
+      loadSession(startSession, true);
     }
 
     bootstrap();

@@ -25,6 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
 NOTES_FILE = BASE_DIR / 'notes.json'
 SESSION_STATE_FILE = BASE_DIR / 'session_state.json'
+ACTIVE_SESSION_FILE = BASE_DIR / 'active_session.json'
 
 ROUTER_CONFIG_DIR = Path('/etc/genrouter/config')
 ROUTER_RUNTIME_DIR = Path('/etc/genrouter')
@@ -1850,11 +1851,21 @@ def get_session_meta(session_id, tag=None):
         for k, v in sess.items():
             nk = normalize_tag(k)
             if nk and isinstance(v, dict):
-                normalized[nk] = v
+                if nk in normalized and isinstance(normalized[nk], dict):
+                    # key trung hoa/thuong (PROXY_5 + proxy_5) -> gop du lieu
+                    normalized[nk].update(v)
+                else:
+                    normalized[nk] = dict(v)
         return normalized
     key = normalize_tag(tag)
     item = sess.get(key, sess.get(str(tag), sess.get(str(tag).upper(), {})))
-    return item if isinstance(item, dict) else {}
+    if isinstance(item, dict):
+        return item
+    merged = {}
+    for k, v in sess.items():
+        if str(k).lower() == key.lower() and isinstance(v, dict):
+            merged.update(v)
+    return merged
 
 
 def get_meta_section(state=None):
@@ -2277,6 +2288,23 @@ def set_session_display_name(session_id, name):
     return name
 
 
+def sess_item(sess, tag):
+    """Lay/tao item meta cua 1 tag trong session, tai su dung key da co
+    (khong phan biet hoa/thuong: PROXY_5 va proxy_5 la cung 1 may)
+    de tranh sinh key trung lam mat du lieu khi normalize."""
+    want = str(tag or '').strip()
+    if want:
+        for k in list(sess.keys()):
+            if str(k).lower() == want.lower():
+                item = sess[k]
+                if not isinstance(item, dict):
+                    item = {}
+                    sess[k] = item
+                return item
+    item = sess.setdefault(want, {})
+    return item if isinstance(item, dict) else {}
+
+
 def update_session_rows_meta(session_id, rows):
     session_id = str(session_id)
     state = load_session_state()
@@ -2285,9 +2313,15 @@ def update_session_rows_meta(session_id, rows):
         tag = normalize_tag((row or {}).get('tag', ''))
         if not tag:
             continue
-        item = sess.setdefault(tag, {})
+        item = sess_item(sess, tag)
         if 'note' in row:
             item['note'] = str(row.get('note', '')).strip()
+        if 'vpn_account' in row:
+            acc = str(row.get('vpn_account') or '').strip()
+            if acc:
+                item['vpn_account'] = acc
+            else:
+                item.pop('vpn_account', None)
     save_session_state(state)
 
 
@@ -2427,6 +2461,22 @@ def looks_like_default_full_mapping(data):
     return [(r.get('tag'), r.get('ip')) for r in first] == expected
 
 
+VPN_MAP_PATH = '/data/vpn/map.txt'
+
+
+def load_vpn_map():
+    mapping = {}
+    try:
+        with open(VPN_MAP_PATH, 'r', encoding='utf-8', errors='replace') as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) >= 2:
+                    mapping[parts[0].strip()] = parts[1].strip()
+    except OSError:
+        pass
+    return mapping
+
+
 def format_proxy(outbound):
     server = str(outbound.get('server', '')).strip()
     port = outbound.get('server_port')
@@ -2457,6 +2507,7 @@ def extract_rows(data, session='1'):
     }
     devices = load_device_map()
     route_by_ip = {str(ip).strip(): normalize_tag(tag) for ip, tag in build_route_ip_to_tag(data).items() if str(ip).strip()}
+    vpn_map = load_vpn_map()
     session_meta = get_session_meta(session)
     saved_text = get_saved_ip_identity_text(session)
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
@@ -2479,12 +2530,20 @@ def extract_rows(data, session='1'):
         dev = devices.get(ip, {})
         meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
         outbound = outbounds.get(tag, {}) if tag else {}
+        # Hien thi theo DUNG y dinh cua cau hinh nay (outbound type='direct' = may chay VPN),
+        # khong de map.txt toan cuc ghi de — neu khong moi apply se bi "keo" trang thai VPN cu.
+        ob_type = str((outbound or {}).get('type', '')).strip().lower() if isinstance(outbound, dict) else ''
+        if tag and ob_type == 'direct':
+            vpn_acc = str((meta or {}).get('vpn_account', '') or '').strip() or vpn_map.get(ip, '')
+            proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:'), 'vpn'
+        else:
+            proxy_val, ptype = format_proxy(outbound), format_proxy_type(outbound)
         rows.append({
             'machine': machine,
             'ip': ip,
             'tag': tag,
-            'proxy': format_proxy(outbound),
-            'proxyType': format_proxy_type(outbound),
+            'proxy': proxy_val,
+            'proxyType': ptype,
             'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
             'note': str(meta.get('note', '')).strip(),
@@ -2499,12 +2558,13 @@ def extract_rows(data, session='1'):
         machine = ''
         meta = {}
         outbound = {}
+        vpn_acc = vpn_map.get(ip, '')
         rows.append({
             'machine': machine,
             'ip': ip,
             'tag': tag,
-            'proxy': format_proxy(outbound),
-            'proxyType': 'socks5',
+            'proxy': ('vpn:' + vpn_acc) if vpn_acc else format_proxy(outbound),
+            'proxyType': 'vpn' if vpn_acc else 'socks5',
             'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')),
             'status': str(dev.get('status', 'offline')).strip() or 'offline',
             'note': str(meta.get('note', '')).strip(),
@@ -2522,10 +2582,15 @@ def apply_rows_to_data(data, rows_by_tag, session='1'):
         proxy = str(row.get('proxy', '')).strip()
         proxy_type = str(row.get('proxyType', 'socks5') or 'socks5').strip().lower()
         set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type)
+        ptype_norm = str(proxy_type or 'socks5').strip().lower()
+        vpn_acc_row = ''
+        if ptype_norm == 'vpn' or str(proxy).startswith('vpn:'):
+            vpn_acc_row = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
         touched_rows.append({
             'tag': tag,
             'mac': row.get('mac', ''),
             'note': row.get('note', ''),
+            'vpn_account': vpn_acc_row,
         })
 
     update_session_rows_meta(session, touched_rows)
@@ -2538,8 +2603,13 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
     if not proxy:
         outbounds[idx] = {'tag': tag, 'type': 'block'}
         return
-    server, port, user, password = parse_proxy(proxy)
     normalized_type = str(proxy_type or 'socks5').strip().lower()
+    if normalized_type == 'vpn' or str(proxy).startswith('vpn:'):
+        # May chay qua tunnel VPN (ip rule ben router, khong qua gencore)
+        # -> outbound direct de apply khong bao loi 'Proxy khong hop le'
+        outbounds[idx] = {'tag': tag, 'type': 'direct'}
+        return
+    server, port, user, password = parse_proxy(proxy)
     if normalized_type == 'http':
         outbounds[idx] = {
             'tag': tag,
@@ -2663,6 +2733,47 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     return data
 
 
+def _record_vpn_declaration(ipaddr, account):
+    """Gan/bo gan VPN tu panel cung phai ghi lai vao session ACTIVE:
+    - gan   -> meta vpn_account + outbound thanh direct (vpn:<ten>)
+    - bo gan-> xoa meta vpn_account + outbound thanh block
+    Nho vay apply lai chinh cfg khong mat may da gan VPN, va doi cfg
+    thi dong bo theo dung y dinh moi."""
+    try:
+        sid = ''
+        try:
+            sid = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '').strip()
+        except Exception:
+            sid = ''
+        sid = sid if sid in SESSION_FILES else '1'
+        if not SESSION_FILES[sid].exists():
+            return
+        tag = ''
+        saved_text = get_saved_ip_identity_text(sid)
+        if saved_text:
+            for it in parse_ip_identity_text(saved_text):
+                if str(it.get('ip', '')).strip() == str(ipaddr).strip():
+                    tag = normalize_tag(it.get('tag', ''))
+                    break
+        state = load_session_state()
+        sess = state.setdefault(str(sid), {})
+        if tag:
+            item = sess_item(sess, tag)
+            acc = str(account or '').strip()
+            if acc:
+                item['vpn_account'] = acc
+            else:
+                item.pop('vpn_account', None)
+            save_session_state(state)
+            data = load_json(SESSION_FILES[sid])
+            obs = data.setdefault('outbounds', [])
+            idx = {str(o.get('tag')): i for i, o in enumerate(obs) if o.get('tag')}
+            set_outbound_proxy(obs, idx, tag, ('vpn:' + acc) if acc else '', 'vpn' if acc else 'socks5')
+            save_json(SESSION_FILES[sid], data)
+    except Exception:
+        pass
+
+
 def build_ip_identity_text(data, session='1'):
     rows = build_ip_identity_rows_from_data(data)
     rows.sort(key=lambda x: machine_num(x.get('machine', '')))
@@ -2773,6 +2884,123 @@ def build_old_gui_update_proxy_payload_from_rows(rows):
     return payload
 
 
+def _store_session_vpn_accounts(session_id, tag_accounts):
+    if not tag_accounts:
+        return
+    state = load_session_state()
+    sess = state.setdefault(str(session_id), {})
+    for item in tag_accounts:
+        tag = normalize_tag(item.get('tag', ''))
+        acc = str(item.get('vpn_account') or '').strip()
+        if not tag or not acc:
+            continue
+        sess_item(sess, tag)['vpn_account'] = acc
+    save_session_state(state)
+
+
+def _session_vpn_desires(session_id, runtime_data):
+    """Cau hinh nay khai bao may nao chay VPN -> ({tag: ten_account}, [adopt])"""
+    direct_tags = set()
+    for item in (runtime_data or {}).get('outbounds', []) or []:
+        try:
+            tag = normalize_tag(str((item or {}).get('tag', '')))
+            if not tag.startswith('proxy_'):
+                continue
+            if str((item or {}).get('type', '')).strip().lower() == 'direct':
+                direct_tags.add(tag)
+        except Exception:
+            continue
+    if not direct_tags:
+        return {}, []
+    meta = get_session_meta(session_id)
+    current_map = load_vpn_map()
+    saved_text = get_saved_ip_identity_text(session_id)
+    tag_ip = {}
+    if saved_text:
+        try:
+            for it in parse_ip_identity_text(saved_text):
+                t = normalize_tag(it.get('tag', ''))
+                ip = str(it.get('ip', '')).strip()
+                if t and ip:
+                    tag_ip[t] = ip
+        except Exception:
+            tag_ip = {}
+    desires = {}
+    adopt = []
+    for tag in sorted(direct_tags):
+        info = meta.get(tag) if isinstance(meta, dict) else None
+        acc = str((info or {}).get('vpn_account', '') or '').strip() if isinstance(info, dict) else ''
+        if not acc:
+            # Migrate ban cu: cfg khai bao VPN (direct) nhua chua luu ten account
+            # -> lay ten dang gan trong map.txt de khong mat ten khi dong bo.
+            old = current_map.get(tag_ip.get(tag, ''), '')
+            if old:
+                acc = old
+                adopt.append({'tag': tag, 'vpn_account': acc})
+        if acc:
+            desires[tag] = acc
+    return desires, adopt
+
+
+def sync_vpn_state_on_apply(session_id, runtime_data, results):
+    """Apply cau hinh nao thi trang thai VPN phai theo dung cau hinh do:
+    - may cfg KHONG khai bao VPN ma van con map/rule VPN -> tu bo gan
+    - may cfg khai bao VPN -> giu/gan dung account (chi gan khi tunnel UP)
+    - don rule rac tro den table cua tunnel da chet (vd tun mat bat thuong)"""
+    cmd = 'dong bo VPN theo cau hinh'
+    summary = {'declared': 0, 'unassigned': [], 'assigned': [], 'skipped': [], 'clean_stale_ok': None}
+    try:
+        desires_by_tag, adopt = _session_vpn_desires(session_id, runtime_data)
+        if adopt:
+            _store_session_vpn_accounts(session_id, adopt)
+        desired_ips = {}
+        saved_text = get_saved_ip_identity_text(session_id)
+        if saved_text:
+            tag_ip = {}
+            try:
+                for it in parse_ip_identity_text(saved_text):
+                    t = normalize_tag(it.get('tag', ''))
+                    ip = str(it.get('ip', '')).strip()
+                    if t and ip:
+                        tag_ip[t] = ip
+            except Exception:
+                tag_ip = {}
+            for tag, acc in desires_by_tag.items():
+                ip = tag_ip.get(tag, '')
+                if ip:
+                    desired_ips[ip] = acc
+        summary['declared'] = len(desired_ips)
+        current = load_vpn_map()
+        status = {}
+        try:
+            status = {str(a.get('name', '')): a for a in vpn_status_json()}
+        except Exception:
+            status = {}
+        # An toan: chi dong bo khi doc duoc danh sach IP cua cau hinh;
+        # neu khong (text trong) thi chi don rac, tuyet doi khong quet sach map.
+        if saved_text:
+            for ip in sorted(current):
+                if ip in desired_ips:
+                    continue
+                r = vpn_run(['unassign', ip], timeout=60)
+                summary['unassigned'].append({'ip': ip, 'ok': bool(r.get('ok'))})
+            for ip, acc in sorted(desired_ips.items()):
+                cur_acc = current.get(ip, '')
+                if cur_acc == acc:
+                    continue
+                acc_info = status.get(acc) or {}
+                if not acc_info.get('running'):
+                    summary['skipped'].append({'ip': ip, 'account': acc, 'reason': 'tunnel khong chay'})
+                    continue
+                r = vpn_run(['assign', acc, ip], timeout=120)
+                summary['assigned'].append({'ip': ip, 'account': acc, 'ok': bool(r.get('ok')), 'output': (r.get('output') or '')[:120]})
+        rc = vpn_run(['clean-stale'], timeout=120)
+        summary['clean_stale_ok'] = bool(rc.get('ok'))
+        results.append({'cmd': cmd, 'ok': True, **summary})
+    except Exception as e:
+        results.append({'cmd': cmd, 'ok': False, 'error': str(e), **summary})
+
+
 def run_apply(session: str, rows_override=None):
     preset_source = SESSION_FILES[session]
     results = []
@@ -2856,6 +3084,10 @@ def run_apply(session: str, rows_override=None):
             'target': str(RUNTIME_FILE),
             'skipped': True,
         })
+
+    # Dong bo trang thai VPN theo dung cau hinh vua apply
+    # (fix: doi cfg 1<->2 thi may cu van con dinh VPN, proxy moi khong chay)
+    sync_vpn_state_on_apply(session, runtime_data, results)
 
     try:
         if GENRUNNER.exists():
@@ -3271,6 +3503,23 @@ def vpn_run(args, timeout=150):
         return {'ok': False, 'output': str(e)}
 
 
+def vpn_machine_map():
+    """IP -> so may, lay tu identity text DUNG CHUNG (meta) nen khong phu thuoc
+    session active — trang /vpn mo rieng tab van hien so may dung."""
+    out = {}
+    try:
+        text = get_saved_ip_identity_text()
+        if text:
+            for it in parse_ip_identity_text(text):
+                ip = str(it.get('ip', '')).strip()
+                num = str(it.get('machine', '')).strip()
+                if ip and num:
+                    out[ip] = num
+    except Exception:
+        pass
+    return out
+
+
 def vpn_status_json():
     r = vpn_run(['json'])
     try:
@@ -3499,11 +3748,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
             version_info = get_repo_version_info()
-            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info})
+            active_session = ''
+            try:
+                active_session = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '')
+            except (OSError, ValueError):
+                pass
+            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
         if path == '/vpn':
             return self._send_file(STATIC_DIR / 'vpn.html')
         if path == '/api/vpn/status':
-            return self._send_json({'ok': True, 'accounts': vpn_status_json()})
+            return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map()})
         if path == '/api/vpn/express-hosts':
             hosts = []
             try:
@@ -3607,6 +3861,10 @@ class Handler(BaseHTTPRequestHandler):
                 if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                     rows_override = payload.get('rows') if isinstance(payload, dict) else None
                     results = run_apply(session_id, rows_override=rows_override)
+                    try:
+                        ACTIVE_SESSION_FILE.write_text(json.dumps({'active': str(session_id)}), encoding='utf-8')
+                    except OSError:
+                        pass
                     return self._send_json({'ok': True, 'applied': session_id, 'results': results})
             if path == '/api/pm/clone/1-to-2':
                 save_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
@@ -4123,11 +4381,17 @@ class Handler(BaseHTTPRequestHandler):
                 if action == 'assign':
                     if not re.match(r'^\d{1,3}(\.\d{1,3}){3}$', ipaddr):
                         return self._send_json({'ok': False, 'error': 'IP khong hop le'})
-                    return self._send_json(vpn_run(['assign', name, ipaddr]))
+                    r = vpn_run(['assign', name, ipaddr])
+                    if r.get('ok'):
+                        _record_vpn_declaration(ipaddr, name)
+                    return self._send_json(r)
                 if action == 'unassign':
                     if not re.match(r'^\d{1,3}(\.\d{1,3}){3}$', ipaddr):
                         return self._send_json({'ok': False, 'error': 'IP khong hop le'})
-                    return self._send_json(vpn_run(['unassign', ipaddr]))
+                    r = vpn_run(['unassign', ipaddr])
+                    if r.get('ok'):
+                        _record_vpn_declaration(ipaddr, '')
+                    return self._send_json(r)
                 if action == 'add-express':
                     host = str(payload.get('host', '')).strip()
                     user = str(payload.get('username', '')).strip()

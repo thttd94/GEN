@@ -44,16 +44,7 @@
       <thead><tr><th>Tên</th><th>Loại</th><th>Dev</th><th>Trạng thái</th><th>Clients gán</th><th style="width:290px">Hành động</th></tr></thead>
       <tbody id="tb"><tr><td colspan="6" class="muted">…</td></tr></tbody>
     </table>
-    <div class="muted" style="margin-top:8px">Gán client: máy có IP được gán sẽ đi ra Internet qua tunnel tương ứng. Còn lại giữ nguyên đường cũ.</div>
-  </div>
-
-  <div class="card">
-    <h2>Gán client vào VPN</h2>
-    <div class="row">
-      <div><label>Tài khoản VPN</label><select id="as-name"></select></div>
-      <div><label>IP client (vd 192.17.199.199)</label><input id="as-ip" style="width:100%" placeholder="192.17.x.x"></div>
-      <div style="flex:0 0 auto"><label>&nbsp;</label><button class="ok" onclick="assign()">Gán</button> <button class="bad" onclick="unassign()">Bỏ gán</button></div>
-    </div>
+    <div class="muted" style="margin-top:8px">Gán máy qua GUI chính: chọn Proxy Type = VPN ở từng máy hoặc dùng khung "GÁN VPN THEO SỐ MÁY". Còn lại giữ nguyên đường cũ.</div>
   </div>
 
   <div class="row">
@@ -87,7 +78,7 @@
 </div>
 
 <script>
-let ACCOUNTS = [], BUSY = false;
+let ACCOUNTS = [], BUSY = false, MACHINE_MAP = {};
 
 async function api(action, extra={}) {
   const r = await fetch('/api/vpn/action', {method:'POST', headers:{'Content-Type':'application/json'},
@@ -147,6 +138,7 @@ async function refresh() {
   try {
     const r = await (await fetch('/api/vpn/status')).json();
     ACCOUNTS = r.accounts || [];
+    MACHINE_MAP = r.machine_map || {};
   } catch(e) { document.getElementById('upd').textContent = 'mất kết nối'; return; }
   document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()}`;
 
@@ -159,10 +151,21 @@ async function refresh() {
       const cl = a.clients || [];
       let chips;
       if (!cl.length) chips = '<span class="muted">—</span>';
-      else if (cl.length <= 3) chips = cl.map(ip =>
-        `<span class="chip">${esc(ip)}<a title="bỏ gán" onclick="act('unassign',{ip:'${esc(ip)}'})">×</a></span>`).join('');
-      else chips = `<span class="chip" style="border-color:#2ea043;color:#3fb950;cursor:help" title="${esc(cl.join('\n'))}">🟢 ${cl.length} máy</span>`
-        + ` <a class="muted" style="cursor:pointer;font-size:11.5px" onclick="unassignAll('${esc(a.name)}')">bỏ hết</a>`;
+      else {
+        const mmap = Object.assign(draftMachineMap(), MACHINE_MAP);
+        const nums = cl.map(ip => parseInt(String(mmap[ip] || '').replace(/[^0-9]/g, ''), 10)).filter(n => !isNaN(n) && n > 0);
+        const fullList = esc(cl.join('\n'));
+        if (nums.length === cl.length) {
+          chips = `<span class="chip" style="border-color:#2ea043;color:#3fb950;cursor:help" title="${fullList}">🟢 ${esc(compressRanges(nums))} (${cl.length} máy)</span>`
+            + ` <a class="muted" style="cursor:pointer;font-size:11.5px" onclick="unassignAll('${esc(a.name)}')">bỏ hết</a>`;
+        } else if (cl.length <= 3) {
+          chips = cl.map(ip =>
+            `<span class="chip">${esc(ip)}<a title="bỏ gán" onclick="act('unassign',{ip:'${esc(ip)}'})">×</a></span>`).join('');
+        } else {
+          chips = `<span class="chip" style="border-color:#2ea043;color:#3fb950;cursor:help" title="${fullList}">🟢 ${cl.length} máy</span>`
+            + ` <a class="muted" style="cursor:pointer;font-size:11.5px" onclick="unassignAll('${esc(a.name)}')">bỏ hết</a>`;
+        }
+      }
       const main = a.running
         ? `<button class="bad" onclick="act('down',{name:'${esc(a.name)}'})">▼ DOWN</button>
            <button onclick="act('test-exitip',{name:'${esc(a.name)}'})">🌐 Exit-IP</button>`
@@ -178,9 +181,11 @@ async function refresh() {
     }).join('');
   }
   const sel = document.getElementById('as-name');
-  const cur = sel.value;
-  sel.innerHTML = ACCOUNTS.map(a=>`<option value="${esc(a.name)}">${esc(a.name)}</option>`).join('');
-  if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = ACCOUNTS.map(a=>`<option value="${esc(a.name)}">${esc(a.name)}</option>`).join('');
+    if ([...sel.options].some(o=>o.value===cur)) sel.value = cur;
+  }
 }
 
 async function unassignAll(name) {
@@ -190,6 +195,38 @@ async function unassignAll(name) {
   for (const ip of a.clients) { try { await act('unassign', {ip}); } catch(e){} }
   refresh();
 }
+
+    function draftMachineMap() {
+      const map = {};
+      try {
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (!k || k.indexOf('pm_draft_') !== 0) continue;
+          let arr;
+          try { arr = JSON.parse(sessionStorage.getItem(k)); } catch (e) { continue; }
+          if (!Array.isArray(arr)) continue;
+          arr.forEach(r => {
+            const ip = String((r && r.ip) || '').trim();
+            const tag = String((r && r.tag) || '');
+            const m = tag.match(/(\d+)\s*$/);
+            if (ip && m && !map[ip]) map[ip] = m[1];
+          });
+        }
+      } catch (e) {}
+      return map;
+    }
+    function compressRanges(nums) {
+      if (!nums.length) return '';
+      nums = [...new Set(nums)].sort((a, b) => a - b);
+      const parts = [];
+      let s = nums[0], p = nums[0];
+      for (let i = 1; i <= nums.length; i++) {
+        if (nums[i] === p + 1) { p = nums[i]; continue; }
+        parts.push(s === p ? `${s}` : (p - s === 1 ? `${s},${p}` : `${s}-${p}`));
+        s = nums[i]; p = nums[i];
+      }
+      return parts.join(',');
+    }
 
 (async () => {
   try {

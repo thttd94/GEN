@@ -1,5 +1,13 @@
 # Changelog
 
+## Ver 2.6
+
+- sync VPN state on every config apply: machines NOT declared as VPN in the applied config are auto-unassigned (map.txt + ip rules); declared machines keep/restore their tunnel (assign only when tunnel is UP); stale ip-rules pointing to dead tunnels are cleaned via new `vpn_mgr.sh clean-stale` (IPv4-guarded, BusyBox-safe)
+- /vpn Clients column shows machine numbers from server-side `machine_map` (built from shared identity text) — works in any browser tab and without an active session; draft/IP kept as fallback
+- assigning/unassigning VPN via panel or API now records `vpn_account` + direct/block outbound into the ACTIVE session config, so re-applying the same config keeps VPN assignments and switching configs syncs cleanly
+- fix duplicate-case meta keys (PROXY_5 vs proxy_5): new `sess_item` reuses the existing key regardless of case and `get_session_meta` merges case-insensitive duplicates instead of losing fields
+- main GUI opens the ACTIVE session on load instead of always session 1
+
 ## Ver 2.4
 
 - remove XXTouch Jobs tab, panel and adm cluster from the UI while keeping all backend functions/routes/constants intact
