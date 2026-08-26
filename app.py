@@ -237,9 +237,10 @@ def read_current_version_label():
     try:
         text = VERSION_FILE.read_text(encoding='utf-8', errors='replace').strip()
         if text:
+            # Giu nguyen ca dong (vd "Ver 2.7 (d2169ea)") de has_update so khop theo sha tren router khong co git
             first = text.splitlines()[0].strip()
-            m = re.search(r'(Ver\s*[\d.]+)', first, re.IGNORECASE)
-            return m.group(1).replace('ver', 'Ver') if m else first
+            if first:
+                return first
     except Exception:
         pass
     try:
