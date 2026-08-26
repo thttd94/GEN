@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Ver 2.11
+- Fix version pill in the title bar showing only "Ver 2" instead of the full version: the display regex captured just the major number, so Ver 2.10 rendered as "Ver 2". The pill now shows the complete version (e.g. "Ver 2.10") and the hover tooltip keeps the full label including the commit sha.
+
 ## Ver 2.10
 - Release marker to exercise the new update flow: this is the first build that REBOOTS the router on a successful update (behavior introduced in Ver 2.9 - routers updating FROM older builds could not reboot because the old in-memory code performed the update). From this version onward every successful update notifies and fully reboots the router.
 

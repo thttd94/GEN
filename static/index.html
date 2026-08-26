@@ -426,13 +426,13 @@
       const dotEl = document.getElementById('versionDot');
       const btnEl = document.getElementById('versionBtn');
       const rawLabel = String(versionState.current_label || versionState.current_short || 'unknown').trim();
-      const match = rawLabel.match(/Ver\s*\d+/i);
-      const label = match ? match[0].replace(/^ver/i, 'Ver') : rawLabel;
+      const match = rawLabel.match(/Ver\s*[\d.]+/i);
+      const label = match ? match[0].replace(/^ver/i, 'Ver').replace(/\.+$/, '') : rawLabel;
       if (textEl) textEl.textContent = label;
       const hasUpdate = !!versionState.has_update;
       if (dotEl) dotEl.className = 'version-dot' + (hasUpdate ? ' has-update' : '');
       const latest = String(versionState.latest_label || '').trim();
-      if (btnEl) btnEl.title = hasUpdate && latest ? `Có bản mới: ${latest}` : `Bản hiện tại: ${label}`;
+      if (btnEl) btnEl.title = hasUpdate && latest ? `Có bản mới: ${latest}` : `Bản hiện tại: ${rawLabel}`;
     }
     async function refreshVersionInfo(silent=false) {
       try {
