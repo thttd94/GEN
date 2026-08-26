@@ -3913,6 +3913,209 @@ def vpn_refresh_exitips_async():
     return True
 
 
+# ================= GENCORE WATCHDOG (Ver 2.17) =================
+# Tự phát hiện + tự chữa, không cần can thiệp tay:
+#  1) gencore chết -> tự start lại (pattern BusyBox subshell)
+#  2) bão conntrack zombie tới upstream (TIME_WAIT dport=5888 tràn) -> restart gencore
+#  3) sau reboot (tmpfs mất map.txt) -> tự phục hồi mapping + UP lại tunnel như trước mất
+WD_PERSIST_DIR = BASE_DIR / 'persist'
+WD_LOG_FILE = BASE_DIR / 'logs' / 'gencore_watchdog.log'
+WD_STATE = {'hits': 0, 'last_restart': 0.0, 'last_start': 0.0, 'snap': ''}
+WD_ZOMBIE_PORT = '5888'
+
+
+def _wd_log(msg):
+    try:
+        WD_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if WD_LOG_FILE.exists() and WD_LOG_FILE.stat().st_size > 262144:
+            txt = WD_LOG_FILE.read_text(errors='replace')
+            WD_LOG_FILE.write_text(txt[-131072:], encoding='utf-8', errors='replace')
+        ts = time.strftime('%Y-%m-%d %H:%M:%S')
+        with open(WD_LOG_FILE, 'a', encoding='utf-8') as fh:
+            fh.write(f"{ts} {msg}\n")
+    except Exception:
+        pass
+
+
+def _wd_thresholds():
+    thr = {'zombie_tw': 5000, 'ct_total': 40000, 'consecutive': 2, 'cooldown_sec': 600}
+    try:
+        cfg = json.loads((WD_PERSIST_DIR / 'watchdog.json').read_text())
+        for k in list(thr.keys()):
+            v = cfg.get(k)
+            if isinstance(v, int) and v > 0:
+                thr[k] = v
+    except Exception:
+        pass
+    return thr
+
+
+def _wd_conntrack_counts():
+    tw = total = 0
+    try:
+        with open('/proc/net/nf_conntrack', 'r', encoding='utf-8', errors='replace') as fh:
+            for line in fh:
+                total += 1
+                if 'TIME_WAIT' in line and f'dport={WD_ZOMBIE_PORT} ' in line:
+                    tw += 1
+    except OSError:
+        return None
+    return tw, total
+
+
+def _wd_uptime_sec():
+    try:
+        with open('/proc/uptime') as fh:
+            return float(fh.read().split()[0])
+    except Exception:
+        return 1e9
+
+
+def _gencore_pid():
+    try:
+        r = subprocess.run(['pidof', 'gencore'], capture_output=True, text=True, timeout=8)
+        return (r.stdout or '').strip()
+    except Exception:
+        return ''
+
+
+def gencore_start_detached(reason='manual'):
+    # router khong co gencore thi khong lam gi (tranh spam log)
+    if not Path('/usr/bin/gencore').exists():
+        return
+    # pattern BusyBox: ( cmd >log 2>&1 </dev/null & ) — không dùng nohup/setsid
+    try:
+        subprocess.Popen(
+            ['sh', '-c', '( /usr/bin/gencore run -c /etc/genrouter/gencore.json >/tmp/gencore_run.log 2>&1 </dev/null & )'],
+            start_new_session=True,
+        )
+        _wd_log(f'START gencore reason={reason}')
+    except Exception as e:
+        _wd_log(f'START fail reason={reason}: {e}')
+
+
+def gencore_restart_detached(reason='storm'):
+    try:
+        subprocess.run(['sh', '-c',
+                        'kill $(pidof gencore) 2>/dev/null; sleep 2; '
+                        'pidof gencore >/dev/null 2>&1 && kill -9 $(pidof gencore) 2>/dev/null; sleep 1; true'],
+                       timeout=20)
+    except Exception:
+        pass
+    gencore_start_detached(reason)
+
+
+def _wd_persist_runtime(accounts):
+    # Lưu snapshot trạng thái VPN vào flash (BASE_DIR/persist) để sống sót qua reboot tmpfs
+    try:
+        WD_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+        mapping = {}
+        try:
+            with open('/data/vpn/map.txt', 'r', encoding='utf-8', errors='replace') as fh:
+                for line in fh:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        mapping[parts[0].strip()] = parts[1].strip()
+        except OSError:
+            pass
+        snap = {
+            'ts': int(time.time()),
+            'running': sorted(str(a.get('name')) for a in accounts if a.get('running')),
+            'map': mapping,
+        }
+        raw = json.dumps(snap, ensure_ascii=False)
+        if raw != WD_STATE.get('snap'):
+            WD_STATE['snap'] = raw
+            (WD_PERSIST_DIR / 'vpn_runtime.json').write_text(raw, encoding='utf-8')
+    except Exception as e:
+        _wd_log(f'persist error: {e}')
+
+
+def wd_boot_recover(force=False):
+    """Sau reboot: map.txt (tmpfs) bị xoá + tunnel rơi -> trả lại đúng snapshot trước mất."""
+    res = {'ok': True, 'actions': []}
+    try:
+        if not force and _wd_uptime_sec() > 900:
+            res['skipped'] = 'uptime > 900s (khong phai vua reboot)'
+            return res
+        snap_f = WD_PERSIST_DIR / 'vpn_runtime.json'
+        snap = json.loads(snap_f.read_text()) if snap_f.exists() else {}
+        mapping = snap.get('map') or {}
+        running = snap.get('running') or []
+        map_path = Path('/data/vpn/map.txt')
+        map_missing = (not map_path.exists()) or map_path.stat().st_size == 0
+        if mapping and map_missing:
+            lines = [f'{ip} {acc}' for ip, acc in mapping.items()]
+            map_path.parent.mkdir(parents=True, exist_ok=True)
+            map_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+            res['actions'].append(f'restored map.txt ({len(lines)} entries)')
+            _wd_log(f'BOOT-RECOVER map.txt restored {len(lines)} entries')
+        if running:
+            try:
+                cur = vpn_status_json()
+                still = {str(a.get('name')) for a in cur if a.get('running')}
+            except Exception:
+                still = set()
+            for name in running:
+                if name in still:
+                    continue
+                r = vpn_run(['up', name])
+                res['actions'].append(f'up {name}: rc={r.get("rc")}')
+                _wd_log(f'BOOT-RECOVER up {name}: rc={r.get("rc")} {(r.get("output") or "")[:100]}')
+                time.sleep(3)
+    except Exception as e:
+        res = {'ok': False, 'error': str(e)}
+        _wd_log(f'boot_recover error: {e}')
+    return res
+
+
+def gencore_watchdog_loop():
+    _wd_log('WATCHDOG start (Ver 2.17)')
+    time.sleep(25)
+    try:
+        wd_boot_recover()
+    except Exception:
+        pass
+    while True:
+        try:
+            time.sleep(60)
+            thr = _wd_thresholds()
+            cnt = _wd_conntrack_counts()
+            if cnt is None:
+                continue
+            tw, total = cnt
+            pid = _gencore_pid()
+            now = time.time()
+            if not pid:
+                if not Path('/usr/bin/gencore').exists():
+                    continue
+                if now - WD_STATE.get('last_start', 0) >= 180:
+                    WD_STATE['last_start'] = now
+                    WD_STATE['restarts'] = WD_STATE.get('restarts', 0) + 1
+                    gencore_start_detached('dead')
+                continue
+            if tw >= thr['zombie_tw'] or total >= thr['ct_total']:
+                WD_STATE['hits'] = WD_STATE.get('hits', 0) + 1
+                _wd_log(f'STORM hit={WD_STATE["hits"]} tw={tw} total={total} pid={pid}')
+                if WD_STATE['hits'] >= thr['consecutive'] and now - WD_STATE.get('last_restart', 0) >= thr['cooldown_sec']:
+                    WD_STATE['last_restart'] = now
+                    WD_STATE['hits'] = 0
+                    WD_STATE['restarts'] = WD_STATE.get('restarts', 0) + 1
+                    _wd_log(f'RESTART gencore do zombie storm tw={tw} total={total}')
+                    gencore_restart_detached('zombie_storm')
+            elif WD_STATE.get('hits'):
+                WD_STATE['hits'] = 0
+            try:
+                accounts = vpn_status_json()
+            except Exception:
+                accounts = []
+            if accounts:
+                _wd_persist_runtime(accounts)
+        except Exception as e:
+            _wd_log(f'loop error: {e}')
+# =============== END GENCORE WATCHDOG (Ver 2.17) ===============
+
+
 def vpn_add_openvpn_text(name, text, user='', password=''):
     import tempfile
     fd, tmp = tempfile.mkstemp(prefix='vpn_upload_', suffix='.ovpn')
@@ -4790,4 +4993,5 @@ if __name__ == '__main__':
     ensure_vpn_deps_async()
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
+    threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()

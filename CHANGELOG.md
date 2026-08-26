@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## Ver 2.17
+- GENCORE WATCHDOG tu chua (sau su co 26/08: gencore am ~11.000 conn zombie toi upstream :5888 lam LAN di qua core bi den, web khong vao duoc):
+  - Thread nen kiem tra moi 60s: gencore chet -> tu start lai (pattern BusyBox subshell, cooldown 180s).
+  - Dem conntrack TIME_WAIT dport=5888 (port upstream quay): vuot nguong (mac dinh 5000, total 40000) 2 mau lien tiep -> tu restart gencore, cooldown 10 phut. Het bão zombie không cần ai can thiệp tay nữa.
+  - Nguong chinh duoc qua persist/watchdog.json (zombie_tw/ct_total/consecutive/cooldown_sec) — dung de test.
+  - Hanh dong + so dem luon ghi logs/gencore_watchdog.log (tu cat khi qua 256KB) — de sau truy vet su co.
+- TU PHUC HOI SAU REBOOT (map.txt nam tren tmpfs nen mat theo reboot, may client mat mapping/tunnel):
+  - Moi chu ky snapshot trang thai VPN (tunnel dang chay + map ip->account) vao persist/vpn_runtime.json (flash, song sot reboot), chi ghi khi thay doi.
+  - Sau khoi dong (uptime < 15 phut) + map.txt mat: tu ghi lai map.txt tu snapshot roi UP lai tung tunnel dang chay truoc mat; do_up trong vpn_mgr.sh tu goi restore_clients nen ip rule + mangle cho tung may duoc tái lap dung nhu cu.
+  - Service restart binh thuong (khong reboot) khong bi keo vao: chi kich hoat khi map.txt that mat + uptime ngan.
+
 ## Ver 2.16
 - Nang cap tu cai deps: opkg update retry 3 lan (mirror vsean chi lac quan, khong chet hang loat); chi khi chet lien tuc moi doi feed userspace sang downloads.openwrt.org va GIU NGUYEN feed kmods (kernel module phai trung vermagic snapshot). Cai tung goi retry 3 lan; goi userspace (openvpn-openssl, wireguard-tools) con co fallback --force-depends khi vong dep kernel khong giai duoc.
 
