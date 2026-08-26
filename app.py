@@ -3607,13 +3607,22 @@ _FEED_FIX_TO = 'https://downloads.openwrt.org/releases/23.05.5'
 
 
 def _fix_opkg_feeds():
-    """Mirror opkg snapshot thuong bi chet (vsean) -> tu doi sang downloads.openwrt.org release. Giu file .bak goc."""
+    """Mirror vsean lac quan -> doi cac feed userspace sang downloads.openwrt.org release,
+    GIU NGUYEN dong kmods (kernel module phai dung snapshot trung vermagic). Giu file .bak goc."""
     try:
         if not _FEEDS_FILE.exists():
             return False
         text = _FEEDS_FILE.read_text(encoding='utf-8', errors='replace')
-        new = _FEED_FIX_RE.sub(_FEED_FIX_TO, text)
-        if new == text:
+        out_lines = []
+        changed = False
+        for ln in text.splitlines():
+            if ('kmods' not in ln) and ('mirrors.vsean.net' in ln):
+                new_ln = _FEED_FIX_RE.sub(_FEED_FIX_TO, ln)
+                if new_ln != ln:
+                    changed = True
+                ln = new_ln
+            out_lines.append(ln)
+        if not changed:
             return False
         bak = _FEEDS_FILE.with_name('distfeeds.conf.bak')
         if not bak.exists():
@@ -3621,7 +3630,7 @@ def _fix_opkg_feeds():
                 bak.write_text(text, encoding='utf-8')
             except Exception:
                 pass
-        _FEEDS_FILE.write_text(new, encoding='utf-8')
+        _FEEDS_FILE.write_text('\n'.join(out_lines) + '\n', encoding='utf-8')
         return True
     except Exception:
         return False
@@ -3647,26 +3656,43 @@ def _install_vpn_deps_worker(missing):
         if 'wg' in missing:
             pkgs += ['wireguard-tools', 'kmod-wireguard']
         logs = ['Tu cai dat phan mem con thieu: ' + ' '.join(pkgs)]
+
+        def _opkg(args, timeout=420):
+            p = subprocess.run(['opkg'] + args, capture_output=True, text=True, timeout=timeout)
+            return p.returncode, ((p.stdout or '') + (p.stderr or '')).strip()
+
         try:
-            p = subprocess.run(['opkg', 'update'], capture_output=True, text=True, timeout=420)
-            rc = p.returncode
-            tail = ((p.stdout or '') + (p.stderr or '')).strip().splitlines()
-            logs.append('$ opkg update -> rc=' + str(rc))
-            logs.extend('  ' + ln for ln in tail[-4:])
-            if rc != 0 and _fix_opkg_feeds():
-                logs.append('Feed opkg bi chet -> DA TU SUA sang downloads.openwrt.org (backup: distfeeds.conf.bak), thu lai:')
-                p = subprocess.run(['opkg', 'update'], capture_output=True, text=True, timeout=420)
-                tail = ((p.stdout or '') + (p.stderr or '')).strip().splitlines()
-                logs.append('$ opkg update (lan 2) -> rc=' + str(p.returncode))
-                logs.extend('  ' + ln for ln in tail[-4:])
+            upd_ok = False
+            for attempt in (1, 2, 3):
+                rc, out = _opkg(['update'])
+                logs.append('$ opkg update (lan ' + str(attempt) + ') -> rc=' + str(rc))
+                logs.extend('  ' + ln for ln in out.splitlines()[-3:])
+                if rc == 0:
+                    upd_ok = True
+                    break
+                time.sleep(5)
+            if not upd_ok and _fix_opkg_feeds():
+                logs.append('Mirror lac quan lien tuc -> tu doi feed userspace sang downloads.openwrt.org (backup distfeeds.conf.bak, giu nguyen feed kmods), thu lai:')
+                rc, out = _opkg(['update'])
+                logs.append('$ opkg update (sau khi sua feed) -> rc=' + str(rc))
+                logs.extend('  ' + ln for ln in out.splitlines()[-3:])
         except Exception as e:
             logs.append('$ opkg update -> LOI ' + str(e))
         for pkg in pkgs:
             try:
-                p = subprocess.run(['opkg', 'install', pkg], capture_output=True, text=True, timeout=420)
-                tail = ((p.stdout or '') + (p.stderr or '')).strip().splitlines()
-                logs.append('$ opkg install ' + pkg + ' -> rc=' + str(p.returncode))
-                logs.extend('  ' + ln for ln in tail[-3:])
+                rc = 1
+                out = ''
+                for attempt in (1, 2, 3):
+                    rc, out = _opkg(['install', pkg])
+                    logs.append('$ opkg install ' + pkg + ' (lan ' + str(attempt) + ') -> rc=' + str(rc))
+                    logs.extend('  ' + ln for ln in out.splitlines()[-2:])
+                    if rc == 0:
+                        break
+                    time.sleep(4)
+                if rc != 0 and pkg in ('openvpn-openssl', 'wireguard-tools'):
+                    rc, out = _opkg(['install', '--force-depends', pkg])
+                    logs.append('$ opkg install --force-depends ' + pkg + ' -> rc=' + str(rc) + ' (fallback userspace, bo dep kernel)')
+                    logs.extend('  ' + ln for ln in out.splitlines()[-2:])
             except Exception as e:
                 logs.append('$ opkg install ' + pkg + ' -> LOI ' + str(e))
         with _VPN_DEPS_LOCK:

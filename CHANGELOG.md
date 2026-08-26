@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Ver 2.16
+- Nang cap tu cai deps: opkg update retry 3 lan (mirror vsean chi lac quan, khong chet hang loat); chi khi chet lien tuc moi doi feed userspace sang downloads.openwrt.org va GIU NGUYEN feed kmods (kernel module phai trung vermagic snapshot). Cai tung goi retry 3 lan; goi userspace (openvpn-openssl, wireguard-tools) con co fallback --force-depends khi vong dep kernel khong giai duoc.
+
 ## Ver 2.15
 - Tu sua feed opkg chet truoc khi cai: mirror snapshot (mirrors.vsean.net/...23.05-SNAPSHOT) thuong 404 -> app tu doi sang downloads.openwrt.org/releases/23.05.5 (co backup distfeeds.conf.bak) roi thu lai "opkg update".
 - Cai tung goi rieng (openvpn-openssl truoc, wireguard-tools + kmod-wireguard sau) de co gi nhat cung co openvpn dung duoc; ket qua tong ket ro OK/THAT BAI trong log deps, canh bao neu kmod khong hop kernel.
