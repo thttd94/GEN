@@ -1,9 +1,15 @@
-# Changelog
+﻿# CHANGELOG
 
+## Ver 2.7
+- Redesigned main toolbar: 4 unified white cards with icon chips, bottom-aligned full-width primary action buttons (GAN 1 ALL / GAN HANG LOAT / GAN VPN).
+- Per-config color identity: each session tab, session label chip and panel top border get a distinct fixed color (cfg1 blue, cfg2 green, cfg3 orange, cfg4 violet, cfg5 pink) so the active config is recognizable at a glance even after creating more configs.
+- Fixed license line truncation (ACTIVE: FULL | Han: ...) - full text now wraps instead of being cut with ellipsis.
+- Fixed machine-count note showing bogus "0.322" (row with machine 0 leaked into range compression; now filtered n > 0).
+- Redesigned /vpn page: hero header with live status dot, icon-chip section cards, UP/down status badges, unified buttons, clearer AUTO: BAT/TAT labels, wider action column.
 ## Ver 2.6
 
 - sync VPN state on every config apply: machines NOT declared as VPN in the applied config are auto-unassigned (map.txt + ip rules); declared machines keep/restore their tunnel (assign only when tunnel is UP); stale ip-rules pointing to dead tunnels are cleaned via new `vpn_mgr.sh clean-stale` (IPv4-guarded, BusyBox-safe)
-- /vpn Clients column shows machine numbers from server-side `machine_map` (built from shared identity text) — works in any browser tab and without an active session; draft/IP kept as fallback
+- /vpn Clients column shows machine numbers from server-side `machine_map` (built from shared identity text) â€” works in any browser tab and without an active session; draft/IP kept as fallback
 - assigning/unassigning VPN via panel or API now records `vpn_account` + direct/block outbound into the ACTIVE session config, so re-applying the same config keeps VPN assignments and switching configs syncs cleanly
 - fix duplicate-case meta keys (PROXY_5 vs proxy_5): new `sess_item` reuses the existing key regardless of case and `get_session_meta` merges case-insensitive duplicates instead of losing fields
 - main GUI opens the ACTIVE session on load instead of always session 1
@@ -11,7 +17,7 @@
 ## Ver 2.4
 
 - remove XXTouch Jobs tab, panel and adm cluster from the UI while keeping all backend functions/routes/constants intact
-- move the license pill (ACTIVE/hạn) out of the title bar into the table meta row; row count label moves under the tab row
+- move the license pill (ACTIVE/háº¡n) out of the title bar into the table meta row; row count label moves under the tab row
 - add Reboot Router button on the license lock screen; exempt `/api/pm/reboot-router` from the license gate so an inactive machine can still reboot its router
 - simplify tab switching to the single Proxy Manager tab
 - slim the update package: stop shipping legacy gen_backup/versions/1.1 package and per-router update_codes.json state
@@ -30,7 +36,7 @@
 - restore SETUP ROUTER popup: read current LAN IP and submit LAN IP changes through existing router endpoints
 - remove standalone SAVE button above CHECK ALL
 - restore gear/session manager popup for hiding/showing/deleting added configurations
-- simplify NOTE TỔNG display to `Máy <số máy> : <note>` without IP/proxy tag noise
+- simplify NOTE Tá»”NG display to `MÃ¡y <sá»‘ mÃ¡y> : <note>` without IP/proxy tag noise
 - package V2.2 under `gen_backup/versions/2.2/package` for offline/online rollback via `rollback_version.sh 2.2`
 
 ## V2.1
@@ -44,7 +50,7 @@
 ## v2026.05.01-new9001
 
 - start new clean 9001 workspace from current Proxy Manager baseline
-- keep Proxy Manager behavior and shared GÁN MAC/19123 workflow as the active scope
+- keep Proxy Manager behavior and shared GÃN MAC/19123 workflow as the active scope
 - blank/freeze XXTOUCH JOBS tab and remove bundled XXTouch job scripts for later rebuild
 
 
@@ -55,7 +61,7 @@
 
 ## v2026.04.29-121
 
-- fix GÁN IP modal loading when session state is not ready by defaulting safely to session 1 instead of requesting an invalid path
+- fix GÃN IP modal loading when session state is not ready by defaulting safely to session 1 instead of requesting an invalid path
 - reduce unnecessary Group3 schedule polling load in the browser by polling every 5 seconds only while active jobs exist
 - keep machine identity semantics unchanged for `machine|proxy_tag|ip`: when a leading machine number exists it remains the real machine id
 
@@ -128,7 +134,7 @@
 ## v2026.04.18-06
 
 - add `remote_url` support in collector config and router push payload
-- upgrade `collector_proxy_gui.py` with `Mở 9001` and `Copy URL` actions
+- upgrade `collector_proxy_gui.py` with `Má»Ÿ 9001` and `Copy URL` actions
 - show remote URL in collector GUI so each discovered router can be opened directly from the central tool
 
 ## v2026.04.18-05
