@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Ver 2.13
+- FIX quan trong (audit tong quat): vpn_mgr.sh gio TU PHUC HOI tren moi router - app tu copy ban gan trong app (tools/vpn_mgr.sh) ve /data/vpn/ khi thieu hoac khac ban, kiem tra truoc moi lenh VPN (add/up/down/assign/import...). Het loi "can't open /data/vpn/vpn_mgr.sh: No such file or directory" tren router chua tung deploy tay.
+- Trang /vpn: loi nap nhieu file gio hien ly do that thay vi "LOI: ?".
+- Khoi dong service tu dam bao /data/vpn + vpn_mgr.sh san sang; ghi cache exit-ip tu tao thu muc neu thieu.
+
 ## Ver 2.12
 - Deeper pink-purple ("Fire") theme round 2: table rows, selects, meta/notes strips, bulk bar, modals and all inputs/buttons now carry the pink-violet tint (no more white table body); body gradient and headers deepened one notch. Semantic colors (online/offline, config identity colors, fire-gradient primary buttons) unchanged.
 

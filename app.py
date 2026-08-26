@@ -3578,12 +3578,35 @@ VPN_MGR = '/data/vpn/vpn_mgr.sh'
 VPN_HOSTS_FILE = '/data/vpn/express_hosts.txt'
 
 
+def ensure_vpn_mgr():
+    """Tu phat hien + phuc hoi /data/vpn/vpn_mgr.sh tu ban gan trong app (tools/vpn_mgr.sh).
+    Moi router tu lai ngay sau update/restart, khong phu thuoc deploy tay. Tra True neu engine san sang."""
+    try:
+        Path('/data/vpn').mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    dst = Path(VPN_MGR)
+    src = BASE_DIR / 'tools' / 'vpn_mgr.sh'
+    try:
+        if src.exists() and (not dst.exists() or dst.stat().st_size != src.stat().st_size):
+            shutil.copy(str(src), str(dst))
+            try:
+                os.chmod(str(dst), 0o755)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return dst.exists()
+
+
 def vpn_run(args, timeout=150):
     try:
+        if not ensure_vpn_mgr():
+            return {'ok': False, 'error': 'vpn_mgr.sh missing', 'output': 'Thiếu vpn_mgr.sh trên router và không có bản dự phòng tools/vpn_mgr.sh trong thư mục app — hãy bấm Cập nhật lên bản mới nhất rồi thử lại.'}
         p = subprocess.run(['/bin/sh', VPN_MGR] + [str(a) for a in args], capture_output=True, text=True, timeout=timeout)
         return {'ok': p.returncode == 0, 'rc': p.returncode, 'output': ((p.stdout or '') + (p.stderr or '')).strip()}
     except Exception as e:
-        return {'ok': False, 'output': str(e)}
+        return {'ok': False, 'error': str(e), 'output': str(e)}
 
 
 def vpn_machine_map():
@@ -3733,6 +3756,7 @@ def _refresh_exitips_worker():
             _EXITIPS.clear()
             _EXITIPS.update(merged)
             try:
+                Path('/data/vpn').mkdir(parents=True, exist_ok=True)
                 with open(EXITIP_CACHE_FILE, 'w', encoding='utf-8') as f:
                     json.dump(_EXITIPS, f)
             except Exception:
@@ -4622,6 +4646,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     ensure_sessions_exist()
     ensure_xxtouch_workspace()
+    ensure_vpn_mgr()
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()

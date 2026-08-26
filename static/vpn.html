@@ -217,7 +217,7 @@ function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&
           ? await api('add-wg', { name: base, wg_text: text })
           : await api('add-openvpn', { name: base, ovpn_text: text, username: user, password: pass });
         if (r && r.ok !== false) { ok++; log('nap ' + f.name + ': ' + (r.output || 'OK')); }
-        else { fail++; log('nap ' + f.name + ' LOI: ' + ((r && r.error) || '?')); }
+        else { fail++; log('nap ' + f.name + ' LOI: ' + ((r && (r.error || r.output)) || '?')); }
       } catch (e) { fail++; log('nap ' + f.name + ' LOI: ' + e); }
     }
     info.textContent = 'Đã nạp ' + ok + '/' + files.length + ' file' + (fail ? ' — lỗi ' + fail : '') ;
