@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## Ver 2.9
+- `vpn_mgr.sh` is now part of the repo (`tools/vpn_mgr.sh`): the updater auto-installs the latest copy to `/data/vpn/vpn_mgr.sh` (chmod 755) on every successful update, so the VPN tunnel engine (add OpenVPN/WireGuard/Express, up/down, assign/unassign, clean-stale) no longer needs to be copied to routers by hand.
+- Successful updates now notify clearly AND fully REBOOT the router ~5s after the response (sync + reboot) instead of only restarting the proxy-manager service. Clicking update while already on the latest version just reports "already latest" and only restarts the service - no pointless reboots.
+
 ## Ver 2.8
 - WireGuard support end-to-end: /vpn now accepts .conf alongside .ovpn with auto-detection (isWgConf) - paste, single upload or multi-file batch; new `add-wg` API + `vpn_add_wg_text()` validation; WG interfaces get correct running status (`ip link show dev`) and base64-padded keys parse safely (sed splits only the first `=`).
 - Upload configs from PC: file picker on /vpn feeds the same add flow (one file -> preview, many files -> sequential auto-add).

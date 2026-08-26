@@ -446,18 +446,37 @@ def update_repo_from_remote(password: str):
                 os.chmod('/root/gen_update.sh', 0o755)
         except Exception:
             pass
+        # tu dong bo ban vpn_mgr.sh moi nhat vao /data/vpn/ (dong bo engine VPN cho moi router sau update)
+        try:
+            _vm_src = BASE_DIR / 'tools' / 'vpn_mgr.sh'
+            if _vm_src.exists():
+                Path('/data/vpn').mkdir(parents=True, exist_ok=True)
+                shutil.copy(str(_vm_src), '/data/vpn/vpn_mgr.sh')
+                os.chmod('/data/vpn/vpn_mgr.sh', 0o755)
+        except Exception:
+            pass
         shutil.rmtree(tmp_root, ignore_errors=True)
         after_label = read_current_version_label()
         changed = after_label != before_label
-        restart_scheduled = False
-        try:
-            subprocess.Popen(
-                ['sh', '-c', 'sleep 2; /etc/init.d/proxy-manager-v1 restart >/dev/null 2>&1'],
-                start_new_session=True,
-            )
-            restart_scheduled = True
-        except Exception:
-            pass
+        reboot_scheduled = False
+        if changed:
+            # update thanh cong -> bao + REBOOT ca router (theo yeu cau: khong chi restart service)
+            try:
+                subprocess.Popen(
+                    ['sh', '-c', 'sleep 3; sync; reboot >/dev/null 2>&1'],
+                    start_new_session=True,
+                )
+                reboot_scheduled = True
+            except Exception:
+                pass
+        else:
+            try:
+                subprocess.Popen(
+                    ['sh', '-c', 'sleep 2; /etc/init.d/proxy-manager-v1 restart >/dev/null 2>&1'],
+                    start_new_session=True,
+                )
+            except Exception:
+                pass
         return {
             'ok': True,
             'updated': changed,
@@ -466,8 +485,8 @@ def update_repo_from_remote(password: str):
             'current_label': after_label,
             'current_commit': '',
             'current_short': latest_short,
-            'message': ('Đã update lên bản mới' if changed else 'Đã update xong') + (' – đang tự restart service' if restart_scheduled else ''),
-            'restarting': restart_scheduled,
+            'message': ('Đã cập nhật lên bản mới thành công – ROUTER SẼ TỰ KHỞI ĐỘNG LẠI sau ~5 giây' if reboot_scheduled else 'Vẫn là bản mới nhất – không cần khởi động lại'),
+            'rebooting': reboot_scheduled,
         }
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
