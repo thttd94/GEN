@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## Ver 2.15
+- Tu sua feed opkg chet truoc khi cai: mirror snapshot (mirrors.vsean.net/...23.05-SNAPSHOT) thuong 404 -> app tu doi sang downloads.openwrt.org/releases/23.05.5 (co backup distfeeds.conf.bak) roi thu lai "opkg update".
+- Cai tung goi rieng (openvpn-openssl truoc, wireguard-tools + kmod-wireguard sau) de co gi nhat cung co openvpn dung duoc; ket qua tong ket ro OK/THAT BAI trong log deps, canh bao neu kmod khong hop kernel.
+
 ## Ver 2.14
 - Tu cai phan mem VPN thieu qua opkg: router chua co openvpn/wg thi app tu chay "opkg update && opkg install openvpn-openssl wireguard-tools kmod-wireguard" trong nen (khong block GUI), bao tien do bang banner tren /vpn. Lenh VPN lien quan se bao "dang tu cai, cho 1-2 phut roi bam lai" thay vi bao loi thieu.
 - /api/vpn/status tra them truong deps (openvpn/wg/installing/log) de giao dien hien trang thai.

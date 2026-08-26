@@ -3601,6 +3601,30 @@ def ensure_vpn_mgr():
 
 _VPN_DEPS = {'openvpn': None, 'wg': None, 'installing': False, 'log': '', 'ts': 0}
 _VPN_DEPS_LOCK = threading.Lock()
+_FEEDS_FILE = Path('/etc/opkg/distfeeds.conf')
+_FEED_FIX_RE = re.compile(r'https://mirrors\.vsean\.net/openwrt/releases/[^/\s]+')
+_FEED_FIX_TO = 'https://downloads.openwrt.org/releases/23.05.5'
+
+
+def _fix_opkg_feeds():
+    """Mirror opkg snapshot thuong bi chet (vsean) -> tu doi sang downloads.openwrt.org release. Giu file .bak goc."""
+    try:
+        if not _FEEDS_FILE.exists():
+            return False
+        text = _FEEDS_FILE.read_text(encoding='utf-8', errors='replace')
+        new = _FEED_FIX_RE.sub(_FEED_FIX_TO, text)
+        if new == text:
+            return False
+        bak = _FEEDS_FILE.with_name('distfeeds.conf.bak')
+        if not bak.exists():
+            try:
+                bak.write_text(text, encoding='utf-8')
+            except Exception:
+                pass
+        _FEEDS_FILE.write_text(new, encoding='utf-8')
+        return True
+    except Exception:
+        return False
 
 
 def _which(name):
@@ -3623,20 +3647,39 @@ def _install_vpn_deps_worker(missing):
         if 'wg' in missing:
             pkgs += ['wireguard-tools', 'kmod-wireguard']
         logs = ['Tu cai dat phan mem con thieu: ' + ' '.join(pkgs)]
-        for cmd in (['opkg', 'update'], ['opkg', 'install'] + pkgs):
-            try:
-                p = subprocess.run(cmd, capture_output=True, text=True, timeout=420)
+        try:
+            p = subprocess.run(['opkg', 'update'], capture_output=True, text=True, timeout=420)
+            rc = p.returncode
+            tail = ((p.stdout or '') + (p.stderr or '')).strip().splitlines()
+            logs.append('$ opkg update -> rc=' + str(rc))
+            logs.extend('  ' + ln for ln in tail[-4:])
+            if rc != 0 and _fix_opkg_feeds():
+                logs.append('Feed opkg bi chet -> DA TU SUA sang downloads.openwrt.org (backup: distfeeds.conf.bak), thu lai:')
+                p = subprocess.run(['opkg', 'update'], capture_output=True, text=True, timeout=420)
                 tail = ((p.stdout or '') + (p.stderr or '')).strip().splitlines()
-                logs.append('$ ' + ' '.join(cmd) + ' -> rc=' + str(p.returncode))
-                logs.extend('  ' + ln for ln in tail[-6:])
+                logs.append('$ opkg update (lan 2) -> rc=' + str(p.returncode))
+                logs.extend('  ' + ln for ln in tail[-4:])
+        except Exception as e:
+            logs.append('$ opkg update -> LOI ' + str(e))
+        for pkg in pkgs:
+            try:
+                p = subprocess.run(['opkg', 'install', pkg], capture_output=True, text=True, timeout=420)
+                tail = ((p.stdout or '') + (p.stderr or '')).strip().splitlines()
+                logs.append('$ opkg install ' + pkg + ' -> rc=' + str(p.returncode))
+                logs.extend('  ' + ln for ln in tail[-3:])
             except Exception as e:
-                logs.append('$ ' + ' '.join(cmd) + ' -> LOI ' + str(e))
+                logs.append('$ opkg install ' + pkg + ' -> LOI ' + str(e))
         with _VPN_DEPS_LOCK:
             _VPN_DEPS['installing'] = False
-            _VPN_DEPS['log'] = '\n'.join(logs)[-2000:]
+            _VPN_DEPS['log'] = '\n'.join(logs)[-2400:]
             _VPN_DEPS['ts'] = int(time.time())
             _VPN_DEPS['openvpn'] = _which('openvpn')
             _VPN_DEPS['wg'] = _which('wg')
+            summary = []
+            summary.append('KET QUA: openvpn=' + ('OK' if _VPN_DEPS['openvpn'] else 'THAT BAI') + ', wg=' + ('OK' if _VPN_DEPS['wg'] else 'THAT BAI'))
+            if not _VPN_DEPS['wg']:
+                summary.append('Luu y: kmod-wireguard co the khong hop kernel firmware nay — openvpn van dung binh thuong, WG can firmware co WireGuard.')
+            _VPN_DEPS['log'] = (_VPN_DEPS['log'] + '\n' + '\n'.join(summary))[-2400:]
     except Exception:
         with _VPN_DEPS_LOCK:
             _VPN_DEPS['installing'] = False
