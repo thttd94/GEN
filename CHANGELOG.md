@@ -1,4 +1,11 @@
-﻿# CHANGELOG
+# CHANGELOG
+
+## Ver 2.8
+- WireGuard support end-to-end: /vpn now accepts .conf alongside .ovpn with auto-detection (isWgConf) - paste, single upload or multi-file batch; new `add-wg` API + `vpn_add_wg_text()` validation; WG interfaces get correct running status (`ip link show dev`) and base64-padded keys parse safely (sed splits only the first `=`).
+- Upload configs from PC: file picker on /vpn feeds the same add flow (one file -> preview, many files -> sequential auto-add).
+- WAN IP column on /vpn replaces the Dev column (dev name kept as cell tooltip): server probes the public exit IP of every RUNNING tunnel in parallel batches of 8 threads via a bound socket per tunnel, caches to /data/vpn/exitips.json; GET /api/vpn/exitips + POST action refresh-exitips; frontend polls every 60s, auto-triggers a refresh when data is stale and after up/down/del actions; probing cells show "dang do...".
+- New "Fire" pink-purple theme for both pages: main page shifts to a clearly pink-violet light palette with fire-gradient APPLY/primary buttons; /vpn goes dark plum with fire glows and gold WAN IPs. Both pages declare color-scheme (light only / dark) so browsers cannot auto-swap the palette.
+- Fleet note for WireGuard routers: opkg install wireguard-tools kmod-wireguard + add the `vpntun` firewall zone (tun*/wg* devices, ACCEPT + masq + mtu_fix), lan->vpntun forwarding and a QUIC UDP/443 reject rule via UCI so forwarded clients get internet (survives fw4 reload).
 
 ## Ver 2.7
 - Redesigned main toolbar: 4 unified white cards with icon chips, bottom-aligned full-width primary action buttons (GAN 1 ALL / GAN HANG LOAT / GAN VPN).

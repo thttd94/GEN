@@ -3634,6 +3634,102 @@ def vpn_exit_ip(name):
     return {'ok': True, 'exit_ip': ip_out, 'local_tunnel_ip': lip, 'dev': dev}
 
 
+# ---- WAN IP cua tung tunnel: probe song song + cache file (cot "WAN IP" trang /vpn) ----
+EXITIP_CACHE_FILE = '/data/vpn/exitips.json'
+_EXITIPS = {}
+_EXITIPS_BUSY = {'v': False}
+_EXITIP_LOCK = threading.Lock()
+try:
+    with open(EXITIP_CACHE_FILE, encoding='utf-8') as _f:
+        _EXITIPS = json.load(_f) or {}
+except Exception:
+    _EXITIPS = {}
+
+
+def _probe_exit_ip_dev(dev, tbl, timeout=8):
+    """Bind socket vao IP trong tunnel roi hoi api.ipify.org — tra ve exit IP hoac None."""
+    lip = ''
+    try:
+        out = subprocess.run(['ip', '-4', 'addr', 'show', dev], capture_output=True, text=True).stdout
+        m = re.search(r'inet (\d+\.\d+\.\d+\.\d+)', out or '')
+        if m:
+            lip = m.group(1)
+    except Exception:
+        return None
+    if not lip:
+        return None
+    added = subprocess.run(['ip', 'rule', 'add', 'from', lip, 'table', str(tbl), 'priority', '5'], capture_output=True).returncode == 0
+    ip_out = ''
+    try:
+        s = socket.socket()
+        s.settimeout(timeout)
+        s.bind((lip, 0))
+        s.connect(('api.ipify.org', 80))
+        s.sendall(b'GET / HTTP/1.0\r\nHost: api.ipify.org\r\n\r\n')
+        data = b''
+        while True:
+            chunk = s.recv(512)
+            if not chunk:
+                break
+            data += chunk
+        ip_out = data.decode('utf-8', 'replace').split('\r\n\r\n')[-1].strip()
+    except Exception:
+        return None
+    finally:
+        if added:
+            subprocess.run(['ip', 'rule', 'del', 'from', lip, 'table', str(tbl), 'priority', '5'], capture_output=True)
+    return ip_out or None
+
+
+def _refresh_exitips_worker():
+    try:
+        accs = [a for a in vpn_status_json() if a.get('running')]
+        results = {}
+
+        def _job(a):
+            try:
+                results[a['name']] = _probe_exit_ip_dev(a.get('dev'), a.get('table'))
+            except Exception:
+                pass
+
+        for i in range(0, len(accs), 8):
+            batch = accs[i:i + 8]
+            ths = [threading.Thread(target=_job, args=(a,), daemon=True) for a in batch]
+            for t in ths:
+                t.start()
+            for t in ths:
+                t.join(14)
+        now = int(time.time())
+        running_names = {a['name'] for a in accs}
+        merged = {}
+        for name in sorted(set(list(_EXITIPS.keys()) + list(results.keys()))):
+            if name in results and results[name]:
+                merged[name] = {'ip': results[name], 'ts': now}
+            elif name not in running_names:
+                continue  # tunnel khong chay nua -> bo ket qua cu
+            else:
+                merged[name] = _EXITIPS.get(name)
+        merged = {k: v for k, v in merged.items() if v}
+        with _EXITIP_LOCK:
+            _EXITIPS.clear()
+            _EXITIPS.update(merged)
+            try:
+                with open(EXITIP_CACHE_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(_EXITIPS, f)
+            except Exception:
+                pass
+    finally:
+        _EXITIPS_BUSY['v'] = False
+
+
+def vpn_refresh_exitips_async():
+    if _EXITIPS_BUSY['v']:
+        return False
+    _EXITIPS_BUSY['v'] = True
+    threading.Thread(target=_refresh_exitips_worker, daemon=True).start()
+    return True
+
+
 def vpn_add_openvpn_text(name, text, user='', password=''):
     import tempfile
     fd, tmp = tempfile.mkstemp(prefix='vpn_upload_', suffix='.ovpn')
@@ -3644,6 +3740,20 @@ def vpn_add_openvpn_text(name, text, user='', password=''):
         if user:
             args += [user, password]
         return vpn_run(args)
+    finally:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+
+
+def vpn_add_wg_text(name, text):
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix='vpn_upload_', suffix='.conf')
+    with os.fdopen(fd, 'w', encoding='utf-8', errors='replace') as f:
+        f.write(text.replace('\r\n', '\n'))
+    try:
+        return vpn_run(['add-wg', name, tmp])
     finally:
         try:
             os.remove(tmp)
@@ -3822,6 +3932,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_file(STATIC_DIR / 'vpn.html')
         if path == '/api/vpn/status':
             return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map()})
+        if path == '/api/vpn/exitips':
+            return self._send_json({'ok': True, 'ips': dict(_EXITIPS), 'busy': _EXITIPS_BUSY['v']})
         if path == '/api/vpn/express-hosts':
             hosts = []
             try:
@@ -4432,7 +4544,7 @@ class Handler(BaseHTTPRequestHandler):
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()
                 ipaddr = str(payload.get('ip', '')).strip()
-                if action != 'unassign' and not re.match(r'^[A-Za-z0-9_.-]{1,64}$', name):
+                if action not in ('unassign', 'refresh-exitips') and not re.match(r'^[A-Za-z0-9_.-]{1,64}$', name):
                     return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
                 if action == 'up':
                     return self._send_json(vpn_run(['up', name]))
@@ -4470,8 +4582,16 @@ class Handler(BaseHTTPRequestHandler):
                     if len(ovpn_text) < 50:
                         return self._send_json({'ok': False, 'error': 'thieu noi dung file .ovpn'})
                     return self._send_json(vpn_add_openvpn_text(name, ovpn_text, user, pwd))
+                if action == 'add-wg':
+                    wg_text = str(payload.get('wg_text', '') or '')
+                    if '[Interface]' not in wg_text or 'PrivateKey' not in wg_text:
+                        return self._send_json({'ok': False, 'error': 'file khong dung dinh dang WireGuard (thieu [Interface]/PrivateKey)'})
+                    return self._send_json(vpn_add_wg_text(name, wg_text))
                 if action == 'test-exitip':
                     return self._send_json(vpn_exit_ip(name))
+                if action == 'refresh-exitips':
+                    started = vpn_refresh_exitips_async()
+                    return self._send_json({'ok': True, 'started': started})
                 return self._send_json({'ok': False, 'error': f'action khong ho tro: {action}'})
             return self._send_json({'error': 'Not found'}, 404)
         except urllib.error.HTTPError as e:

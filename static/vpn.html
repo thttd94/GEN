@@ -3,47 +3,49 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>VPN Manager — Router GEN</title>
 <style>
-  :root { --bg:#0b1220; --card:#111a2e; --line:#24304a; --txt:#e2e8f0; --dim:#9db0cc; --ok:#22c55e; --bad:#ef4444; --acc:#38bdf8; }
+  :root { color-scheme: dark; --bg:#170a1f; --card:#251030; --line:#4b2055; --txt:#fdeeff; --dim:#c99dd8; --ok:#2ee6a8; --bad:#ff5470; --acc:#f056c7; }
   * { box-sizing:border-box; }
-  body { margin:0; background:radial-gradient(1100px 500px at 15% -10%, #16233f 0%, var(--bg) 55%) fixed; color:var(--txt); font-family:'Segoe UI',system-ui,sans-serif; font-size:14px; }
+  body { margin:0; background:radial-gradient(900px 480px at 88% 112%, rgba(255,94,58,.16), transparent 60%), radial-gradient(1100px 520px at 12% -10%, #47154e 0%, var(--bg) 60%) fixed; color:var(--txt); font-family:'Segoe UI',system-ui,sans-serif; font-size:14px; }
   .wrap { max-width:1150px; margin:0 auto; padding:20px 18px 30px; }
-  .hero { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; background:linear-gradient(135deg,#1e3a8a 0%,#0f2748 55%,#0b1220 100%); border:1px solid #24406b; border-radius:14px; padding:16px 20px; margin-bottom:18px; box-shadow:0 10px 30px rgba(2,6,17,.45); }
-  .hero h1 { margin:0; font-size:19px; display:flex; align-items:center; gap:10px; }
+  .hero { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; background:linear-gradient(135deg,#8a2170 0%,#55165c 45%,#2b0f33 100%); border:1px solid #71286f; border-radius:14px; padding:16px 20px; margin-bottom:18px; box-shadow:0 10px 30px rgba(80,10,60,.45); }
+  .hero h1 { margin:0; font-size:19px; display:flex; align-items:center; gap:10px; text-shadow:0 1px 8px rgba(255,120,190,.35); }
   .hero .sub { color:var(--dim); font-size:12.5px; margin-top:4px; }
-  .pill { font-size:12px; padding:5px 12px; border-radius:999px; background:rgba(11,18,32,.7); border:1px solid var(--line); color:var(--dim); display:inline-flex; align-items:center; gap:7px; }
-  .pill::before { content:''; width:8px; height:8px; border-radius:999px; background:var(--ok); box-shadow:0 0 8px rgba(34,197,94,.7); }
-  .card { background:linear-gradient(180deg,#131e36 0%,var(--card) 100%); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:16px; box-shadow:0 6px 18px rgba(2,6,17,.4); }
-  .card h2 { display:flex; align-items:center; gap:9px; font-size:12.5px; text-transform:uppercase; letter-spacing:.5px; color:#cbd5e1; border-bottom:1px dashed var(--line); padding-bottom:9px; margin:0 0 12px; }
-  .h-ico { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:7px; font-size:12.5px; background:linear-gradient(135deg,#38bdf8,#2563eb); box-shadow:0 2px 6px rgba(2,6,17,.5); flex:0 0 auto; }
-  .h-ico-green { background:linear-gradient(135deg,#4ade80,#16a34a); }
-  .h-ico-violet { background:linear-gradient(135deg,#a78bfa,#7c3aed); }
-  .h-ico-amber { background:linear-gradient(135deg,#fbbf24,#d97706); }
+  .pill { font-size:12px; padding:5px 12px; border-radius:999px; background:rgba(23,10,31,.72); border:1px solid var(--line); color:var(--dim); display:inline-flex; align-items:center; gap:7px; }
+  .pill::before { content:''; width:8px; height:8px; border-radius:999px; background:var(--ok); box-shadow:0 0 8px rgba(46,230,168,.7); }
+  .card { background:linear-gradient(180deg,#301238 0%,var(--card) 100%); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:16px; box-shadow:0 6px 18px rgba(60,8,48,.4); }
+  .card h2 { display:flex; align-items:center; gap:9px; font-size:12.5px; text-transform:uppercase; letter-spacing:.5px; color:#eec3ef; border-bottom:1px dashed var(--line); padding-bottom:9px; margin:0 0 12px; }
+  .h-ico { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:7px; font-size:12.5px; background:linear-gradient(135deg,#fb923c,#ec4899); box-shadow:0 2px 6px rgba(90,10,60,.5); flex:0 0 auto; }
+  .h-ico-green { background:linear-gradient(135deg,#34d399,#0f9d6a); }
+  .h-ico-violet { background:linear-gradient(135deg,#e879f9,#9333ea); }
+  .h-ico-amber { background:linear-gradient(135deg,#fbbf24,#ea580c); }
   table { width:100%; border-collapse:collapse; }
   th,td { text-align:left; padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:top; font-size:13px; }
-  tbody tr:hover td { background:rgba(56,189,248,.05); }
-  th { color:var(--dim); font-weight:700; white-space:nowrap; text-transform:uppercase; font-size:11px; letter-spacing:.6px; }
+  tbody tr:hover td { background:rgba(240,86,199,.07); }
+  th { color:#eeb8ec; font-weight:700; white-space:nowrap; text-transform:uppercase; font-size:11px; letter-spacing:.6px; }
   tr:last-child td { border-bottom:none; }
-  button { background:#1b2740; color:var(--txt); border:1px solid #2c3b5e; border-radius:9px; padding:5px 10px; cursor:pointer; font-size:12px; font-weight:600; margin:2px 3px 2px 0; transition:.15s ease; white-space:nowrap; }
+  button { background:#33153e; color:var(--txt); border:1px solid #5c2a68; border-radius:9px; padding:5px 10px; cursor:pointer; font-size:12px; font-weight:600; margin:2px 3px 2px 0; transition:.15s ease; white-space:nowrap; }
   td:last-child button { font-size:11.5px; padding:5px 9px; }
-  button:hover { border-color:var(--acc); color:var(--acc); transform:translateY(-1px); }
-  button.ok { background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; border-color:#16a34a; }
-  button.ok:hover { color:#fff; filter:brightness(1.12); }
-  button.bad { color:#f87171; border-color:#7f1d1d; background:rgba(239,68,68,.08); }
-  button.bad:hover { color:#fca5a5; border-color:var(--bad); }
-  input,select,textarea { background:#0b1220; color:var(--txt); border:1px solid var(--line); border-radius:9px; padding:7px 10px; font-size:13px; }
-  input:focus,select:focus,textarea:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 3px rgba(56,189,248,.15); }
+  button:hover { border-color:var(--acc); color:#ffb8ec; transform:translateY(-1px); }
+  button.ok { background:linear-gradient(135deg,#f97316,#ec4899 55%,#c026d3); color:#fff; border-color:#e0447f; box-shadow:0 3px 10px rgba(236,72,153,.35); }
+  button.ok:hover { color:#fff; filter:brightness(1.13); }
+  button.bad { color:#ff8aa5; border-color:#7f1d3d; background:rgba(255,84,112,.09); }
+  button.bad:hover { color:#ffb3c4; border-color:var(--bad); }
+  input,select,textarea { background:#1d0a26; color:var(--txt); border:1px solid var(--line); border-radius:9px; padding:7px 10px; font-size:13px; }
+  input:focus,select:focus,textarea:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 3px rgba(240,86,199,.18); }
   textarea { width:100%; min-height:110px; font-family:Consolas,monospace; font-size:12px; resize:vertical; }
   label { display:block; color:var(--dim); font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin:10px 0 4px; }
   .row { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
   .row > .card { flex:1 1 340px; margin-bottom:0; }
   .row { margin-bottom:16px; }
-  #log { background:#0b1220; border:1px solid var(--line); border-radius:10px; padding:10px 12px; max-height:180px; overflow:auto; font-family:Consolas,monospace; font-size:12px; white-space:pre-wrap; }
-  .chip { display:inline-block; background:#0b1220; border:1px solid var(--line); border-radius:999px; padding:3px 10px; margin:2px 3px 2px 0; font-size:12px; }
+  #log { background:#1d0a26; border:1px solid var(--line); border-radius:10px; padding:10px 12px; max-height:180px; overflow:auto; font-family:Consolas,monospace; font-size:12px; white-space:pre-wrap; }
+  .chip { display:inline-block; background:#1d0a26; border:1px solid var(--line); border-radius:999px; padding:3px 10px; margin:2px 3px 2px 0; font-size:12px; }
   .chip a { color:var(--bad); text-decoration:none; margin-left:5px; cursor:pointer; }
-  .st-up { display:inline-flex; align-items:center; gap:5px; background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.4); color:#4ade80; font-weight:700; font-size:11.5px; border-radius:999px; padding:2px 10px; }
-  .st-down { display:inline-flex; align-items:center; gap:5px; background:rgba(148,163,184,.08); border:1px solid var(--line); color:var(--dim); font-weight:600; font-size:11.5px; border-radius:999px; padding:2px 10px; }
+  .st-up { display:inline-flex; align-items:center; gap:5px; background:rgba(46,230,168,.1); border:1px solid rgba(46,230,168,.45); color:#4ff0bd; font-weight:700; font-size:11.5px; border-radius:999px; padding:2px 10px; }
+  .st-down { display:inline-flex; align-items:center; gap:5px; background:rgba(201,157,216,.08); border:1px solid var(--line); color:var(--dim); font-weight:600; font-size:11.5px; border-radius:999px; padding:2px 10px; }
+  .wan-ok { color:#ffc94d; font-weight:800; letter-spacing:.3px; text-shadow:0 0 10px rgba(255,201,77,.35); }
   .muted { color:var(--dim); font-size:12px; }
 </style>
 </head>
@@ -60,7 +62,7 @@
 <div class="card">
     <h2><span class="h-ico">🛰</span>Tunnel VPN</h2>
     <table>
-      <thead><tr><th>Tên</th><th>Loại</th><th>Dev</th><th>Trạng thái</th><th>Clients gán</th><th style="width:340px">Hành động</th></tr></thead>
+      <thead><tr><th>Tên</th><th>Loại</th><th title="IP công cộng của tunnel — có IP tức là VPN online">WAN IP</th><th>Trạng thái</th><th>Clients gán</th><th style="width:340px">Hành động</th></tr></thead>
       <tbody id="tb"><tr><td colspan="6" class="muted">…</td></tr></tbody>
     </table>
     <div class="muted" style="margin-top:8px">Gán máy qua GUI chính: chọn Proxy Type = VPN ở từng máy hoặc dùng khung "GÁN VPN THEO SỐ MÁY". Còn lại giữ nguyên đường cũ.</div>
@@ -79,10 +81,14 @@
     </div>
 
     <div class="card">
-      <h2><span class="h-ico h-ico-violet">📄</span>Thêm OpenVPN khác (.ovpn bất kỳ)</h2>
-      <label>Tên tài khoản</label><input id="ov-name" placeholder="vpngate-japan" style="width:100%">
-      <label>Nội dung file .ovpn (dán nguyên file)</label>
+      <h2><span class="h-ico h-ico-violet">📄</span>Thêm OpenVPN / WireGuard (.ovpn / .conf bất kỳ)</h2>
+      <label>Tên tài khoản</label><input id="ov-name" placeholder="vpngate-japan / wg-korea" style="width:100%">
+      <label>Nội dung file (.ovpn hoặc .conf WireGuard — dán nguyên file)</label>
       <textarea id="ov-text" placeholder="client&#10;dev tun&#10;remote ..."></textarea>
+      <div style="border-top:1px dashed var(--line); margin-top:12px; padding-top:4px;"></div>
+      <label>📂 Nạp file từ máy PC (.ovpn / .conf — chọn được nhiều file cùng lúc)</label>
+      <input type="file" id="ov-files" accept=".ovpn,.conf,.txt,text/plain" multiple style="width:100%; background:#0b1220; padding:6px; cursor:pointer;">
+      <div class="muted" id="ov-files-info" style="margin-top:6px;">Chọn 1 file → điền vào ô trên để xem trước · chọn nhiều file → tự thêm từng tài khoản</div>
       <label>User / Pass (nếu có — vd NordVPN, ExpressVPN)</label>
       <div class="row"><div><input id="ov-user" placeholder="username" style="width:100%"></div>
       <div><input id="ov-pass" type="password" placeholder="password" style="width:100%"></div></div>
@@ -97,7 +103,30 @@
 </div>
 
 <script>
-let ACCOUNTS = [], BUSY = false, MACHINE_MAP = {};
+let ACCOUNTS = [], BUSY = false, MACHINE_MAP = {}, WANIPS = {};
+
+function wanIpCell(a) {
+  const w = WANIPS[a.name];
+  if (w && w.ip) return `<b class="wan-ok">${esc(w.ip)}</b>`;
+  if (a.running) return `<span class="muted">đang dò…</span>`;
+  return `<span class="muted">—</span>`;
+}
+
+async function loadWanIps() {
+  try {
+    const r = await (await fetch('/api/vpn/exitips')).json();
+    WANIPS = r.ips || {};
+    const anyRunning = (ACCOUNTS || []).some(a => a.running);
+    const newest = Math.max(0, ...Object.values(WANIPS).map(w => w.ts || 0));
+    const stale = !r.busy && anyRunning && (Date.now()/1000 - newest) > 150;
+    render();
+    if ((stale || (!Object.keys(WANIPS).length && anyRunning)) ) {
+      await api('refresh-exitips');
+      setTimeout(loadWanIps, 14000);
+    }
+  } catch(e) {}
+}
+setInterval(loadWanIps, 60000);
 
 async function api(action, extra={}) {
   const r = await fetch('/api/vpn/action', {method:'POST', headers:{'Content-Type':'application/json'},
@@ -120,6 +149,10 @@ async function act(action, extra, confirmText) {
   } catch(e) { log(`${action}: LỖI ${e}`); }
   BUSY = false;
   refresh();
+  if (['up','down','del'].includes(action)) {
+    api('refresh-exitips').catch(()=>{});
+    setTimeout(loadWanIps, 16000);
+  }
 }
 
 async function assign() {
@@ -146,11 +179,52 @@ async function addOpenvpn() {
   const username = document.getElementById('ov-user').value.trim();
   const password = document.getElementById('ov-pass').value;
   if (!name) return log('nhập tên tài khoản');
-  if (ovpn_text.length < 50) return log('dán nội dung file .ovpn vào ô lớn');
+  if (ovpn_text.length < 50) return log('dán nội dung file vào ô lớn');
+  if (isWgConf(ovpn_text)) return await act('add-wg', {name, wg_text: ovpn_text});
   await act('add-openvpn', {name, ovpn_text, username, password});
 }
+function isWgConf(t){ return /^\s*\[Interface\]/m.test(t) && /PrivateKey/i.test(t); }
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+(function(){
+  const fi = document.getElementById('ov-files');
+  if (!fi) return;
+  fi.addEventListener('change', async function () {
+    const files = [...this.files];
+    if (!files.length) return;
+    const user = document.getElementById('ov-user').value.trim();
+    const pass = document.getElementById('ov-pass').value;
+    const info = document.getElementById('ov-files-info');
+    if (files.length === 1) {
+      const f = files[0];
+      const text = await f.text();
+      document.getElementById('ov-text').value = text;
+      if (!document.getElementById('ov-name').value.trim()) {
+        document.getElementById('ov-name').value = f.name.replace(/\.(ovpn|conf|txt)$/i, '');
+      }
+      info.textContent = 'Đã nạp "' + f.name + '" vào ô nội dung — kiểm tra rồi bấm "Thêm tài khoản"' + (isWgConf(text) ? ' (phát hiện file WireGuard — sẽ tạo tài khoản WireGuard)' : '');
+      this.value = '';
+      return;
+    }
+    if (!confirm('Nạp ' + files.length + ' file thành ' + files.length + ' tài khoản VPN riêng?')) { this.value = ''; return; }
+    let ok = 0, fail = 0;
+    for (const f of files) {
+      try {
+        const text = await f.text();
+        const base = f.name.replace(/\.(ovpn|conf|txt)$/i, '').replace(/[^a-zA-Z0-9._-]+/g, '-');
+        const r = isWgConf(text)
+          ? await api('add-wg', { name: base, wg_text: text })
+          : await api('add-openvpn', { name: base, ovpn_text: text, username: user, password: pass });
+        if (r && r.ok !== false) { ok++; log('nap ' + f.name + ': ' + (r.output || 'OK')); }
+        else { fail++; log('nap ' + f.name + ' LOI: ' + ((r && r.error) || '?')); }
+      } catch (e) { fail++; log('nap ' + f.name + ' LOI: ' + e); }
+    }
+    info.textContent = 'Đã nạp ' + ok + '/' + files.length + ' file' + (fail ? ' — lỗi ' + fail : '') ;
+    this.value = '';
+    refresh();
+  });
+})();
 
 async function refresh() {
   if (BUSY) return;
@@ -160,6 +234,7 @@ async function refresh() {
     MACHINE_MAP = r.machine_map || {};
   } catch(e) { document.getElementById('upd').textContent = 'mất kết nối'; return; }
   document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()}`;
+  loadWanIps();
 
   const tb = document.getElementById('tb');
   if (!ACCOUNTS.length) {
@@ -194,7 +269,7 @@ async function refresh() {
         : `<button onclick="act('autostart_on',{name:'${esc(a.name)}'})" title="Bật tự khởi động">AUTO: TẮT</button>`;
       return `<tr>
         <td><b>${esc(a.name)}</b>${a.host?`<div class="muted">${esc(a.host)}</div>`:''}</td>
-        <td>${esc(a.type)}</td><td>${esc(a.dev)}</td><td>${st}</td><td>${chips}</td>
+        <td>${esc(a.type)}</td><td class="wanip" title="${esc(a.dev)}">${wanIpCell(a)}</td><td>${st}</td><td>${chips}</td>
         <td>${main}${auto}<button class="bad" onclick="act('del',{name:'${esc(a.name)}'},'Xóa tài khoản ${esc(a.name)}?')">Xóa</button></td>
       </tr>`;
     }).join('');
