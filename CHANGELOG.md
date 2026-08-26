@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Ver 2.10
+- Release marker to exercise the new update flow: this is the first build that REBOOTS the router on a successful update (behavior introduced in Ver 2.9 - routers updating FROM older builds could not reboot because the old in-memory code performed the update). From this version onward every successful update notifies and fully reboots the router.
+
 ## Ver 2.9
 - `vpn_mgr.sh` is now part of the repo (`tools/vpn_mgr.sh`): the updater auto-installs the latest copy to `/data/vpn/vpn_mgr.sh` (chmod 755) on every successful update, so the VPN tunnel engine (add OpenVPN/WireGuard/Express, up/down, assign/unassign, clean-stale) no longer needs to be copied to routers by hand.
 - Successful updates now notify clearly AND fully REBOOT the router ~5s after the response (sync + reboot) instead of only restarting the proxy-manager service. Clicking update while already on the latest version just reports "already latest" and only restarts the service - no pointless reboots.
