@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## Ver 2.12
+- Deeper pink-purple ("Fire") theme round 2: table rows, selects, meta/notes strips, bulk bar, modals and all inputs/buttons now carry the pink-violet tint (no more white table body); body gradient and headers deepened one notch. Semantic colors (online/offline, config identity colors, fire-gradient primary buttons) unchanged.
+
 ## Ver 2.11
 - Fix version pill in the title bar showing only "Ver 2" instead of the full version: the display regex captured just the major number, so Ver 2.10 rendered as "Ver 2". The pill now shows the complete version (e.g. "Ver 2.10") and the hover tooltip keeps the full label including the commit sha.
 
