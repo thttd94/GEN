@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## Ver 2.18
+- SESSION STATE GUARDIAN — fix goc re vu mat ca cau hinh proxy khi reboot giua luc ghi (su co 26/08: reboot tay lam hong session_state.json, app nuot loi tra {} roi ghi de trang -> toan bo may nhay sang CHUA CAU HINH):
+  - Ghi nguyen tu (atomic write + fsync + os.replace) cho moi file JSON: tren dia chi ton tai ban cu hoan chinh HOAC ban moi hoan chinh, khong bao gio co file do dang nua.
+  - Chan save-rong: neu ban moi rong/trang trong khi ban dang tai co du lieu -> tu choi ghi + log canh bao (muon reset that su thi xoa tay cac file session_state.json*).
+  - Backup xoay vong 5 ban (session_state.json.bak.1..5): chi dua ban tot (parse duoc + co du lieu) vao chuoi backup.
+  - Self-heal khi load: file chinh mat/hong/rong bat thuong -> tu tim backup moi nhat con dung duoc (bao gom ban ngoai rootfs /data/vpn_backup/session_state.json) -> phuc hoi ngay + ghi log. Khong con nuot loi im lang.
+  - Moi su kien chan/heal deu ghi logs/session_state_guardian.log de truy vet.
+
 ## Ver 2.17
 - GENCORE WATCHDOG tu chua (sau su co 26/08: gencore am ~11.000 conn zombie toi upstream :5888 lam LAN di qua core bi den, web khong vao duoc):
   - Thread nen kiem tra moi 60s: gencore chet -> tu start lai (pattern BusyBox subshell, cooldown 180s).

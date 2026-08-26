@@ -709,9 +709,158 @@ def load_json(path: Path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def save_json(path: Path, data):
+# ===== SESSION STATE GUARDIAN (Ver 2.18) =====
+# Root-cause fix vu mat session_state.json khi reboot giua luc ghi:
+#   L1 atomic write + fsync  -> khong bao gio co file do dang tren dia
+#   L2 refuse-empty-save     -> chan ghi de state rong len state co du lieu
+#   L3 rotating backups      -> 5 ban .bak gan nhat luon san sang
+#   L4 self-heal on load     -> file hong/rong bat thuong thi tu phuc hoi tu bak tot nhat
+#   L5 external copy /data   -> 1 ban du phong ngoai rootfs
+# Moi su kien heal/chan deu log vao logs/session_state_guardian.log
+SS_BACKUP_COUNT = 5
+SS_EXT_DIR = Path('/data/vpn_backup')
+SS_HEAL_LOG = BASE_DIR / 'logs' / 'session_state_guardian.log'
+SS_MIN_VALID_BYTES = 1024
+_SS_EXT_LAST = {'txt': None}
+
+
+def _ss_log(msg):
+    try:
+        SS_HEAL_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(SS_HEAL_LOG, 'a', encoding='utf-8') as f:
+            f.write(time.strftime('%Y-%m-%d %H:%M:%S') + ' ' + str(msg) + '\n')
+        try:
+            if SS_HEAL_LOG.exists() and SS_HEAL_LOG.stat().st_size > 262144:
+                tail = SS_HEAL_LOG.read_text(encoding='utf-8', errors='ignore').splitlines()[-500:]
+                tmp = SS_HEAL_LOG.with_suffix('.tmp')
+                tmp.write_text('\n'.join(tail) + '\n', encoding='utf-8')
+                os.replace(str(tmp), str(SS_HEAL_LOG))
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _ss_is_meaningful(state):
+    """State co du lieu that hay khong (co identity lon hoac it nhat 1 session dict co noi dung)."""
+    if not isinstance(state, dict) or not state:
+        return False
+    meta = state.get('__meta__') if isinstance(state.get('__meta__'), dict) else {}
+    sh = str(meta.get('shared_ip_identity_text', '') or '')
+    if len(sh.strip()) >= SS_MIN_VALID_BYTES:
+        return True
+    for k, v in state.items():
+        if isinstance(k, str) and k.startswith('__'):
+            continue
+        if isinstance(v, dict) and len(v) >= 5:
+            return True
+    return False
+
+
+def _ss_snapshot_good(path: Path):
+    """Tra text neu parse OK va meaningful, nguoc lai None."""
+    try:
+        txt = path.read_text(encoding='utf-8')
+        d = json.loads(txt)
+        if _ss_is_meaningful(d):
+            return txt
+    except Exception:
+        pass
+    return None
+
+
+def _ss_atomic_write(path: Path, text: str):
+    """Ghi nguyen tu: tmp -> flush+fsync -> rename. Khong bao gio co partial file."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    tmp = path.with_name(path.name + '.tmp_write')
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(str(tmp), str(path))
+    try:
+        dfd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except Exception:
+        pass
+
+
+def _ss_rotate_backups():
+    """Day bak.x -> bak.x+1 roi luu ban hien tai vao bak.1 (chi neu ban hien tai tot)."""
+    b1 = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + '.bak.1')
+    for i in range(SS_BACKUP_COUNT - 1, 0, -1):
+        src = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + f'.bak.{i}')
+        dst = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + f'.bak.{i + 1}')
+        if src.exists():
+            try:
+                os.replace(str(src), str(dst))
+            except Exception:
+                pass
+    cur_txt = _ss_snapshot_good(SESSION_STATE_FILE)
+    if cur_txt is not None:
+        try:
+            tmp = b1.with_suffix('.tmp')
+            tmp.write_text(cur_txt, encoding='utf-8')
+            os.replace(str(tmp), str(b1))
+        except Exception as e:
+            _ss_log(f'rotate: luu bak.1 that bai: {e}')
+
+
+def _ss_seed_backups():
+    """Gieo backup dau tien ngay khoi dong — khong bao gio ton tai 'cua so khong backup'."""
+    try:
+        txt = _ss_snapshot_good(SESSION_STATE_FILE)
+        if txt is None:
+            return
+        b1 = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + '.bak.1')
+        if not b1.exists():
+            tmp = b1.with_suffix('.tmp')
+            tmp.write_text(txt, encoding='utf-8')
+            os.replace(str(tmp), str(b1))
+        ext = SS_EXT_DIR / SESSION_STATE_FILE.name
+        if _ss_snapshot_good(ext) != txt:
+            _ss_atomic_write(ext, txt)
+            _SS_EXT_LAST['txt'] = txt
+        _ss_log('SEED: backup dau tien da san sang (bak.1 + /data)')
+    except Exception as e:
+        _ss_log(f'seed backups loi: {e}')
+
+
+def _ss_try_heal(reason: str):
+    """Tim backup moi nhat con dung duoc va phuc hoi lai file chinh. Tra dict hoac None."""
+    candidates = []
+    for i in range(1, SS_BACKUP_COUNT + 1):
+        p = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + f'.bak.{i}')
+        try:
+            if p.exists():
+                candidates.append((p.stat().st_mtime, p))
+        except Exception:
+            pass
+    try:
+        ext = SS_EXT_DIR / SESSION_STATE_FILE.name
+        if ext.exists():
+            candidates.append((ext.stat().st_mtime, ext))
+    except Exception:
+        pass
+    candidates.sort(reverse=True)
+    for _, p in candidates:
+        txt = _ss_snapshot_good(p)
+        if txt is not None:
+            try:
+                _ss_atomic_write(SESSION_STATE_FILE, txt)
+                _ss_log(f'SELF-HEAL ({reason}): da phuc hoi tu {p.name} ({len(txt)} bytes)')
+                return json.loads(txt)
+            except Exception as e:
+                _ss_log(f'SELF-HEAL ({reason}): loi voi {p.name}: {e}')
+    _ss_log(f'SELF-HEAL ({reason}): khong con backup nao dung duoc — can can thiep tay')
+    return None
+
+
+def save_json(path: Path, data):
+    _ss_atomic_write(Path(path), json.dumps(data, ensure_ascii=False, indent=2) + '\n')
 
 
 def load_admanager_config():
@@ -1912,16 +2061,64 @@ def save_notes(notes):
 
 
 def load_session_state():
+    # Self-heal: file chinh mat/hong/rong bat thuong -> tu phuc hoi tu backup tot nhat (Ver 2.18)
     if not SESSION_STATE_FILE.exists():
+        healed = _ss_try_heal('file chinh khong ton tai')
+        if healed is not None:
+            return healed
         return {}
     try:
-        return load_json(SESSION_STATE_FILE)
+        d = load_json(SESSION_STATE_FILE)
+        if _ss_is_meaningful(d):
+            return d
+        healed = _ss_try_heal('file chinh rong/trang bat thuong')
+        if healed is not None:
+            return healed
+        return d
     except Exception:
+        healed = _ss_try_heal('file chinh JSON hong')
+        if healed is not None:
+            return healed
         return {}
 
 
 def save_session_state(state):
-    save_json(SESSION_STATE_FILE, state)
+    new_txt = json.dumps(state, ensure_ascii=False, indent=2) + '\n'
+    # Xep loai trang thai ban cu: missing / empty / corrupt / meaningful
+    old_status = 'missing'
+    old_len = 0
+    try:
+        if SESSION_STATE_FILE.exists():
+            old_txt = SESSION_STATE_FILE.read_text(encoding='utf-8')
+            old_len = len(old_txt)
+            try:
+                old_parsed = json.loads(old_txt)
+                old_status = 'meaningful' if _ss_is_meaningful(old_parsed) else 'empty'
+            except Exception:
+                old_status = 'corrupt'
+    except Exception:
+        old_status = 'missing'
+    # GUARD: chan save-rong — khong ghi de du lieu that (hoac file hong chua lam ro) bang state trang (Ver 2.18)
+    if not _ss_is_meaningful(state) and old_status in ('meaningful', 'corrupt'):
+        _ss_log(f'CHAN save-rong: tu choi ghi de (old={old_status} {old_len} bytes, new={len(new_txt)} bytes). Neu muon reset that su, xoa cac file session_state.json* trong {BASE_DIR} roi restart.')
+        raise ValueError('session_state guardian: tu choi ghi de state rong len state co du lieu/hong')
+    try:
+        _ss_rotate_backups()
+        _ss_atomic_write(SESSION_STATE_FILE, new_txt)
+    except ValueError:
+        raise
+    except Exception as e:
+        _ss_log(f'save atomic that bai ({e}) — fallback ghi truyen thong')
+        SESSION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SESSION_STATE_FILE.write_text(new_txt, encoding='utf-8')
+    # Ban du phong ngoai rootfs (/data): chi ghi khi noi dung doi de han che wear
+    try:
+        ext = SS_EXT_DIR / SESSION_STATE_FILE.name
+        if _SS_EXT_LAST.get('txt') != new_txt:
+            _ss_atomic_write(ext, new_txt)
+            _SS_EXT_LAST['txt'] = new_txt
+    except Exception as e:
+        _ss_log(f'copy /data that bai (khong anh huong luu chinh): {e}')
 
 
 def get_session_meta(session_id, tag=None):
@@ -4991,6 +5188,7 @@ if __name__ == '__main__':
     ensure_xxtouch_workspace()
     ensure_vpn_mgr()
     ensure_vpn_deps_async()
+    _ss_seed_backups()  # Ver 2.18: dam bao backup san sang tu giay dau tien
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
