@@ -253,6 +253,77 @@ def read_current_version_label():
         return 'Bản đang chạy'
 
 
+_VERSION_CACHE_FILE = BASE_DIR / '.version_cache.json'
+_VERSION_CACHE_TTL = 600  # 10 phut - giam cu phi rate-limit GitHub API (60 req/gio/IP)
+
+
+def _fetch_remote_commit_info():
+    """Tra (sha, subject) cua commit moi nhat tren GitHub.
+    Uu tien REST API; neu 403 rate-limit thi fallback sang feed commits/main.atom (khong tinh quota API)."""
+    try:
+        req = urllib.request.Request('https://api.github.com/repos/thttd94/GEN/commits/main', headers={'User-Agent': 'proxy-manager-version-check'})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read().decode('utf-8', 'replace'))
+        sha = str(payload.get('sha') or '').strip()
+        subject = str((((payload.get('commit') or {}).get('message') or '').splitlines() or [''])[0]).strip()
+        if sha:
+            return sha, subject
+        raise RuntimeError('empty api payload')
+    except Exception:
+        req = urllib.request.Request('https://github.com/thttd94/GEN/commits/main.atom', headers={'User-Agent': 'proxy-manager-version-check'})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            text = resp.read().decode('utf-8', 'replace')
+        if '<entry>' not in text:
+            raise RuntimeError('khong doc duoc feed commits')
+        entry = text.split('<entry>', 1)[1]
+        m_sha = re.search(r'href="[^"]*/commit/([0-9a-fA-F]{40})"', entry)
+        if not m_sha:
+            raise RuntimeError('khong tim thay sha trong feed')
+        sha = m_sha.group(1)
+        subject = ''
+        m_cont = re.search(r'<content[^>]*>(.*?)</content>', entry, re.DOTALL)
+        raw = m_cont.group(1) if m_cont else ''
+        raw = raw.replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&#39;', "'").replace('&amp;', '&')
+        m_pre = re.search(r'<pre[^>]*>(.*?)</pre>', raw, re.DOTALL)
+        msg = re.sub(r'<[^>]+>', '', m_pre.group(1) if m_pre else raw).strip()
+        if msg:
+            subject = msg.splitlines()[0].strip()
+        if not subject:
+            m_tit = re.search(r'<title[^>]*>(.*?)</title>', entry, re.DOTALL)
+            if m_tit:
+                subject = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', m_tit.group(1))).strip()
+        return sha, subject.strip()
+
+
+def _cached_remote_commit():
+    """Cache ket qua check remote de nhieu GUI refresh khong dot API. Tra (sha, subject, from_cache)."""
+    now = time.time()
+    cache = {}
+    try:
+        cache = json.loads(_VERSION_CACHE_FILE.read_text('utf-8'))
+    except Exception:
+        cache = {}
+    try:
+        ts = float(cache.get('ts') or 0)
+    except Exception:
+        ts = 0.0
+    c_sha = str(cache.get('sha') or '')
+    c_subject = str(cache.get('subject') or '')
+    if c_sha and (now - ts) < _VERSION_CACHE_TTL:
+        return c_sha, c_subject, True
+    try:
+        sha, subject = _fetch_remote_commit_info()
+    except Exception:
+        if c_sha:
+            return c_sha, c_subject, True  # cache cu van hon khong co gi
+        raise
+    try:
+        _VERSION_CACHE_FILE.write_text(json.dumps({'ts': now, 'sha': sha, 'subject': subject}), 'utf-8')
+    except Exception:
+        pass
+    return sha, subject, False
+
+
 def get_repo_version_info():
     current_label = read_current_version_label()
     try:
@@ -278,11 +349,7 @@ def get_repo_version_info():
     has_update = False
 
     try:
-        req = urllib.request.Request('https://api.github.com/repos/thttd94/GEN/commits/main', headers={'User-Agent': 'proxy-manager-version-check'})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            payload = json.loads(resp.read().decode('utf-8', 'replace'))
-        remote_commit = str(payload.get('sha') or '').strip()
-        remote_subject = str((((payload.get('commit') or {}).get('message') or '').splitlines() or [''])[0]).strip()
+        remote_commit, remote_subject, _from_cache = _cached_remote_commit()
         if remote_commit:
             latest_commit = remote_commit
             latest_short = remote_commit[:7]
@@ -332,11 +399,7 @@ def update_repo_from_remote(password: str):
     latest_short = ''
     try:
         try:
-            req = urllib.request.Request('https://api.github.com/repos/thttd94/GEN/commits/main', headers={'User-Agent': 'proxy-manager-updater'})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                payload = json.loads(resp.read().decode('utf-8', 'replace'))
-            remote_commit = str(payload.get('sha') or '').strip()
-            remote_subject = str((((payload.get('commit') or {}).get('message') or '').splitlines() or [''])[0]).strip()
+            remote_commit, remote_subject = _fetch_remote_commit_info()
             latest_short = remote_commit[:7] if remote_commit else ''
             m = re.search(r'(Ver\s*[\d.]+)', remote_subject, re.IGNORECASE)
             latest_label = m.group(1).replace('ver', 'Ver') if m else (remote_subject or '')
