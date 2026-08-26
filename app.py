@@ -3599,10 +3599,81 @@ def ensure_vpn_mgr():
     return dst.exists()
 
 
+_VPN_DEPS = {'openvpn': None, 'wg': None, 'installing': False, 'log': '', 'ts': 0}
+_VPN_DEPS_LOCK = threading.Lock()
+
+
+def _which(name):
+    try:
+        p = subprocess.run(['which', name], capture_output=True, text=True, timeout=5)
+        return bool(p.returncode == 0 and (p.stdout or '').strip())
+    except Exception:
+        return False
+
+
+def _vpn_deps_missing():
+    return [b for b in ('openvpn', 'wg') if not _which(b)]
+
+
+def _install_vpn_deps_worker(missing):
+    try:
+        pkgs = []
+        if 'openvpn' in missing:
+            pkgs.append('openvpn-openssl')
+        if 'wg' in missing:
+            pkgs += ['wireguard-tools', 'kmod-wireguard']
+        logs = ['Tu cai dat phan mem con thieu: ' + ' '.join(pkgs)]
+        for cmd in (['opkg', 'update'], ['opkg', 'install'] + pkgs):
+            try:
+                p = subprocess.run(cmd, capture_output=True, text=True, timeout=420)
+                tail = ((p.stdout or '') + (p.stderr or '')).strip().splitlines()
+                logs.append('$ ' + ' '.join(cmd) + ' -> rc=' + str(p.returncode))
+                logs.extend('  ' + ln for ln in tail[-6:])
+            except Exception as e:
+                logs.append('$ ' + ' '.join(cmd) + ' -> LOI ' + str(e))
+        with _VPN_DEPS_LOCK:
+            _VPN_DEPS['installing'] = False
+            _VPN_DEPS['log'] = '\n'.join(logs)[-2000:]
+            _VPN_DEPS['ts'] = int(time.time())
+            _VPN_DEPS['openvpn'] = _which('openvpn')
+            _VPN_DEPS['wg'] = _which('wg')
+    except Exception:
+        with _VPN_DEPS_LOCK:
+            _VPN_DEPS['installing'] = False
+
+
+def ensure_vpn_deps_async():
+    """Tu cai openvpn/wireguard-tools/kmod-wireguard qua opkg khi thieu (chay nen, khong block request)."""
+    missing = _vpn_deps_missing()
+    if not missing:
+        return None
+    with _VPN_DEPS_LOCK:
+        if _VPN_DEPS['installing']:
+            return 'installing'
+        _VPN_DEPS['installing'] = True
+    threading.Thread(target=_install_vpn_deps_worker, args=(missing,), daemon=True).start()
+    return 'installing'
+
+
+def vpn_deps_status():
+    with _VPN_DEPS_LOCK:
+        installing = _VPN_DEPS['installing']
+        log = _VPN_DEPS['log']
+    return {'openvpn': _which('openvpn'), 'wg': _which('wg'), 'installing': installing, 'log': log}
+
+
 def vpn_run(args, timeout=150):
     try:
         if not ensure_vpn_mgr():
             return {'ok': False, 'error': 'vpn_mgr.sh missing', 'output': 'Thiếu vpn_mgr.sh trên router và không có bản dự phòng tools/vpn_mgr.sh trong thư mục app — hãy bấm Cập nhật lên bản mới nhất rồi thử lại.'}
+        a0 = str(args[0]) if args else ''
+        missing = _vpn_deps_missing()
+        if missing:
+            need_ovpn = a0 in ('add-openvpn', 'add-express', 'up', 'startall', 'test')
+            need_wg = a0 in ('add-wg',)
+            if (need_ovpn and 'openvpn' in missing) or (need_wg and 'wg' in missing):
+                ensure_vpn_deps_async()
+                return {'ok': False, 'error': 'deps missing', 'output': 'Thiếu ' + ('/'.join(missing)) + ' — app đang TỰ CÀI trong nền (opkg, ~1-2 phút). Chờ xíu rồi bấm lại lệnh này nhé.'}
         p = subprocess.run(['/bin/sh', VPN_MGR] + [str(a) for a in args], capture_output=True, text=True, timeout=timeout)
         return {'ok': p.returncode == 0, 'rc': p.returncode, 'output': ((p.stdout or '') + (p.stderr or '')).strip()}
     except Exception as e:
@@ -3974,7 +4045,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/vpn':
             return self._send_file(STATIC_DIR / 'vpn.html')
         if path == '/api/vpn/status':
-            return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map()})
+            return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map(), 'deps': vpn_deps_status()})
         if path == '/api/vpn/exitips':
             return self._send_json({'ok': True, 'ips': dict(_EXITIPS), 'busy': _EXITIPS_BUSY['v']})
         if path == '/api/vpn/express-hosts':
@@ -4647,6 +4718,7 @@ if __name__ == '__main__':
     ensure_sessions_exist()
     ensure_xxtouch_workspace()
     ensure_vpn_mgr()
+    ensure_vpn_deps_async()
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()

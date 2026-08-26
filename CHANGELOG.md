@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## Ver 2.14
+- Tu cai phan mem VPN thieu qua opkg: router chua co openvpn/wg thi app tu chay "opkg update && opkg install openvpn-openssl wireguard-tools kmod-wireguard" trong nen (khong block GUI), bao tien do bang banner tren /vpn. Lenh VPN lien quan se bao "dang tu cai, cho 1-2 phut roi bam lai" thay vi bao loi thieu.
+- /api/vpn/status tra them truong deps (openvpn/wg/installing/log) de giao dien hien trang thai.
+- Tu khoi dong service cung tu kiem tra + cai phan mem thieu.
+
 ## Ver 2.13
 - FIX quan trong (audit tong quat): vpn_mgr.sh gio TU PHUC HOI tren moi router - app tu copy ban gan trong app (tools/vpn_mgr.sh) ve /data/vpn/ khi thieu hoac khac ban, kiem tra truoc moi lenh VPN (add/up/down/assign/import...). Het loi "can't open /data/vpn/vpn_mgr.sh: No such file or directory" tren router chua tung deploy tay.
 - Trang /vpn: loi nap nhieu file gio hien ly do that thay vi "LOI: ?".

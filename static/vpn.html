@@ -98,6 +98,7 @@
 
   <div class="card">
     <h2><span class="h-ico h-ico-amber">📜</span>Kết quả lệnh</h2>
+    <div id="depsBanner" style="display:none;padding:10px 12px;margin-bottom:10px;border-radius:10px;border:1px solid #f0b67f;background:#3a2410;color:#ffd9a8;font-size:13px;line-height:1.5;"></div>
     <div id="log">sẵn sàng.</div>
   </div>
 </div>
@@ -137,6 +138,24 @@ async function api(action, extra={}) {
 function log(msg) {
   const el = document.getElementById('log');
   el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent;
+}
+
+let _depsShown = '';
+function updateDepsBanner(d) {
+  const b = document.getElementById('depsBanner');
+  if (!b) return;
+  const miss = [];
+  if (d && !d.openvpn) miss.push('openvpn');
+  if (d && !d.wg) miss.push('wg');
+  if (!miss.length) { b.style.display = 'none'; _depsShown = ''; return; }
+  b.style.display = 'block';
+  if (d && d.installing) {
+    b.textContent = '⏳ Đang TỰ CÀI phần mềm thiếu: ' + miss.join(', ') + ' (opkg chạy nền, ~1-2 phút) — chờ xíu rồi bấm lại lệnh nhé.';
+  } else {
+    b.textContent = '⚠️ Router thiếu: ' + miss.join(', ') + ' — bấm lệnh VPN (UP/Thêm) là app tự cài; hoặc SSH chạy: opkg update && opkg install ' + (miss.includes('openvpn') ? 'openvpn-openssl ' : '') + (miss.includes('wg') ? 'wireguard-tools kmod-wireguard' : '');
+  }
+  const sig = b.textContent;
+  if (sig !== _depsShown) { _depsShown = sig; log(b.textContent); }
 }
 
 async function act(action, extra, confirmText) {
@@ -232,6 +251,7 @@ async function refresh() {
     const r = await (await fetch('/api/vpn/status')).json();
     ACCOUNTS = r.accounts || [];
     MACHINE_MAP = r.machine_map || {};
+    updateDepsBanner(r.deps);
   } catch(e) { document.getElementById('upd').textContent = 'mất kết nối'; return; }
   document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()}`;
   loadWanIps();
