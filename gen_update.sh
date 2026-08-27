@@ -94,7 +94,7 @@ md5f(){ md5sum "$1" 2>/dev/null | awk '{print $1}'; }
 
 # ============================== CHECK MODE ==============================
 if [ "$MODE" = "check" ]; then
-  log "remote : $REF @ ${SHORT:-?} — ${LABEL}"
+  log "remote : $REF @ ${SHORT:-?} â€” ${LABEL}"
   log "local  : $(cat "$APP_DIR/VERSION.txt" 2>/dev/null || echo unknown)"
   diff_cnt=0
   for f in app.py static/index.html; do
@@ -147,9 +147,11 @@ done
 rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
 cp -r "$PKG/static/." "$APP_DIR/static/" || { err "copy static failed"; exit 1; }
-mkdir -p "$APP_DIR/xxtouch_jobs"
-[ -d "$PKG/xxtouch_jobs" ] && cp -a "$PKG/xxtouch_jobs/." "$APP_DIR/xxtouch_jobs/" 2>/dev/null
-mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxtouch_jobs/tmp"
+# Ver 2.19+: XXTouch da duoc loai bo - khong can tao/copy xxtouch_jobs nua
+# (giu lai neu package cu van con - idempotent)
+if [ -d "$PKG/xxtouch_jobs" ]; then
+  log "(!) package cu van con xxtouch_jobs/ - se khong copy (Ver 2.19+ loai bo XXTouch)"
+fi
 chmod +x "$APP_DIR"/*.sh 2>/dev/null
 # firewall sync (hide 8000/9000 + udp fast-reject) - idempotent, adaptive per-router
 [ -f "$APP_DIR/gen_fw_fix.sh" ] && sh "$APP_DIR/gen_fw_fix.sh" || true

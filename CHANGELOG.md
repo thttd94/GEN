@@ -225,3 +225,25 @@
 - update remote machine grid UI
 - add machine grid paging for remote popup
 - keep left remote view and right machine selector panel
+
+## Ver 2.19 - Loai bo toan bo XXTouch khoi Genrouter (2026-08-27)
+- Ly do: XXTouch (iOS device scripting qua port 46952) khong lien quan den gan proxy / network client di ra. AdManager la ten cu cua GUI port 9001 (proxy-manager-v1) - van giu.
+- **GIU**: /api/admanager/config, /api/admanager/save-config, load_admanager_config, save_admanager_local, get_router_machine_context (doi ten tu xxtouch_get_router_machine_context)
+- **XOA**: 
+  - Tat ca xxtouch_* (~30 ham: xxtouch_http_probe, xxtouch_get_selected_machines, xxtouch_post_json, xxtouch_device_info, xxtouch_run_action_on_machine...)
+  - Endpoint /api/xxtouch/* (10 routes: remote-screen, remote-assets, remote-proxy, scan-devices, group3-schedule/*, action, remote-link)
+  - Endpoint /api/admanager/scan|pull|backup (dung xxtouch_spawn_checked)
+  - Ham dmanager_command_spawn, dmanager_download_file, dmanager_download_backups_plist, dmanager_parse_backups_plist_map, dmanager_cleanup_tmp, dmanager_iter_machines, dmanager_validate_machine_selection, dmanager_routers_to_scan, dmanager_detect_app_label, dmanager_get_machine_ip_pairs, dmanager_machine_note_text, dmanager_parse_machine_tokens, dmanager_parse_base, dmanager_parse_date_input, dmanager_parse_daymonth, dmanager_in_mmdd_range, xxtouch_spawn_checked
+  - Ham group3_schedule_* (worker, execute, public, job_key, start_worker)
+  - Ham load_group3_schedule_store, save_group3_schedule_store, create_group3_schedule_job, ensure_xxtouch_workspace
+  - Ham ewrite_xxtouch_remote_html, get_xxtouch_remote_online_info
+  - Ham uild_event_video_180_script, uild_nurture_tiktok_script, uild_event_dd_20p_tiktok_lite_script, uild_group3_*_script
+  - Const: XXTOUCH_*, ADMANAGER_REMOTE_DIR, ADMANAGER_FILE_RE, GROUP3_SCHEDULE_LOCK, GROUP3_SCHEDULE_FILE, GROUP3_SCHEDULE_THREADS, NURTURE_TIKTOK_*, EVENT_DD_20P_*, GROUP3_NURTURE_*, GROUP3_EVENT_*
+  - Method _serve_xxtouch
+  - Thread group3_schedule_worker start in __main__
+- **Folder**: static/xxtouch/ da duoc rename thanh static/xxtouch.disabled_<timestamp> (giu lai de rollback neu can)
+- **Kich thuoc**: app.py 220KB -> 126KB (-43%)
+- **Backup**: /data/genrouter_backups/app_pre_remove_xxtouch_<timestamp>.py
+- **Script xoa**: emove_xxtouch_v8.py + ix_remaining.py + ix2.py + ix3.py (chay lan luot)
+- **Restart**: ( python3 /opt/proxy-manager-v1/app.py >/tmp/pmv1_v219.log 2>&1 </dev/null & ) (BusyBox subshell pattern, vi khong co init.d)
+- **Test pass**: / 200, /api/pm/sessions 200, /api/admanager/config 200, /api/xxtouch/* 404, /api/admanager/scan|pull|backup 404, /api/vpn/status 200
