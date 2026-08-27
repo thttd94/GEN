@@ -17,27 +17,23 @@ import re
 import threading
 import base64
 import hashlib
+from datetime import datetime, timedelta
 import os
-
-
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / 'static'
 NOTES_FILE = BASE_DIR / 'notes.json'
 SESSION_STATE_FILE = BASE_DIR / 'session_state.json'
-
+ACTIVE_SESSION_FILE = BASE_DIR / 'active_session.json'
 ROUTER_CONFIG_DIR = Path('/etc/genrouter/config')
 ROUTER_RUNTIME_DIR = Path('/etc/genrouter')
 ROUTER_GENRUNNER = Path('/etc/genrouter/core/genrunner')
-
 DEV_CONFIG_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/config')
 DEV_RUNTIME_DIR = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter')
 DEV_GENRUNNER = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/core/genrunner')
-
 STATIC_HOSTS_FILE = Path('/etc/shm/list_ip_static.json') if Path('/etc/shm/list_ip_static.json').exists() else Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json')
 LEASES_FILE = Path('/tmp/dhcp.leases')
 OLD_GUI_BASE = 'http://127.0.0.1:9000'
 STATIC_API_BASE = 'http://192.15.0.1:8000'
-
 if ROUTER_CONFIG_DIR.exists():
     CONFIG_DIR = ROUTER_CONFIG_DIR
     RUNTIME_DIR = ROUTER_RUNTIME_DIR
@@ -46,74 +42,31 @@ else:
     CONFIG_DIR = DEV_CONFIG_DIR
     RUNTIME_DIR = DEV_RUNTIME_DIR
     GENRUNNER = DEV_GENRUNNER
-
 PRESET_DIR = BASE_DIR / 'presets'
-XXTOUCH_WEB_DIR = STATIC_DIR / 'xxtouch'
-XXTOUCH_WORK_DIR = BASE_DIR / 'xxtouch_jobs'
-XXTOUCH_DATA_DIR = XXTOUCH_WORK_DIR / 'data'
-XXTOUCH_LOG_DIR = XXTOUCH_WORK_DIR / 'log'
-XXTOUCH_TMP_DIR = XXTOUCH_WORK_DIR / 'tmp'
-GROUP3_SCHEDULE_FILE = BASE_DIR / 'group3_schedules.json'
-GROUP3_SCHEDULE_LOCK = threading.Lock()
-GROUP3_SCHEDULE_THREADS = {}
-NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'NuoiPhoi_tiktok.lua'
-EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'EventDD20p_tiktok_lite.lua'
-GROUP3_NURTURE_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_NuoiPhoi_tiktok.lua'
-GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventDD20p_tiktok_lite.lua'
-GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE = XXTOUCH_WORK_DIR / 'Group3_EventVideo180_tiktok.lua'
-EVENT_VIDEO_180_TIKTOK_LINKS = [
-    'https://www.tiktok.com/t/ZSHoJkxP6/',
-    'https://www.tiktok.com/t/ZSHoJvPdS',
-    'https://www.tiktok.com/t/ZSHodvDhG',
-    'https://www.tiktok.com/t/ZSHodCJUU/',
-    'https://www.tiktok.com/t/ZSHodXPJh/',
-    'https://www.tiktok.com/t/ZSHodwDAy/',
-    'https://www.tiktok.com/t/ZSHodquAk/',
-    'https://www.tiktok.com/t/ZSHo64x5h/',
-    'https://www.tiktok.com/t/ZSHo6yxet/',
-    'https://www.tiktok.com/t/ZSHoksvp6/',
-]
-EVENT_VIDEO_180_TIKTOK_LITE_LINKS = [link.replace('https://www.tiktok.com', 'https://lite.tiktok.com') for link in EVENT_VIDEO_180_TIKTOK_LINKS]
-
-
-def build_event_video_180_script(app_choice: str) -> str:
-    safe_choice = 'tiktok_lite' if str(app_choice or '').strip() == 'tiktok_lite' else 'tiktok'
-    script_path = BASE_DIR / 'xxtouch_jobs' / 'Group3_EventVideo180_tiktok.lua'
-    return f"lua {shlex.quote(str(script_path))}"
 ADMANAGER_CONFIG_FILE = BASE_DIR / 'admanager_gui_config.json'
 ADMANAGER_LOCAL_FILE = BASE_DIR / 'admanager_gui.local.json'
 ADMANAGER_GUI_CONFIG_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui_config.json')
 ADMANAGER_GUI_LOCAL_FILE = Path('/mnt/e/OpenClaw/LocalSend_jobs/GUI/admanager_gui.local.json')
-ADMANAGER_REMOTE_DIR = '/private/var/mobile/Library/ADManager'
-ADMANAGER_FILE_RE = re.compile(r'^(?P<prefix>[^_]+_)(?P<date>\d{8})(?:_(?P<time_u>\d{6})|(?P<time>\d{6}))\.adbk$')
 COLLECTOR_CONFIG_FILE = BASE_DIR / 'collector_config.json'
 VERSION_FILE = BASE_DIR / 'VERSION.txt'
 UPDATE_CODES_FILE = BASE_DIR / 'update_codes.json'
-BUNDLED_UPDATE_CODES_FILE = (Path(__file__).resolve().parent / 'update_codes.json')
+BUNDLED_UPDATE_CODES_FILE = Path(__file__).resolve().parent / 'update_codes.json'
 DEFAULT_COLLECTOR_URL = 'http://aeg.ooguy.com:9010'
 MAX_SESSION_COUNT = 5
-SESSION_FILES = {
-    str(i): PRESET_DIR / f'session{i}.json'
-    for i in range(1, MAX_SESSION_COUNT + 1)
-}
+SESSION_FILES = {str(i): PRESET_DIR / f'session{i}.json' for i in range(1, MAX_SESSION_COUNT + 1)}
 RUNTIME_FILE = RUNTIME_DIR / 'gencore.json'
 RUNTIME_SOURCE_FILE = CONFIG_DIR / 'gencore.json'
 MAX_PROXY_TAG = 1000
 TAGS_PER_SUBNET = 250
 BASE_SUBNET_OCTET = 4
-
-XXTOUCH_SCAN_LOCK = threading.Lock()
-XXTOUCH_SCAN_INFLIGHT = set()
 REPO_REMOTE_URL = 'https://github.com/thttd94/GEN.git'
 REPO_BRANCH = 'main'
 DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
 DEFAULT_PER_VERSION_CODE_COUNT = 5
 
-
 def random_update_code(length=12):
     alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    return ''.join(__import__('secrets').choice(alphabet) for _ in range(length))
-
+    return ''.join((__import__('secrets').choice(alphabet) for _ in range(length)))
 
 def load_update_codes_store():
     candidates = [UPDATE_CODES_FILE]
@@ -128,16 +81,13 @@ def load_update_codes_store():
             pass
     return {}
 
-
 def save_update_codes_store(data):
     UPDATE_CODES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
-
 def normalize_version_key(label: str):
     text = str(label or '').strip()
-    m = re.search(r'(Ver\s*\d+)', text, re.IGNORECASE)
+    m = re.search('(Ver\\s*[\\d.]+)', text, re.IGNORECASE)
     return m.group(1).replace('ver', 'Ver') if m else text
-
 
 def ensure_update_codes_for_version(version_label: str, count=DEFAULT_PER_VERSION_CODE_COUNT):
     version_key = normalize_version_key(version_label)
@@ -157,17 +107,35 @@ def ensure_update_codes_for_version(version_label: str, count=DEFAULT_PER_VERSIO
     versions[version_key] = entry
     store['versions'] = versions
     save_update_codes_store(store)
-    return {
-        'version': version_key,
-        'admin_code': admin_code,
-        'codes': [item.get('code') for item in codes],
-    }
+    return {'version': version_key, 'admin_code': admin_code, 'codes': [item.get('code') for item in codes]}
 
+def consume_update_key_via_gas(key):
+    """Xac thuc + tieu thu update key GENUP-... qua Google Sheet (Key Router)."""
+    code = str(key or '').strip().upper()
+    if not code.startswith('GENUP-'):
+        raise PermissionError('Key khong hop le')
+    try:
+        sep = '&' if '?' in ACTIVE_URL else '?'
+        qs = urlencode({'action': 'use_update_key', 'machine_id': get_machine_id(), 'key': code, 't': int(time.time())})
+        req = urllib.request.Request(ACTIVE_URL + sep + qs, headers={'User-Agent': 'genrouter-license'})
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = json.loads(resp.read().decode('utf-8', 'replace'))
+    except PermissionError:
+        raise
+    except Exception as exc:
+        raise PermissionError('Khong kiem tra duoc key: %s' % exc)
+    if isinstance(data, dict) and data.get('ok'):
+        return data
+    msg = str(data.get('error')) if isinstance(data, dict) and data.get('error') else 'Key khong hop le hoac da dung'
+    raise PermissionError(msg)
 
 def consume_update_code(update_code: str, target_version: str):
     code = str(update_code or '').strip()
     if not code:
         raise PermissionError('Mã không hợp lệ')
+    if code.upper().startswith('GENUP-'):
+        info = consume_update_key_via_gas(code)
+        return {'admin': False, 'sheet_key': True, 'version': normalize_version_key(target_version), 'code': code, 'info': info}
     store = load_update_codes_store()
     admin_code = str(store.get('admin_code') or DEFAULT_ADMIN_UPDATE_CODE).strip() or DEFAULT_ADMIN_UPDATE_CODE
     version_key = normalize_version_key(target_version)
@@ -191,7 +159,6 @@ def consume_update_code(update_code: str, target_version: str):
         return {'admin': False, 'version': version_key, 'code': code}
     raise PermissionError('Mã không hợp lệ')
 
-
 def run_git_command(args, cwd=None, timeout=60):
     try:
         proc = subprocess.run(['git', *args], cwd=str(cwd or BASE_DIR), capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout)
@@ -201,26 +168,91 @@ def run_git_command(args, cwd=None, timeout=60):
         raise RuntimeError((proc.stderr or proc.stdout or 'git failed').strip())
     return (proc.stdout or '').strip()
 
-
 def read_current_version_label():
     try:
         text = VERSION_FILE.read_text(encoding='utf-8', errors='replace').strip()
         if text:
             first = text.splitlines()[0].strip()
-            m = re.search(r'(Ver\s*\d+)', first, re.IGNORECASE)
-            return m.group(1).replace('ver', 'Ver') if m else first
+            if first:
+                return first
     except Exception:
         pass
     try:
         msg = run_git_command(['log', '-1', '--pretty=%s'])
-        m = re.search(r'(Ver\s*\d+)', msg, re.IGNORECASE)
+        m = re.search('(Ver\\s*[\\d.]+)', msg, re.IGNORECASE)
         if m:
             return m.group(1).replace('ver', 'Ver')
         short = run_git_command(['rev-parse', '--short', 'HEAD'])
         return short
     except Exception:
         return 'Bản đang chạy'
+_VERSION_CACHE_FILE = BASE_DIR / '.version_cache.json'
+_VERSION_CACHE_TTL = 600
 
+def _fetch_remote_commit_info():
+    """Tra (sha, subject) cua commit moi nhat tren GitHub.
+    Uu tien REST API; neu 403 rate-limit thi fallback sang feed commits/main.atom (khong tinh quota API)."""
+    try:
+        req = urllib.request.Request('https://api.github.com/repos/thttd94/GEN/commits/main', headers={'User-Agent': 'proxy-manager-version-check'})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            payload = json.loads(resp.read().decode('utf-8', 'replace'))
+        sha = str(payload.get('sha') or '').strip()
+        subject = str((((payload.get('commit') or {}).get('message') or '').splitlines() or [''])[0]).strip()
+        if sha:
+            return (sha, subject)
+        raise RuntimeError('empty api payload')
+    except Exception:
+        req = urllib.request.Request('https://github.com/thttd94/GEN/commits/main.atom', headers={'User-Agent': 'proxy-manager-version-check'})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            text = resp.read().decode('utf-8', 'replace')
+        if '<entry>' not in text:
+            raise RuntimeError('khong doc duoc feed commits')
+        entry = text.split('<entry>', 1)[1]
+        m_sha = re.search('href="[^"]*/commit/([0-9a-fA-F]{40})"', entry)
+        if not m_sha:
+            raise RuntimeError('khong tim thay sha trong feed')
+        sha = m_sha.group(1)
+        subject = ''
+        m_cont = re.search('<content[^>]*>(.*?)</content>', entry, re.DOTALL)
+        raw = m_cont.group(1) if m_cont else ''
+        raw = raw.replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"').replace('&#39;', "'").replace('&amp;', '&')
+        m_pre = re.search('<pre[^>]*>(.*?)</pre>', raw, re.DOTALL)
+        msg = re.sub('<[^>]+>', '', m_pre.group(1) if m_pre else raw).strip()
+        if msg:
+            subject = msg.splitlines()[0].strip()
+        if not subject:
+            m_tit = re.search('<title[^>]*>(.*?)</title>', entry, re.DOTALL)
+            if m_tit:
+                subject = re.sub('\\s+', ' ', re.sub('<[^>]+>', '', m_tit.group(1))).strip()
+        return (sha, subject.strip())
+
+def _cached_remote_commit():
+    """Cache ket qua check remote de nhieu GUI refresh khong dot API. Tra (sha, subject, from_cache)."""
+    now = time.time()
+    cache = {}
+    try:
+        cache = json.loads(_VERSION_CACHE_FILE.read_text('utf-8'))
+    except Exception:
+        cache = {}
+    try:
+        ts = float(cache.get('ts') or 0)
+    except Exception:
+        ts = 0.0
+    c_sha = str(cache.get('sha') or '')
+    c_subject = str(cache.get('subject') or '')
+    if c_sha and now - ts < _VERSION_CACHE_TTL:
+        return (c_sha, c_subject, True)
+    try:
+        sha, subject = _fetch_remote_commit_info()
+    except Exception:
+        if c_sha:
+            return (c_sha, c_subject, True)
+        raise
+    try:
+        _VERSION_CACHE_FILE.write_text(json.dumps({'ts': now, 'sha': sha, 'subject': subject}), 'utf-8')
+    except Exception:
+        pass
+    return (sha, subject, False)
 
 def get_repo_version_info():
     current_label = read_current_version_label()
@@ -239,19 +271,13 @@ def get_repo_version_info():
         remote_error = str(e)
     else:
         remote_error = ''
-
     latest_commit = current_commit
     latest_short = current_short
     latest_subject = current_subject or current_label
     latest_label = current_label
     has_update = False
-
     try:
-        req = urllib.request.Request('https://api.github.com/repos/thttd94/GEN/commits/main', headers={'User-Agent': 'proxy-manager-version-check'})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            payload = json.loads(resp.read().decode('utf-8', 'replace'))
-        remote_commit = str(payload.get('sha') or '').strip()
-        remote_subject = str((((payload.get('commit') or {}).get('message') or '').splitlines() or [''])[0]).strip()
+        remote_commit, remote_subject, _from_cache = _cached_remote_commit()
         if remote_commit:
             latest_commit = remote_commit
             latest_short = remote_commit[:7]
@@ -265,24 +291,7 @@ def get_repo_version_info():
         if not remote_error:
             remote_error = str(e)
         latest_label = current_label
-
-    return {
-        'ok': True,
-        'current_commit': current_commit,
-        'current_short': current_short,
-        'current_subject': current_subject,
-        'current_label': current_label,
-        'latest_commit': latest_commit,
-        'latest_short': latest_short,
-        'latest_subject': latest_subject,
-        'latest_label': latest_label,
-        'has_update': has_update,
-        'branch': branch,
-        'remote_url': remote_url,
-        'remote_error': remote_error,
-        'update_codes': ensure_update_codes_for_version(latest_subject or latest_label or current_label),
-    }
-
+    return {'ok': True, 'current_commit': current_commit, 'current_short': current_short, 'current_subject': current_subject, 'current_label': current_label, 'latest_commit': latest_commit, 'latest_short': latest_short, 'latest_subject': latest_subject, 'latest_label': latest_label, 'has_update': has_update, 'branch': branch, 'remote_url': remote_url, 'remote_error': remote_error, 'update_codes': ensure_update_codes_for_version(latest_subject or latest_label or current_label)}
 
 def update_repo_from_remote(password: str):
     before_label = ''
@@ -301,14 +310,10 @@ def update_repo_from_remote(password: str):
     latest_short = ''
     try:
         try:
-            req = urllib.request.Request('https://api.github.com/repos/thttd94/GEN/commits/main', headers={'User-Agent': 'proxy-manager-updater'})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                payload = json.loads(resp.read().decode('utf-8', 'replace'))
-            remote_commit = str(payload.get('sha') or '').strip()
-            remote_subject = str((((payload.get('commit') or {}).get('message') or '').splitlines() or [''])[0]).strip()
+            remote_commit, remote_subject = _fetch_remote_commit_info()
             latest_short = remote_commit[:7] if remote_commit else ''
-            m = re.search(r'(Ver\s*\d+)', remote_subject, re.IGNORECASE)
-            latest_label = m.group(1).replace('ver', 'Ver') if m else (remote_subject or '')
+            m = re.search('(Ver\\s*[\\d.]+)', remote_subject, re.IGNORECASE)
+            latest_label = m.group(1).replace('ver', 'Ver') if m else remote_subject or ''
         except Exception:
             latest_label = ''
             latest_short = ''
@@ -327,7 +332,7 @@ def update_repo_from_remote(password: str):
         for item in extract_dir.iterdir():
             target = BASE_DIR / item.name
             if target.exists():
-                if target.is_dir() and not target.is_symlink():
+                if target.is_dir() and (not target.is_symlink()):
                     shutil.rmtree(target, ignore_errors=True)
                 else:
                     target.unlink(missing_ok=True)
@@ -335,35 +340,57 @@ def update_repo_from_remote(password: str):
                 shutil.copytree(item, target)
             else:
                 shutil.copy2(item, target)
+        try:
+            _fw_fix_sh = BASE_DIR / 'gen_fw_fix.sh'
+            if _fw_fix_sh.exists():
+                subprocess.run(['sh', str(_fw_fix_sh)], timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        try:
+            _gu_src = BASE_DIR / 'gen_update.sh'
+            if _gu_src.exists():
+                shutil.copy(str(_gu_src), '/root/gen_update.sh')
+                os.chmod('/root/gen_update.sh', 493)
+        except Exception:
+            pass
+        try:
+            _vm_src = BASE_DIR / 'tools' / 'vpn_mgr.sh'
+            if _vm_src.exists():
+                Path('/data/vpn').mkdir(parents=True, exist_ok=True)
+                shutil.copy(str(_vm_src), '/data/vpn/vpn_mgr.sh')
+                os.chmod('/data/vpn/vpn_mgr.sh', 493)
+        except Exception:
+            pass
+        shutil.rmtree(tmp_root, ignore_errors=True)
         after_label = read_current_version_label()
         changed = after_label != before_label
-        return {
-            'ok': True,
-            'updated': changed,
-            'before': before_label,
-            'after': after_label,
-            'current_label': after_label,
-            'current_commit': '',
-            'current_short': latest_short,
-            'message': 'Đã update lên bản mới' if changed else 'Đã update xong',
-        }
+        reboot_scheduled = False
+        if changed:
+            try:
+                subprocess.Popen(['sh', '-c', 'sleep 3; sync; reboot >/dev/null 2>&1'], start_new_session=True)
+                reboot_scheduled = True
+            except Exception:
+                pass
+        else:
+            try:
+                subprocess.Popen(['sh', '-c', 'sleep 2; /etc/init.d/proxy-manager-v1 restart >/dev/null 2>&1'], start_new_session=True)
+            except Exception:
+                pass
+        return {'ok': True, 'updated': changed, 'before': before_label, 'after': after_label, 'current_label': after_label, 'current_commit': '', 'current_short': latest_short, 'message': 'Đã cập nhật lên bản mới thành công – ROUTER SẼ TỰ KHỞI ĐỘNG LẠI sau ~5 giây' if reboot_scheduled else 'Vẫn là bản mới nhất – không cần khởi động lại', 'rebooting': reboot_scheduled}
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
-
 
 def proxy_tag_num(tag):
     try:
         return int(str(tag).split('_', 1)[1])
     except Exception:
-        return 10**9
-
+        return 10 ** 9
 
 def machine_num(value):
     try:
         return int(str(value).strip())
     except Exception:
-        return 10**9
-
+        return 10 ** 9
 
 def normalize_machine(value):
     value = str(value or '').strip()
@@ -373,7 +400,6 @@ def normalize_machine(value):
         return str(int(value))
     except Exception:
         return value
-
 
 def normalize_ip_identity_row(row):
     tag = normalize_tag((row or {}).get('tag', ''))
@@ -385,16 +411,14 @@ def normalize_ip_identity_row(row):
             machine = str(num)
     return {'machine': machine, 'tag': tag, 'ip': ip}
 
-
 def format_ip_identity_row(row, include_machine=False):
     norm = normalize_ip_identity_row(row)
     machine = norm.get('machine', '')
     tag = norm.get('tag', '')
     ip = norm.get('ip', '')
     if include_machine and machine:
-        return f"{machine}|{tag}|{ip}"
-    return f"{tag}|{ip}"
-
+        return f'{machine}|{tag}|{ip}'
+    return f'{tag}|{ip}'
 
 def normalize_tag(tag):
     tag = str(tag or '').strip()
@@ -404,28 +428,25 @@ def normalize_tag(tag):
         return 'proxy_' + tag.split('_', 1)[1]
     return tag
 
-
 def tag_to_ip(tag):
     num = proxy_tag_num(tag)
     if num < 1 or num > MAX_PROXY_TAG:
         return ''
     subnet_offset = (num - 1) // TAGS_PER_SUBNET
-    host_octet = ((num - 1) % TAGS_PER_SUBNET) + 1
+    host_octet = (num - 1) % TAGS_PER_SUBNET + 1
     subnet_octet = BASE_SUBNET_OCTET + subnet_offset
     return f'192.15.{subnet_octet}.{host_octet}'
-
 
 def ensure_sessions_exist():
     PRESET_DIR.mkdir(parents=True, exist_ok=True)
     base_file = SESSION_FILES['1']
     if not base_file.exists():
         save_json(base_file, load_json(RUNTIME_SOURCE_FILE))
-
     create_default_second = not SESSION_STATE_FILE.exists()
     for session_id, path in SESSION_FILES.items():
         if session_id == '1':
             continue
-        if create_default_second and not path.exists() and session_id == '2':
+        if create_default_second and (not path.exists()) and (session_id == '2'):
             data = load_json(base_file)
             clear_session_proxies(data)
             save_json(path, data)
@@ -433,13 +454,7 @@ def ensure_sessions_exist():
             data = load_json(path)
             rows = build_ip_identity_rows_from_data(data)
             if rows and len(rows) < MAX_PROXY_TAG:
-                set_saved_ip_identity_text(session_id, '\n'.join(format_ip_identity_row(row, include_machine=True) for row in rows))
-
-
-def ensure_xxtouch_workspace():
-    for path in (XXTOUCH_WORK_DIR, XXTOUCH_DATA_DIR, XXTOUCH_LOG_DIR, XXTOUCH_TMP_DIR):
-        path.mkdir(parents=True, exist_ok=True)
-
+                set_saved_ip_identity_text(session_id, '\n'.join((format_ip_identity_row(row, include_machine=True) for row in rows)))
 
 def create_session(session_id, source_session='1'):
     session_id = str(session_id)
@@ -451,7 +466,6 @@ def create_session(session_id, source_session='1'):
     if not source_file.exists():
         source_file = SESSION_FILES['1']
     save_json(SESSION_FILES[session_id], load_json(source_file))
-
     state = load_session_state()
     source_state = state.get(source_session, {}) if isinstance(state.get(source_session), dict) else {}
     state[session_id] = json.loads(json.dumps(source_state))
@@ -466,12 +480,7 @@ def create_session(session_id, source_session='1'):
         if source_text:
             ip_text[session_id] = source_text
     save_session_state(state)
-    return {
-        'session': session_id,
-        'name': get_session_display_name(session_id),
-        'source': str(SESSION_FILES[session_id]),
-    }
-
+    return {'session': session_id, 'name': get_session_display_name(session_id), 'source': str(SESSION_FILES[session_id])}
 
 def get_session_hidden_map(state=None):
     state = state if isinstance(state, dict) else load_session_state()
@@ -479,22 +488,19 @@ def get_session_hidden_map(state=None):
     hidden = meta.get('hidden_sessions', {}) if isinstance(meta, dict) else {}
     return hidden if isinstance(hidden, dict) else {}
 
-
 def is_session_hidden(session_id, state=None):
     hidden = get_session_hidden_map(state)
     return bool(hidden.get(str(session_id), False))
-
 
 def get_visible_session_ids(state=None):
     state = state if isinstance(state, dict) else load_session_state()
     ensure_sessions_exist()
     items = []
     for session_id, path in SESSION_FILES.items():
-        if path.exists() and not is_session_hidden(session_id, state):
+        if path.exists() and (not is_session_hidden(session_id, state)):
             items.append(str(session_id))
     items.sort(key=lambda x: int(x))
     return items
-
 
 def set_session_hidden(session_id, hidden=True):
     session_id = str(session_id)
@@ -502,7 +508,7 @@ def set_session_hidden(session_id, hidden=True):
         raise ValueError('Không thể ẩn cấu hình 1')
     state = load_session_state()
     visible_ids = get_visible_session_ids(state)
-    if hidden and session_id in visible_ids and len(visible_ids) <= 1:
+    if hidden and session_id in visible_ids and (len(visible_ids) <= 1):
         raise ValueError('Phải luôn giữ lại ít nhất 1 cấu hình đang hiện')
     state, meta = get_meta_section(state)
     hidden_map = meta.setdefault('hidden_sessions', {}) if isinstance(meta, dict) else {}
@@ -512,7 +518,6 @@ def set_session_hidden(session_id, hidden=True):
     hidden_map[session_id] = bool(hidden)
     save_session_state(state)
     return bool(hidden)
-
 
 def delete_session(session_id):
     session_id = str(session_id)
@@ -541,7 +546,6 @@ def delete_session(session_id):
         save_session_state(state)
     return True
 
-
 def get_available_sessions(include_hidden=True):
     ensure_sessions_exist()
     state = load_session_state()
@@ -549,70 +553,199 @@ def get_available_sessions(include_hidden=True):
     for session_id, path in SESSION_FILES.items():
         if path.exists():
             hidden = is_session_hidden(session_id, state)
-            if hidden and not include_hidden:
+            if hidden and (not include_hidden):
                 continue
-            items.append({
-                'session': session_id,
-                'name': get_session_display_name(session_id),
-                'source': str(path),
-                'exists': True,
-                'hidden': hidden,
-                'can_hide': session_id != '1',
-                'can_delete': session_id != '1',
-                'is_default': session_id in ('1', '2'),
-            })
+            items.append({'session': session_id, 'name': get_session_display_name(session_id), 'source': str(path), 'exists': True, 'hidden': hidden, 'can_hide': session_id != '1', 'can_delete': session_id != '1', 'is_default': session_id in ('1', '2')})
     items.sort(key=lambda x: int(x['session']))
     return items
 
 def load_json(path: Path):
     return json.loads(path.read_text(encoding='utf-8'))
+SS_BACKUP_COUNT = 5
+SS_EXT_DIR = Path('/data/vpn_backup')
+SS_HEAL_LOG = BASE_DIR / 'logs' / 'session_state_guardian.log'
+SS_MIN_VALID_BYTES = 1024
+_SS_EXT_LAST = {'txt': None}
 
+def _ss_log(msg):
+    try:
+        SS_HEAL_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(SS_HEAL_LOG, 'a', encoding='utf-8') as f:
+            f.write(time.strftime('%Y-%m-%d %H:%M:%S') + ' ' + str(msg) + '\n')
+        try:
+            if SS_HEAL_LOG.exists() and SS_HEAL_LOG.stat().st_size > 262144:
+                tail = SS_HEAL_LOG.read_text(encoding='utf-8', errors='ignore').splitlines()[-500:]
+                tmp = SS_HEAL_LOG.with_suffix('.tmp')
+                tmp.write_text('\n'.join(tail) + '\n', encoding='utf-8')
+                os.replace(str(tmp), str(SS_HEAL_LOG))
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+def _ss_count_identity_lines(state):
+    """Dem so dong identity that (proxy_X|ip) trong moi session cua __meta__.ip_identity_text.
+    Ver 2.20 fix: state co the co 322 dict rong (322 proxy_xxx rong) nhung identity_text rong
+    hoac nho hon 5 dong -> khong phai meaningful. Tra tong so dong cua tat ca session."""
+    if not isinstance(state, dict):
+        return 0
+    meta = state.get('__meta__') if isinstance(state.get('__meta__'), dict) else {}
+    iit = meta.get('ip_identity_text')
+    if not isinstance(iit, dict):
+        return 0
+    total = 0
+    for sid, body in iit.items():
+        if not isinstance(body, str):
+            continue
+        for line in body.splitlines():
+            parts = line.split('|')
+            if len(parts) >= 3 and parts[0].strip().isdigit() and parts[2].strip():
+                total += 1
+    return total
+
+def _ss_count_session_non_empty(state):
+    """Dem tong so dict entry co noi dung that (co it nhat 1 key phi __meta__) trong tat ca session.
+    Ver 2.20 fix: state co the co 322 PROXY_xxx dict rong (khong co mac/note) -> khong tinh.
+    """
+    if not isinstance(state, dict):
+        return 0
+    total = 0
+    for k, v in state.items():
+        if isinstance(k, str) and k.startswith('__'):
+            continue
+        if isinstance(v, dict):
+            for sub_k, sub_v in v.items():
+                if isinstance(sub_v, dict) and len(sub_v) > 0:
+                    total += 1
+    return total
+
+def _ss_is_meaningful(state):
+    """State co du lieu that hay khong.
+    Ver 2.20: chi meaningful khi co it nhat 1 trong 3 tin hieu that:
+      (a) shared_ip_identity_text >= SS_MIN_VALID_BYTES (1024 bytes), HOAC
+      (b) tong identity lines (proxy_X|ip) trong __meta__.ip_identity_text >= 5, HOAC
+      (c) tong so PROXY_xxx dict co noi dung that (khong rong) >= 5.
+    Fix loi hong 2.18/2.19: state co the co 322 PROXY_xxx dict rong (khong mac) nhung
+    khong co identity lines that -> bi hieu nham la meaningful do dict co len >= 5.
+    """
+    if not isinstance(state, dict) or not state:
+        return False
+    meta = state.get('__meta__') if isinstance(state.get('__meta__'), dict) else {}
+    sh = str(meta.get('shared_ip_identity_text', '') or '')
+    if len(sh.strip()) >= SS_MIN_VALID_BYTES:
+        return True
+    if _ss_count_identity_lines(state) >= 5:
+        return True
+    if _ss_count_session_non_empty(state) >= 5:
+        return True
+    return False
+
+def _ss_snapshot_good(path: Path):
+    """Tra text neu parse OK va meaningful, nguoc lai None."""
+    try:
+        txt = path.read_text(encoding='utf-8')
+        d = json.loads(txt)
+        if _ss_is_meaningful(d):
+            return txt
+    except Exception:
+        pass
+    return None
+
+def _ss_atomic_write(path: Path, text: str):
+    """Ghi nguyen tu: tmp -> flush+fsync -> rename. Khong bao gio co partial file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + '.tmp_write')
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(str(tmp), str(path))
+    try:
+        dfd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except Exception:
+        pass
+
+def _ss_rotate_backups():
+    """Day bak.x -> bak.x+1 roi luu ban hien tai vao bak.1 (chi neu ban hien tai tot)."""
+    b1 = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + '.bak.1')
+    for i in range(SS_BACKUP_COUNT - 1, 0, -1):
+        src = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + f'.bak.{i}')
+        dst = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + f'.bak.{i + 1}')
+        if src.exists():
+            try:
+                os.replace(str(src), str(dst))
+            except Exception:
+                pass
+    cur_txt = _ss_snapshot_good(SESSION_STATE_FILE)
+    if cur_txt is not None:
+        try:
+            tmp = b1.with_suffix('.tmp')
+            tmp.write_text(cur_txt, encoding='utf-8')
+            os.replace(str(tmp), str(b1))
+        except Exception as e:
+            _ss_log(f'rotate: luu bak.1 that bai: {e}')
+
+def _ss_seed_backups():
+    """Gieo backup dau tien ngay khoi dong — khong bao gio ton tai 'cua so khong backup'."""
+    try:
+        txt = _ss_snapshot_good(SESSION_STATE_FILE)
+        if txt is None:
+            return
+        b1 = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + '.bak.1')
+        if not b1.exists():
+            tmp = b1.with_suffix('.tmp')
+            tmp.write_text(txt, encoding='utf-8')
+            os.replace(str(tmp), str(b1))
+        ext = SS_EXT_DIR / SESSION_STATE_FILE.name
+        if _ss_snapshot_good(ext) != txt:
+            _ss_atomic_write(ext, txt)
+            _SS_EXT_LAST['txt'] = txt
+        _ss_log('SEED: backup dau tien da san sang (bak.1 + /data)')
+    except Exception as e:
+        _ss_log(f'seed backups loi: {e}')
+
+def _ss_try_heal(reason: str):
+    """Tim backup moi nhat con dung duoc va phuc hoi lai file chinh. Tra dict hoac None."""
+    candidates = []
+    for i in range(1, SS_BACKUP_COUNT + 1):
+        p = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + f'.bak.{i}')
+        try:
+            if p.exists():
+                candidates.append((p.stat().st_mtime, p))
+        except Exception:
+            pass
+    try:
+        ext = SS_EXT_DIR / SESSION_STATE_FILE.name
+        if ext.exists():
+            candidates.append((ext.stat().st_mtime, ext))
+    except Exception:
+        pass
+    candidates.sort(reverse=True)
+    for _, p in candidates:
+        txt = _ss_snapshot_good(p)
+        if txt is not None:
+            try:
+                _ss_atomic_write(SESSION_STATE_FILE, txt)
+                _ss_log(f'SELF-HEAL ({reason}): da phuc hoi tu {p.name} ({len(txt)} bytes)')
+                return json.loads(txt)
+            except Exception as e:
+                _ss_log(f'SELF-HEAL ({reason}): loi voi {p.name}: {e}')
+    _ss_log(f'SELF-HEAL ({reason}): khong con backup nao dung duoc — can can thiep tay')
+    return None
 
 def save_json(path: Path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    _ss_atomic_write(Path(path), json.dumps(data, ensure_ascii=False, indent=2) + '\n')
 
+# Ver 2.19+ xoa XXTouch; thay the bang path mac dinh cho output dir.
+DEFAULT_OUTPUT_DIR = '/data/admanager_output'
 
 def load_admanager_config():
-    cfg = {
-        'routers': {},
-        'apps': {
-            'tiktok': {
-                'label': 'TikTok',
-                'matchPrefixes': ['com.ss.iphone.ugc.Ame', 'com.zhiliaoapp.musically']
-            },
-            'tiktok_lite': {
-                'label': 'TikTok Lite',
-                'matchPrefixes': ['com.ss.iphone.ugc.AmeLite', 'com.zhiliaoapp.musically.lite', 'com.ss.iphone.ugc.tiktoklite']
-            }
-        },
-        'backupCommands': {
-            'TikTok': 'echo BACKUP_TIKTOK',
-            'TikTok Lite': 'echo BACKUP_TIKTOK_LITE'
-        },
-        'defaultOutput': str(XXTOUCH_DATA_DIR),
-        'uiState': {
-            'router': '',
-            'port': '46952',
-            'machineMode': 'all',
-            'machineRange': '1-10',
-            'machineList': '1,2,3',
-            'dateMode': 'one',
-            'dateStart': '',
-            'dateEnd': '',
-            'appFilter': 'All',
-            'fullScan': False,
-            'doBackupBeforePull': False,
-            'deleteAfterPull': False,
-            'outputRoot': str(XXTOUCH_DATA_DIR),
-        }
-    }
-    config_sources = [
-        ADMANAGER_GUI_CONFIG_FILE,
-        ADMANAGER_CONFIG_FILE,
-        ADMANAGER_GUI_LOCAL_FILE,
-        ADMANAGER_LOCAL_FILE,
-    ]
+    cfg = {'routers': {}, 'apps': {'tiktok': {'label': 'TikTok', 'matchPrefixes': ['com.ss.iphone.ugc.Ame', 'com.zhiliaoapp.musically']}, 'tiktok_lite': {'label': 'TikTok Lite', 'matchPrefixes': ['com.ss.iphone.ugc.AmeLite', 'com.zhiliaoapp.musically.lite', 'com.ss.iphone.ugc.tiktoklite']}}, 'backupCommands': {'TikTok': 'echo BACKUP_TIKTOK', 'TikTok Lite': 'echo BACKUP_TIKTOK_LITE'}, 'defaultOutput': DEFAULT_OUTPUT_DIR, 'uiState': {'router': '', 'port': '46952', 'machineMode': 'all', 'machineRange': '1-10', 'machineList': '1,2,3', 'dateMode': 'one', 'dateStart': '', 'dateEnd': '', 'appFilter': 'All', 'fullScan': False, 'doBackupBeforePull': False, 'deleteAfterPull': False, 'outputRoot': DEFAULT_OUTPUT_DIR}}
+    config_sources = [ADMANAGER_GUI_CONFIG_FILE, ADMANAGER_CONFIG_FILE, ADMANAGER_GUI_LOCAL_FILE, ADMANAGER_LOCAL_FILE]
     for path in config_sources:
         try:
             if path.exists():
@@ -631,10 +764,9 @@ def load_admanager_config():
             pass
     ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
     if not ui.get('outputRoot'):
-        ui['outputRoot'] = cfg.get('defaultOutput') or str(XXTOUCH_DATA_DIR)
+        ui['outputRoot'] = cfg.get('defaultOutput') or ''
     cfg['uiState'] = ui
     return cfg
-
 
 def save_admanager_local(cfg):
     local = {}
@@ -647,253 +779,6 @@ def save_admanager_local(cfg):
         if key in cfg:
             local[key] = cfg[key]
     save_json(ADMANAGER_LOCAL_FILE, local)
-
-
-def load_group3_schedule_store():
-    data = {'jobs': {}}
-    try:
-        if GROUP3_SCHEDULE_FILE.exists():
-            incoming = json.loads(GROUP3_SCHEDULE_FILE.read_text(encoding='utf-8'))
-            if isinstance(incoming, dict) and isinstance(incoming.get('jobs'), dict):
-                data['jobs'] = incoming['jobs']
-    except Exception:
-        pass
-    return data
-
-
-def save_group3_schedule_store(data):
-    save_json(GROUP3_SCHEDULE_FILE, data if isinstance(data, dict) else {'jobs': {}})
-
-
-def group3_schedule_job_key(router: str, action: str) -> str:
-    return f"{str(router or '').strip()}::{str(action or '').strip()}"
-
-
-def group3_schedule_public(job: dict) -> dict:
-    if not isinstance(job, dict):
-        return {}
-    out = dict(job)
-    out.pop('cancel_requested', None)
-    out.pop('running', None)
-    next_run_at = int(out.get('next_run_at') or 0)
-    if next_run_at:
-        out['remaining_seconds'] = max(0, next_run_at - int(time.time()))
-    else:
-        out['remaining_seconds'] = 0
-    return out
-
-
-def create_group3_schedule_job(payload, cfg):
-    state = payload if isinstance(payload, dict) else {}
-    action = str(state.get('action') or '').strip()
-    router_ctx = xxtouch_get_router_machine_context(cfg, state)
-    router = str(router_ctx.get('router') or state.get('router') or '').strip()
-    interval_seconds = max(1, int(state.get('interval_seconds') or 0))
-    run_count = max(1, int(state.get('run_count') or 0))
-    job_key = group3_schedule_job_key(router, action)
-    machine_mode = state.get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all'
-    machine_group = state.get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or ''
-    machine_list = state.get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or ''
-    remote_machine = state.get('remoteMachine') or ''
-    group3_app = str(state.get('group3App') or 'tiktok_lite').strip() or 'tiktok_lite'
-    port = str(state.get('port') or ((cfg.get('uiState') or {}).get('port')) or '46952').strip()
-    job = {
-        'job_key': job_key,
-        'router': router,
-        'action': action,
-        'group3App': group3_app,
-        'interval_seconds': interval_seconds,
-        'remaining_runs': run_count,
-        'initial_runs': run_count,
-        'machineMode': str(machine_mode).strip(),
-        'machineGroup': str(machine_group).strip(),
-        'machineList': str(machine_list).strip(),
-        'remoteMachine': str(remote_machine).strip(),
-        'port': port,
-        'status': 'draft',
-        'created_at': int(time.time()),
-        'next_run_at': 0,
-        'last_run_at': 0,
-        'last_error': '',
-        'last_logs': [],
-        'state': {
-            'router': router,
-            'machineMode': machine_mode,
-            'machineGroup': machine_group,
-            'machineList': machine_list,
-            'remoteMachine': remote_machine,
-            'group3App': group3_app,
-            'action': action,
-            'port': port,
-        },
-    }
-    return job_key, job
-
-
-def group3_schedule_execute_job(job):
-    cfg = load_admanager_config()
-    state = dict(job.get('state') or {})
-    port = str(job.get('port') or state.get('port') or ((cfg.get('uiState') or {}).get('port')) or '46952').strip()
-    action = str(job.get('action') or '').strip()
-    machines = xxtouch_get_selected_machines(cfg, state)
-    if not machines:
-        return False, ['[SCHEDULE] Không tìm thấy máy XXTouch hợp lệ để chạy lệnh']
-    logs = []
-    ok_count = 0
-    failed_indexes = []
-    app_choice = str(job.get('group3App') or state.get('group3App') or 'tiktok_lite').strip() or 'tiktok_lite'
-    if len(machines) <= 1:
-        for m in machines:
-            try:
-                ok, lines = xxtouch_run_action_on_machine(m, port, action, app_choice)
-                logs.extend(lines)
-                if ok:
-                    ok_count += 1
-                else:
-                    failed_indexes.append(int(m.get('index') or 0))
-            except Exception as e:
-                logs.append(f"[{m['label']}] lỗi: {e}")
-                failed_indexes.append(int(m.get('index') or 0))
-    else:
-        max_workers = max(1, len(machines))
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action, app_choice): m for m in machines}
-            ordered_results = []
-            for future in as_completed(future_map):
-                m = future_map[future]
-                try:
-                    ok, lines = future.result()
-                except Exception as e:
-                    ok, lines = False, [f"[{m['label']}] lỗi: {e}"]
-                ordered_results.append({'index': int(m.get('index') or 0), 'label': str(m.get('label') or ''), 'ok': ok, 'lines': lines})
-        ordered_results.sort(key=lambda item: (item['index'], item['label']))
-        for item in ordered_results:
-            logs.extend(item['lines'])
-            if item['ok']:
-                ok_count += 1
-            else:
-                failed_indexes.append(int(item.get('index') or 0))
-    logs.append(xxtouch_build_action_summary(action, machines, ok_count, failed_indexes))
-    return ok_count == len(machines), logs
-
-
-def group3_schedule_worker(job_key):
-    while True:
-        with GROUP3_SCHEDULE_LOCK:
-            store = load_group3_schedule_store()
-            job = (store.get('jobs') or {}).get(job_key)
-        if not isinstance(job, dict):
-            GROUP3_SCHEDULE_THREADS.pop(job_key, None)
-            return
-        now = int(time.time())
-        if int(job.get('next_run_at') or 0) > now:
-            time.sleep(1)
-            continue
-        with GROUP3_SCHEDULE_LOCK:
-            store = load_group3_schedule_store()
-            job = (store.get('jobs') or {}).get(job_key)
-            if not isinstance(job, dict):
-                GROUP3_SCHEDULE_THREADS.pop(job_key, None)
-                return
-            job['status'] = 'running'
-            job['running'] = True
-            store['jobs'][job_key] = job
-            save_group3_schedule_store(store)
-        ok, logs = group3_schedule_execute_job(job)
-        with GROUP3_SCHEDULE_LOCK:
-            store = load_group3_schedule_store()
-            job = (store.get('jobs') or {}).get(job_key)
-            if not isinstance(job, dict):
-                GROUP3_SCHEDULE_THREADS.pop(job_key, None)
-                return
-            job['running'] = False
-            job['last_run_at'] = int(time.time())
-            job['last_logs'] = logs[-20:]
-            if not ok and logs:
-                job['last_error'] = str(logs[-1])
-            remaining = max(0, int(job.get('remaining_runs') or 0) - 1)
-            job['remaining_runs'] = remaining
-            if remaining <= 0:
-                store.get('jobs', {}).pop(job_key, None)
-                save_group3_schedule_store(store)
-                GROUP3_SCHEDULE_THREADS.pop(job_key, None)
-                return
-            job['status'] = 'waiting'
-            job['next_run_at'] = int(time.time()) + max(1, int(job.get('interval_seconds') or 1))
-            store['jobs'][job_key] = job
-            save_group3_schedule_store(store)
-        time.sleep(1)
-
-
-def group3_schedule_start_worker(job_key):
-    with GROUP3_SCHEDULE_LOCK:
-        worker = GROUP3_SCHEDULE_THREADS.get(job_key)
-        if worker and worker.is_alive():
-            return
-        worker = threading.Thread(target=group3_schedule_worker, args=(job_key,), daemon=True)
-        GROUP3_SCHEDULE_THREADS[job_key] = worker
-        worker.start()
-
-
-def admanager_detect_app_label(apps_cfg: dict, base_name: str) -> str:
-    low = str(base_name or '').lower()
-    for key, info in (apps_cfg or {}).items():
-        for p in info.get('matchPrefixes', []):
-            if low.startswith(p.lower() + '_'):
-                return info.get('label', key)
-    return 'TikTok Lite' if 'lite' in low else 'TikTok'
-
-
-def admanager_parse_base(m):
-    date8 = m.group('date') or ''
-    time6 = m.group('time_u') or m.group('time') or ''
-    base = f"{m.group('prefix')}{date8}{('_' if m.group('time_u') else '')}{time6}"
-    return base, base + '.adbk', date8, time6
-
-
-def admanager_parse_date_input(s: str) -> str:
-    s = str(s or '').strip()
-    if not s:
-        return ''
-    m = re.match(r'^(\d{1,2})\/(\d{1,2})\/(\d{4})$', s)
-    if m:
-        dd, mm, yyyy = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        if 1 <= dd <= 31 and 1 <= mm <= 12:
-            return f'{yyyy:04d}{mm:02d}{dd:02d}'
-    m = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})$', s)
-    if m:
-        yyyy, mm, dd = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        if 1 <= dd <= 31 and 1 <= mm <= 12:
-            return f'{yyyy:04d}{mm:02d}{dd:02d}'
-    digits = re.sub(r'\D', '', s)
-    if len(digits) == 8:
-        yyyy, mm, dd = int(digits[:4]), int(digits[4:6]), int(digits[6:8])
-        if 1 <= dd <= 31 and 1 <= mm <= 12 and 2000 <= yyyy <= 2100:
-            return digits
-    return ''
-
-
-def admanager_parse_daymonth(s: str) -> str:
-    m = re.match(r'^(\d{1,2})\/(\d{1,2})$', str(s or '').strip())
-    if not m:
-        return ''
-    dd, mm = int(m.group(1)), int(m.group(2))
-    if 1 <= dd <= 31 and 1 <= mm <= 12:
-        return f'{mm:02d}{dd:02d}'
-    return ''
-
-
-def admanager_in_mmdd_range(mmdd, a, b):
-    return a <= mmdd <= b if a <= b else (mmdd >= a or mmdd <= b)
-
-
-def admanager_routers_to_scan(cfg, router_key):
-    routers = cfg.get('routers') or {}
-    key = str(router_key or '').strip()
-    if key == 'All' or not key:
-        return list(routers.items())
-    return [(key, routers.get(key) or {})]
-
 
 def get_current_router_lan_ip():
     try:
@@ -911,841 +796,12 @@ def get_current_router_lan_ip():
         pass
     return ''
 
-
-def admanager_get_machine_ip_pairs(router_obj=None, router_key=''):
-    saved_text = get_saved_ip_identity_text('1') or get_saved_ip_identity_text()
-    configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
-    idx_ip = []
-    seen = set()
-    for item in configured_rows:
-        tag = normalize_tag(item.get('tag', ''))
-        ip = str(item.get('ip', '')).strip()
-        machine = normalize_machine(item.get('machine', ''))
-        if not tag.startswith('proxy_') or not ip:
-            continue
-        try:
-            idx = int(machine or proxy_tag_num(tag))
-        except Exception:
-            continue
-        if idx in seen:
-            continue
-        seen.add(idx)
-        idx_ip.append((idx, ip))
-    if idx_ip:
-        idx_ip.sort(key=lambda x: x[0])
-        return idx_ip
-
-    entries = (router_obj or {}).get('entries') or []
-    for line in entries:
-        parts = str(line).split('|', 1)
-        if len(parts) == 2 and parts[0].startswith('proxy_'):
-            try:
-                idx = int(parts[0].split('_', 1)[1])
-            except Exception:
-                continue
-            idx_ip.append((idx, parts[1].strip()))
-    idx_ip.sort(key=lambda x: x[0])
-    return idx_ip
-
-
-def admanager_machine_note_text(router_obj=None, router_key=''):
-    idx_ip = admanager_get_machine_ip_pairs(router_obj, router_key=router_key)
-    indexes = sorted({int(i) for i, _ in idx_ip})
-    if not indexes:
-        return 'Chưa có dữ liệu Gán IP'
-    ranges = []
-    start = prev = indexes[0]
-    for cur in indexes[1:]:
-        if cur == prev + 1:
-            prev = cur
-            continue
-        ranges.append(f'{start}-{prev}' if start != prev else str(start))
-        start = prev = cur
-    ranges.append(f'{start}-{prev}' if start != prev else str(start))
-    return ', '.join(ranges)
-
-
-def admanager_parse_machine_tokens(raw_text):
-    chosen = set()
-    for tok in re.split(r'\s*,\s*', str(raw_text or '').strip()):
-        tok = tok.strip()
-        if not tok:
-            continue
-        if '-' in tok:
-            try:
-                a, b = tok.split('-', 1)
-                lo, hi = int(a), int(b)
-                if lo > hi:
-                    lo, hi = hi, lo
-                for i in range(lo, hi + 1):
-                    chosen.add(i)
-            except Exception:
-                continue
-        elif tok.isdigit():
-            chosen.add(int(tok))
-    return chosen
-
-
-def admanager_validate_machine_selection(router_key, router_obj, machine_mode, machine_range, machine_list):
-    idx_ip = admanager_get_machine_ip_pairs(router_obj, router_key=router_key)
-    available = sorted({int(i) for i, _ in idx_ip})
-    available_set = set(available)
-    mode = str(machine_mode or 'all').strip().lower()
-    raw = str(machine_range if mode in ('range', 'group') else machine_list or '').strip()
-    if mode == 'all':
-        selected = set(available_set)
-    else:
-        selected = admanager_parse_machine_tokens(raw)
-    invalid = sorted(i for i in selected if i not in available_set)
-    return {
-        'available': available,
-        'selected': sorted(selected),
-        'invalid': invalid,
-        'note': admanager_machine_note_text(router_obj, router_key=router_key),
-        'raw': raw,
-        'mode': mode,
-    }
-
-
-def admanager_iter_machines(router_key, router_obj, machine_mode, machine_range, machine_list):
-    idx_ip = admanager_get_machine_ip_pairs(router_obj, router_key=router_key)
-
-    mode = str(machine_mode or 'all').strip().lower()
-    chosen_idx = set()
-    if mode == 'all':
-        chosen_idx = {i for i, _ in idx_ip}
-    elif mode in ('range', 'group'):
-        for tok in re.split(r'\s*,\s*', str(machine_range or '').strip()):
-            tok = tok.strip()
-            if not tok:
-                continue
-            if '-' in tok:
-                try:
-                    a, b = tok.split('-', 1)
-                    lo, hi = int(a), int(b)
-                    if lo > hi:
-                        lo, hi = hi, lo
-                    chosen_idx.update(i for i, _ in idx_ip if lo <= i <= hi)
-                except Exception:
-                    continue
-            elif tok.isdigit():
-                chosen_idx.add(int(tok))
-    else:
-        for tok in re.split(r'\s*,\s*', str(machine_list or '').strip()):
-            tok = tok.strip()
-            if tok.isdigit():
-                chosen_idx.add(int(tok))
-    prefix = router_obj.get('machinePrefix') or (router_key + '-may')
-    out = []
-    for i, ip in idx_ip:
-        ip = str(ip or '').strip()
-        if not ip:
-            continue
-        if i in chosen_idx:
-            out.append({'index': i, 'ip': ip, 'label': f'{prefix}{i:02d}'})
-    return out
-
-
-def admanager_base(ip, port):
-    return f'http://{ip}:{port}'
-
-
-def admanager_command_spawn(ip, port, cmd, timeout=20):
-    req = urllib.request.Request(admanager_base(ip, port) + '/command_spawn', data=cmd.encode('utf-8'), method='POST')
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw = r.read().decode('utf-8', errors='ignore')
-    try:
-        return json.loads(raw)
-    except Exception:
-        return {'raw': raw}
-
-
-def xxtouch_spawn_checked(ip, port, cmd, timeout=20, retries=3, retry_delay=2.0):
-    last_obj = {}
-    last_err = None
-    max_attempts = max(1, int(retries) + 1)
-    for attempt in range(max_attempts):
-        try:
-            obj = admanager_command_spawn(ip, port, cmd, timeout=timeout)
-        except Exception as e:
-            last_err = str(e)
-            if attempt < max_attempts - 1:
-                time.sleep(retry_delay)
-                continue
-            raise RuntimeError(last_err)
-        last_obj = obj if isinstance(obj, dict) else {'raw': obj}
-        result = last_obj.get('result') if isinstance(last_obj.get('result'), dict) else {}
-        status = result.get('status')
-        stderr = str(result.get('stderr') or '').strip()
-        stdout = str(result.get('stdout') or '').strip()
-        message = str(last_obj.get('message') or '').strip()
-        raw_text = str(last_obj.get('raw') or '').strip()
-        success_text = ' '.join(x for x in (stdout, stderr, message, raw_text) if x)
-        if status in (0, '0', None) and 'Another singleton process is running' not in stderr:
-            return last_obj
-        if 'Operation succeed' in success_text and 'Another singleton process is running' not in success_text:
-            return last_obj
-        last_err = stderr or stdout or message or raw_text or f'command_spawn status={status}'
-        if 'Another singleton process is running' in success_text and attempt < max_attempts - 1:
-            try:
-                xxtouch_post_json(ip, port, '/recycle', {}, timeout=15)
-            except Exception:
-                pass
-            time.sleep(retry_delay)
-            continue
-        if attempt < max_attempts - 1:
-            time.sleep(retry_delay)
-            continue
-        break
-    raise RuntimeError(str(last_err or 'command_spawn failed'))
-
-
-def admanager_download_file(ip, port, remote_path, local_path: Path, timeout=60):
-    enc = urllib.parse.quote(remote_path, safe='/')
-    with urllib.request.urlopen(admanager_base(ip, port) + f'/download_file?filename={enc}', timeout=timeout) as r:
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        local_path.write_bytes(r.read())
-
-
-def admanager_download_backups_plist(ip, port):
-    p = XXTOUCH_TMP_DIR / f"tmp_Backups_runtime_{ip.replace('.', '_')}.plist"
-    admanager_download_file(ip, port, f'{ADMANAGER_REMOTE_DIR}/Backups.plist', p, timeout=30)
-    return p
-
-
-def admanager_parse_backups_plist_map(plist_path: Path):
-    try:
-        obj = plistlib.loads(plist_path.read_bytes())
-    except Exception:
-        return {}
-    objs = obj.get('$objects') or []
-    UID = plistlib.UID
-    def dec(x):
-        if isinstance(x, UID):
-            return dec(objs[x.data])
-        if isinstance(x, list):
-            return [dec(v) for v in x]
-        if isinstance(x, dict):
-            if 'NS.keys' in x and 'NS.objects' in x:
-                return dict(zip(dec(x['NS.keys']), dec(x['NS.objects'])))
-            if 'NS.objects' in x and '$class' in x and len(x) == 2:
-                return dec(x['NS.objects'])
-            return {k: dec(v) for k, v in x.items() if k != '$class'}
-        return x
-    try:
-        root = dec(obj['$top']['root'])
-    except Exception:
-        return {}
-    out = {}
-    for _, maybe_list in (root.items() if isinstance(root, dict) else []):
-        if isinstance(maybe_list, list):
-            for item in maybe_list:
-                if isinstance(item, dict) and isinstance(item.get('name'), str):
-                    out[item['name']] = ('__backupName' not in item)
-    return out
-
-
-def admanager_cleanup_tmp():
-    try:
-        for fp in XXTOUCH_TMP_DIR.glob('tmp_Backups_runtime_*.plist'):
-            try:
-                fp.unlink()
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-
-
-
-def xxtouch_parse_machine_spec(group_text: str, list_text: str, mode: str):
-    mode = str(mode or 'all').strip().lower()
-    chosen = set()
-    if mode == 'all':
-        return None
-    if mode == 'group':
-        for token in str(group_text or '').split(','):
-            token = token.strip()
-            if not token:
-                continue
-            if '-' in token:
-                try:
-                    a, b = token.split('-', 1)
-                    lo, hi = int(a), int(b)
-                    if lo > hi:
-                        lo, hi = hi, lo
-                    for i in range(lo, hi + 1):
-                        chosen.add(i)
-                except Exception:
-                    pass
-            elif token.isdigit():
-                chosen.add(int(token))
-    else:
-        for token in str(list_text or '').split(','):
-            token = token.strip()
-            if token.isdigit():
-                chosen.add(int(token))
-    return chosen
-
-
-def xxtouch_get_selected_machines(cfg: dict, state: dict):
-    target_machines = (state or {}).get('targetMachines') if isinstance(state, dict) else None
-    if isinstance(target_machines, list) and target_machines:
-        out = []
-        seen = set()
-        for item in target_machines:
-            if not isinstance(item, dict):
-                continue
-            ip = str(item.get('ip') or '').strip()
-            if not ip:
-                continue
-            index = int(item.get('index') or 0)
-            label = str(item.get('machine') or item.get('label') or item.get('index') or '').strip() or str(index)
-            key = (index, ip)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append({'router': '', 'index': index, 'ip': ip, 'label': label})
-        if out:
-            out.sort(key=lambda x: x['index'])
-            return out
-    requested_router = str((state or {}).get('router') or ((cfg.get('uiState') or {}).get('router')) or '').strip()
-    mode = str((state or {}).get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all').strip().lower()
-    group_text = str((state or {}).get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '')
-    list_text = str((state or {}).get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
-    if mode not in ('group', 'range', 'list'):
-        mode = 'all'
-        group_text = ''
-        list_text = ''
+def get_router_machine_context(cfg: dict, state: dict):
+    requested_router = str((state or {}).get('router') or (cfg.get('uiState') or {}).get('router') or '').strip()
     router = (cfg.get('routers') or {}).get(requested_router) if isinstance(cfg.get('routers'), dict) and requested_router else {}
-    out = []
-    for machine in admanager_iter_machines(requested_router, router if isinstance(router, dict) else {}, mode, group_text, list_text):
-        out.append({'router': '', 'index': machine['index'], 'ip': machine['ip'], 'label': machine['label']})
-    out.sort(key=lambda x: x['index'])
-    return out
-
-
-def xxtouch_get_router_machine_context(cfg: dict, state: dict):
-    requested_router = str((state or {}).get('router') or ((cfg.get('uiState') or {}).get('router')) or '').strip()
-    router = (cfg.get('routers') or {}).get(requested_router) if isinstance(cfg.get('routers'), dict) and requested_router else {}
-    note = admanager_machine_note_text(router if isinstance(router, dict) else {}, router_key=requested_router)
-    available = [i for i, _ in admanager_get_machine_ip_pairs(router if isinstance(router, dict) else {}, router_key=requested_router)]
-    return {
-        'router': requested_router,
-        'router_obj': router if isinstance(router, dict) else {},
-        'note': note,
-        'available': available,
-    }
-
-
-def xxtouch_post_json(ip, port, path, payload=None, timeout=20):
-    data = json.dumps(payload or {}).encode('utf-8')
-    req = urllib.request.Request(f'http://{ip}:{port}{path}', data=data, method='POST', headers={'Content-Type':'application/json'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw = r.read().decode('utf-8', errors='ignore')
-    return json.loads(raw)
-
-
-def xxtouch_post_form(ip, port, path, body='', timeout=20, headers=None):
-    raw_body = body.encode('utf-8') if isinstance(body, str) else (body or b'')
-    req = urllib.request.Request(f'http://{ip}:{port}{path}', data=raw_body, method='POST', headers=headers or {})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw = r.read().decode('utf-8', errors='ignore')
-    try:
-        return json.loads(raw) if raw else {}
-    except Exception:
-        return {'raw': raw}
-
-
-def xxtouch_device_info(ip, port, timeout=8):
-    try:
-        return xxtouch_post_form(ip, port, '/deviceinfo', '', timeout=timeout)
-    except Exception:
-        pass
-    cmd = r'''CONF="/private/var/mobile/Media/1ferver/1ferver.conf"; \
-PORT=$(grep -o '"port"[[:space:]]*:[[:space:]]*[0-9]\+' "$CONF" 2>/dev/null | head -n1 | tr -cd '0-9'); \
-[ -n "$PORT" ] || PORT=46952; \
-/usr/bin/curl -s -X POST "http://127.0.0.1:${PORT}/deviceinfo" -d "" || curl -s -X POST "http://127.0.0.1:${PORT}/deviceinfo" -d ""'''
-    obj = admanager_command_spawn(ip, port, cmd, timeout=max(timeout, 12))
-    stdout = (((obj or {}).get('result') or {}).get('stdout') or (obj or {}).get('raw') or '').strip()
-    if not stdout:
-        raise RuntimeError('deviceinfo trống')
-    try:
-        return json.loads(stdout)
-    except Exception:
-        raise RuntimeError(stdout[:300])
-
-
-def xxtouch_http_probe(ip, port, timeout=5):
-    last_error = None
-    for path in ('/screen.html', '/', '/deviceinfo'):
-        try:
-            method = 'GET' if path != '/deviceinfo' else 'POST'
-            data = None if method == 'GET' else b''
-            req = urllib.request.Request(f'http://{ip}:{port}{path}', data=data, method=method)
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                code = getattr(r, 'status', None) or r.getcode()
-                body = r.read(256).decode('utf-8', errors='ignore')
-            if 200 <= int(code or 0) < 500:
-                return {'ok': True, 'path': path, 'code': int(code or 0), 'body': body}
-        except Exception as e:
-            last_error = e
-    raise RuntimeError(str(last_error or 'http probe fail'))
-
-
-def xxtouch_ping_probe(ip, timeout=2):
-    try:
-        proc = subprocess.run(
-            ['ping', '-c', '1', '-W', str(int(timeout)), str(ip)],
-            capture_output=True,
-            text=True,
-            timeout=max(3, int(timeout) + 1),
-        )
-        return proc.returncode == 0
-    except Exception:
-        return False
-
-
-def xxtouch_try_claim_scan(machine_key: str) -> bool:
-    with XXTOUCH_SCAN_LOCK:
-        if machine_key in XXTOUCH_SCAN_INFLIGHT:
-            return False
-        XXTOUCH_SCAN_INFLIGHT.add(machine_key)
-        return True
-
-
-def xxtouch_release_scan(machine_key: str):
-    with XXTOUCH_SCAN_LOCK:
-        XXTOUCH_SCAN_INFLIGHT.discard(machine_key)
-
-
-def xxtouch_df_info(ip, port):
-    obj = admanager_command_spawn(ip, port, '/bin/df -k /private/var', timeout=20)
-    stdout = (((obj or {}).get('result') or {}).get('stdout') or '').strip().splitlines()
-    if len(stdout) < 2:
-        return {}
-    cols = stdout[-1].split()
-    if len(cols) < 6:
-        return {}
-    try:
-        total_kb = int(cols[1]); free_kb = int(cols[3])
-    except Exception:
-        return {}
-    total_gib = total_kb / 1024 / 1024
-    free_gib = free_kb / 1024 / 1024
-    capacity_label = '64GB'
-    for size in (16, 32, 64, 128, 256, 512, 1024):
-        capacity_label = f'{size}GB'
-        if total_gib <= size * 0.94:
-            break
-    free_percent = int(round((free_kb / total_kb) * 100)) if total_kb else 0
-    return {
-        'capacity_gib': round(total_gib, 1),
-        'free_gib': round(free_gib, 1),
-        'capacity_label': capacity_label,
-        'free_percent': free_percent,
-        'free_label': f"~{round(free_gib,1)}GB ({free_percent}%)",
-    }
-
-
-def xxtouch_stop_script(ip, port):
-    try:
-        xxtouch_post_json(ip, port, '/recycle', {}, timeout=15)
-        return 'stop_script: /recycle'
-    except Exception as e:
-        return f'stop_script lỗi: {e}'
-
-
-def xxtouch_upload_file(ip, port, local_name: str, file_bytes: bytes, remote_dir: str = '/var/mobile/Media/1ferver/lua/examples'):
-    safe_name = Path(str(local_name or '')).name
-    if not safe_name:
-        raise ValueError('Tên file không hợp lệ')
-    remote_dir = str(remote_dir or '/var/mobile/Media/1ferver/lua/examples').strip() or '/var/mobile/Media/1ferver/lua/examples'
-    remote_path = f"{remote_dir.rstrip('/')}/{safe_name}"
-    rel_path = remote_path
-    prefix = '/var/mobile/Media/1ferver/'
-    if rel_path.startswith(prefix):
-        rel_path = rel_path[len(prefix):]
-    payload = {
-        'filename': rel_path.lstrip('/'),
-        'data': base64.b64encode(file_bytes or b'').decode('ascii'),
-    }
-    return xxtouch_post_json(ip, port, '/write_file', payload, timeout=max(30, min(600, int(len(file_bytes or b'') / 50000) + 30)))
-
-
-def xxtouch_send_files_to_machine(machine, port, files, remote_dir='/var/mobile/Media/1ferver/lua/examples'):
-    ip = machine['ip']
-    label = machine['label']
-    logs = [f'[{label}] bắt đầu gửi {len(files or [])} file']
-    uploaded = []
-    for idx, item in enumerate(files or [], start=1):
-        name = Path(str((item or {}).get('name') or '')).name
-        data_b64 = str((item or {}).get('content_b64') or '')
-        if not name or not data_b64:
-            continue
-        logs.append(f'[{label}] đang gửi {idx}/{len(files or [])}: {name}')
-        raw = base64.b64decode(data_b64)
-        obj = xxtouch_upload_file(ip, port, name, raw, remote_dir=remote_dir)
-        code = obj.get('code') if isinstance(obj, dict) else 0
-        if code not in (0, None):
-            raise ValueError((obj or {}).get('message') or f'write_file lỗi code={code}')
-        uploaded.append(name)
-        logs.append(f'[{label}] đã gửi {name}')
-    if not uploaded:
-        raise ValueError('Không có file hợp lệ để gửi')
-    logs.append(f'[{label}] xong {len(uploaded)} file -> {remote_dir}')
-    return True, logs
-
-
-def xxtouch_run_repo_lua_script(ip, port, script_file: Path, timeout: int):
-    script_path = Path(script_file)
-    if not script_path.exists():
-        raise FileNotFoundError(f'Không thấy script repo: {script_path}')
-    script_text = script_path.read_text(encoding='utf-8')
-    # Chạy inline trực tiếp từ repo; tuyệt đối không ghi .lua vào máy iPhone.
-    return xxtouch_spawn_checked(ip, port, f"lua - <<'LUA'\n{script_text}\nLUA", timeout=timeout)
-
-
-def xxtouch_run_action_on_machine(machine, port, action, app_choice='tiktok_lite'):
-    ip = machine['ip']
-    label = machine['label']
-    action_label_map = {
-        'stop_script': 'Stop Script',
-        'reboot': 'Reboot',
-        'home': 'Home',
-        'lock_home': 'Lock Home',
-        'clear_app': 'Clear App',
-        'open_app_manager': 'App Manager',
-        'remove_tiktok_lite': 'Gỡ app TIKTOK LITE',
-        'remove_tiktok': 'Gỡ app TIKTOK',
-        'install_tiktok': 'Cài app TIKTOK',
-        'install_tiktok_lite': 'Cài app TIKTOK LITE',
-        'quit_apps': 'Đóng ứng dụng',
-        'nurture_tiktok': 'Nuôi Phôi',
-        'event_video_180_tiktok': 'Chạy Event Video 180',
-        'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
-        'send_files': 'Gửi file',
-    }
-    stop_first_actions = {
-        'stop_script',
-        'clear_app',
-        'open_app_manager',
-        'remove_tiktok_lite',
-        'remove_tiktok',
-        'install_tiktok',
-        'install_tiktok_lite',
-        'quit_apps',
-        'nurture_tiktok',
-        'event_video_180_tiktok',
-        'event_dd_20p_tiktok_lite',
-    }
-    logs = [f'[{label}] bắt đầu {action_label_map.get(action, action)}']
-    if action in stop_first_actions:
-        stop_result = xxtouch_stop_script(ip, port)
-        logs.append(f'[{label}] {stop_result}')
-        if action != 'stop_script':
-            time.sleep(0.25)
-            logs.append(f'[{label}] chờ 0.25s sau stop script')
-    if action == 'stop_script':
-        logs.append(f'[{label}] stop script ok')
-        return True, logs
-    if action == 'reboot':
-        xxtouch_post_json(ip, port, '/reboot2', {}, timeout=20)
-        logs.append(f'[{label}] reboot ok')
-        return True, logs
-    if action == 'home':
-        xxtouch_spawn_checked(ip, port, 'lua -e \'key=require("key"); key.press(0x0C, 64); print("HOME_OK")\'', timeout=15)
-        logs.append(f'[{label}] home ok')
-        return True, logs
-    if action == 'lock_home':
-        xxtouch_spawn_checked(ip, port, 'lua -e \'key=require("key"); key.press(0x0C, 48); print("POWER_OK")\'', timeout=15)
-        logs.append(f'[{label}] lock home ok')
-        return True, logs
-    if action == 'install_tiktok':
-        install_script = r'''lua - <<'LUA'
-local app = require("app")
-local sys = require("sys")
-local screen = require("screen")
-local touch = require("touch")
-screen.init(0)
-
-local RES_DIR = "/var/mobile/Media/1ferver/lua/scripts/img/"
-local TIKTOK_URL = "https://apps.apple.com/jp/app/tiktok-%E3%83%86%E3%82%A3%E3%83%83%E3%82%AF%E3%83%88%E3%83%83%E3%82%AF/id1235601864"
-local CHECK_TAI_1 = RES_DIR .. "/CheckTai1.png"
-local CHECK_TAI_2 = RES_DIR .. "/CheckTai2.png"
-local CHECK_TAI_3 = RES_DIR .. "/CheckTai3.png"
-local CLOUD_IMG = RES_DIR .. "/cloud.png"
-local OPEN_IMG = RES_DIR .. "/open.png"
-
-local function wait_ms(ms)
-  sys.msleep(ms)
-end
-
-local function openStoreTikTok()
-  app.close("com.apple.AppStore")
-  wait_ms(1500)
-  app.open_url(TIKTOK_URL)
-  wait_ms(6000)
-end
-
-local function hasAnyCheckTai()
-  if findImage(CHECK_TAI_1, 82, 0, 0, 750, 1334) then return true end
-  if findImage(CHECK_TAI_2, 82, 0, 0, 750, 1334) then return true end
-  if findImage(CHECK_TAI_3, 82, 0, 0, 750, 1334) then return true end
-  return false
-end
-
-local function hasOpen()
-  local ok = findImage(OPEN_IMG, 82, 0, 0, 750, 1334)
-  return ok == true
-end
-
-local function hasCloud()
-  local ok = findImage(CLOUD_IMG, 82, 250, 500, 430, 700)
-  return ok == true
-end
-
-local function tapCloudOnce()
-  local ok, x, y = findImage(CLOUD_IMG, 82, 250, 500, 430, 700)
-  if ok then
-    touch.tap(x + 20, y + 20)
-    wait_ms(1000)
-    return true
-  end
-  return false
-end
-
-openStoreTikTok()
-local start_at = os.time()
-local last_cloud_tap_at = 0
-local cloud_tap_cooldown = 5
-local download_started = false
-while os.time() - start_at < 600 do
-  if hasOpen() then
-    app.run("com.ss.iphone.ugc.Ame")
-    wait_ms(10000)
-    print("INSTALL_TIKTOK_OK")
-    return
-  end
-
-  local ready_for_cloud = hasAnyCheckTai()
-  if (not download_started) and ready_for_cloud then
-    if hasCloud() and (os.time() - last_cloud_tap_at >= cloud_tap_cooldown) then
-      if tapCloudOnce() then
-        last_cloud_tap_at = os.time()
-        download_started = true
-        wait_ms(8000)
-      end
-    end
-  elseif download_started then
-    wait_ms(1000)
-  else
-    if (os.time() - start_at) % 20 == 0 then
-      openStoreTikTok()
-    else
-      wait_ms(1000)
-    end
-  end
-  wait_ms(1000)
-end
-error("INSTALL_TIKTOK_TIMEOUT")
-LUA'''
-        xxtouch_spawn_checked(ip, port, install_script, timeout=660)
-        logs.append(f'[{label}] install tiktok ok')
-        return True, logs
-    if action == 'install_tiktok_lite':
-        install_lite_script = r'''lua - <<'LUA'
-local app = require("app")
-local sys = require("sys")
-local screen = require("screen")
-local touch = require("touch")
-screen.init(0)
-
-local RES_DIR = "/var/mobile/Media/1ferver/lua/scripts/img/"
-local TIKTOK_LITE_URL = "https://apps.apple.com/jp/app/tiktok-lite/id6447160980?l=en-US"
-local CHECK_TAI_1 = RES_DIR .. "/CheckTai1.png"
-local CHECK_TAI_2 = RES_DIR .. "/CheckTai2.png"
-local CHECK_TAI_3 = RES_DIR .. "/CheckTai3.png"
-local CLOUD_IMG = RES_DIR .. "/cloud.png"
-local OPEN_IMG = RES_DIR .. "/open.png"
-
-local function wait_ms(ms)
-  sys.msleep(ms)
-end
-
-local function openStoreTikTokLite()
-  app.close("com.apple.AppStore")
-  wait_ms(1500)
-  app.open_url(TIKTOK_LITE_URL)
-  wait_ms(6000)
-end
-
-local function hasAnyCheckTai()
-  if findImage(CHECK_TAI_1, 82, 0, 0, 750, 1334) then return true end
-  if findImage(CHECK_TAI_2, 82, 0, 0, 750, 1334) then return true end
-  if findImage(CHECK_TAI_3, 82, 0, 0, 750, 1334) then return true end
-  return false
-end
-
-local function hasOpen()
-  local ok = findImage(OPEN_IMG, 82, 0, 0, 750, 1334)
-  return ok == true
-end
-
-local function hasCloud()
-  local ok = findImage(CLOUD_IMG, 82, 250, 500, 430, 700)
-  return ok == true
-end
-
-local function tapCloudOnce()
-  local ok, x, y = findImage(CLOUD_IMG, 82, 250, 500, 430, 700)
-  if ok then
-    touch.tap(x + 20, y + 20)
-    wait_ms(1000)
-    return true
-  end
-  return false
-end
-
-openStoreTikTokLite()
-local start_at = os.time()
-local last_cloud_tap_at = 0
-local cloud_tap_cooldown = 5
-local download_started = false
-while os.time() - start_at < 600 do
-  if hasOpen() then
-    app.run("com.ss.iphone.ugc.AmeLite")
-    wait_ms(10000)
-    print("INSTALL_TIKTOK_LITE_OK")
-    return
-  end
-
-  local ready_for_cloud = hasAnyCheckTai()
-  if (not download_started) and ready_for_cloud then
-    if hasCloud() and (os.time() - last_cloud_tap_at >= cloud_tap_cooldown) then
-      if tapCloudOnce() then
-        last_cloud_tap_at = os.time()
-        download_started = true
-        wait_ms(8000)
-      end
-    end
-  elseif download_started then
-    wait_ms(1000)
-  else
-    if (os.time() - start_at) % 20 == 0 then
-      openStoreTikTokLite()
-    else
-      wait_ms(1000)
-    end
-  end
-  wait_ms(1000)
-end
-error("INSTALL_TIKTOK_LITE_TIMEOUT")
-LUA'''
-        xxtouch_spawn_checked(ip, port, install_lite_script, timeout=660)
-        logs.append(f'[{label}] install tiktok lite ok')
-        return True, logs
-    if action == 'clear_app':
-        clear_script = "lua -e 'app=require(\"app\"); local ids={\"com.apple.weather\",\"com.apple.mobileme.fmip1\",\"com.apple.Home\",\"com.apple.MobileAddressBook\",\"com.apple.stocks\",\"com.apple.Translate\",\"com.apple.iBooks\",\"com.apple.calculator\",\"com.apple.compass\",\"com.apple.facetime\",\"com.apple.mobilemail\",\"com.apple.Health\",\"com.apple.Maps\",\"com.apple.podcasts\",\"com.apple.reminders\",\"com.apple.tv\",\"com.apple.Passbook\",\"com.apple.mobilecal\",\"com.apple.Magnifier\",\"com.apple.measure\",\"com.apple.Music\",\"com.apple.VoiceMemos\",\"com.apple.mobilephone\",\"com.apple.MobileSMS\",\"com.apple.Bridge\"}; for i=1,#ids do pcall(app.uninstall, ids[i]) end'"
-        xxtouch_spawn_checked(ip, port, clear_script, timeout=50)
-        logs.append(f'[{label}] clear app ok')
-        return True, logs
-    if action == 'open_app_manager':
-        xxtouch_spawn_checked(ip, port, 'lua -e \'app=require("app"); app.run("com.tigisoftware.ADManager")\'', timeout=20)
-        logs.append(f'[{label}] open app manager ok')
-        return True, logs
-    if action == 'remove_tiktok_lite':
-        xxtouch_spawn_checked(ip, port, 'lua -e \'app=require("app"); pcall(app.uninstall, "com.ss.iphone.ugc.tiktok.lite")\'', timeout=25)
-        logs.append(f'[{label}] gỡ TikTok Lite ok')
-        return True, logs
-    if action == 'remove_tiktok':
-        xxtouch_spawn_checked(ip, port, 'lua -e \'app=require("app"); pcall(app.uninstall, "com.ss.iphone.ugc.Ame")\'', timeout=25)
-        logs.append(f'[{label}] gỡ TikTok ok')
-        return True, logs
-    if action == 'quit_apps':
-        quit_script = r'''lua -e 'app=require("app"); sys=require("sys"); local ids={"com.apple.mobilesafari","com.apple.Preferences","com.apple.AppStore","com.ss.iphone.ugc.Ame","com.ss.iphone.ugc.tiktok.lite","com.apple.DocumentsApp","com.apple.camera","com.apple.mobiletimer","com.tigisoftware.Filza","com.tigisoftware.ADManager","com.apple.findmy","com.apple.Health","com.apple.MobileSMS","com.apple.mobilenotes","com.apple.mobilephone","com.apple.mobileslideshow","com.apple.shortcuts","com.apple.tips","com.opa334.TrollStore","ch.xxtou.XXTExplorer"}; for i=1,#ids do pcall(app.quit, ids[i]); sys.msleep(300); end' '''
-        xxtouch_spawn_checked(ip, port, quit_script, timeout=40)
-        logs.append(f'[{label}] đóng ứng dụng ok')
-        return True, logs
-    if action == 'nurture_tiktok':
-        xxtouch_run_repo_lua_script(ip, port, GROUP3_NURTURE_TIKTOK_SCRIPT_FILE, timeout=14400)
-        logs.append(f'[{label}] nuôi phôi TikTok ok')
-        return True, logs
-    if action == 'event_dd_20p_tiktok_lite':
-        xxtouch_run_repo_lua_script(ip, port, GROUP3_EVENT_DD_20P_TIKTOK_LITE_SCRIPT_FILE, timeout=11000)
-        logs.append(f'[{label}] chạy event DD 20p TikTok Lite ok')
-        return True, logs
-    if action == 'event_video_180_tiktok':
-        if str(app_choice or '').strip() != 'tiktok':
-            logs.append(f'[{label}] Event Video 180 hiện chỉ chạy cho TikTok')
-            return False, logs
-        xxtouch_run_repo_lua_script(ip, port, GROUP3_EVENT_VIDEO_180_TIKTOK_SCRIPT_FILE, timeout=40)
-        logs.append(f'[{label}] chạy file Group3_EventVideo180_tiktok.lua ok')
-        return True, logs
-    logs.append(f'[{label}] action chưa hỗ trợ')
-    return False, logs
-
-def xxtouch_build_action_summary(action: str, machines, ok_count: int, failed_indexes):
-    total = len(machines or [])
-    action_label_map = {
-        'stop_script': 'Stop Script',
-        'reboot': 'Reboot',
-        'home': 'Home',
-        'lock_home': 'Lock Home',
-        'clear_app': 'Clear App',
-        'open_app_manager': 'App Manager',
-        'remove_tiktok_lite': 'Gỡ app TIKTOK LITE',
-        'remove_tiktok': 'Gỡ app TIKTOK',
-        'install_tiktok': 'Cài app TIKTOK',
-        'install_tiktok_lite': 'Cài app TIKTOK LITE',
-        'quit_apps': 'Đóng ứng dụng',
-        'nurture_tiktok': 'Nuôi Phôi',
-        'event_video_180_tiktok': 'Chạy Event Video 180',
-        'event_dd_20p_tiktok_lite': 'Chạy Event DD 20p',
-        'send_files': 'Gửi file',
-    }
-    success_label_map = {
-        'stop_script': 'stop script thành công',
-        'reboot': 'reboot thành công',
-        'home': 'home thành công',
-        'lock_home': 'lock home thành công',
-        'clear_app': 'clear app thành công',
-        'open_app_manager': 'mở App Manager thành công',
-        'remove_tiktok_lite': 'gỡ app TIKTOK LITE thành công',
-        'remove_tiktok': 'gỡ app TIKTOK thành công',
-        'install_tiktok': 'cài app TIKTOK thành công',
-        'install_tiktok_lite': 'cài app TIKTOK LITE thành công',
-        'quit_apps': 'đóng ứng dụng thành công',
-        'nurture_tiktok': 'nuôi phôi thành công',
-        'event_video_180_tiktok': 'chạy Event Video 180 thành công',
-        'event_dd_20p_tiktok_lite': 'chạy Event DD 20p thành công',
-        'send_files': 'gửi file thành công',
-    }
-    fail_label_map = {
-        'stop_script': 'chưa stop script được',
-        'reboot': 'chưa reboot được',
-        'home': 'chưa home được',
-        'lock_home': 'chưa lock home được',
-        'clear_app': 'chưa clear app được',
-        'open_app_manager': 'chưa mở được App Manager',
-        'remove_tiktok_lite': 'chưa gỡ được app TIKTOK LITE',
-        'remove_tiktok': 'chưa gỡ được app TIKTOK',
-        'install_tiktok': 'chưa cài được app TIKTOK',
-        'install_tiktok_lite': 'chưa cài được app TIKTOK LITE',
-        'quit_apps': 'chưa đóng được',
-        'nurture_tiktok': 'chưa nuôi phôi được',
-        'event_video_180_tiktok': 'chưa chạy được Event Video 180',
-        'event_dd_20p_tiktok_lite': 'chưa chạy được Event DD 20p',
-        'send_files': 'chưa gửi được file',
-    }
-    success_label = success_label_map.get(action, f'{action_label_map.get(action, action)} thành công')
-    failed_indexes = [str(int(x)) for x in (failed_indexes or []) if str(x).strip()]
-    if not failed_indexes:
-        return f'{success_label.capitalize()} cho {ok_count}/{total}'
-    fail_count = len(failed_indexes)
-    fail_label = fail_label_map.get(action, f'chưa chạy được {action_label_map.get(action, action)}')
-    return f'{success_label.capitalize()} cho {ok_count}/{total}. {fail_count} máy lỗi {fail_label}: {", ".join(failed_indexes)}'
-
+    note = ''
+    available = []
+    return {'router': requested_router, 'router_obj': router if isinstance(router, dict) else {}, 'note': note, 'available': available}
 
 def load_notes():
     if not NOTES_FILE.exists():
@@ -1755,23 +811,63 @@ def load_notes():
     except Exception:
         return {}
 
-
 def save_notes(notes):
     save_json(NOTES_FILE, notes)
 
-
 def load_session_state():
     if not SESSION_STATE_FILE.exists():
+        healed = _ss_try_heal('file chinh khong ton tai')
+        if healed is not None:
+            return healed
         return {}
     try:
-        return load_json(SESSION_STATE_FILE)
+        d = load_json(SESSION_STATE_FILE)
+        if _ss_is_meaningful(d):
+            return d
+        healed = _ss_try_heal('file chinh rong/trang bat thuong')
+        if healed is not None:
+            return healed
+        return d
     except Exception:
+        healed = _ss_try_heal('file chinh JSON hong')
+        if healed is not None:
+            return healed
         return {}
 
-
 def save_session_state(state):
-    save_json(SESSION_STATE_FILE, state)
-
+    new_txt = json.dumps(state, ensure_ascii=False, indent=2) + '\n'
+    old_status = 'missing'
+    old_len = 0
+    try:
+        if SESSION_STATE_FILE.exists():
+            old_txt = SESSION_STATE_FILE.read_text(encoding='utf-8')
+            old_len = len(old_txt)
+            try:
+                old_parsed = json.loads(old_txt)
+                old_status = 'meaningful' if _ss_is_meaningful(old_parsed) else 'empty'
+            except Exception:
+                old_status = 'corrupt'
+    except Exception:
+        old_status = 'missing'
+    if not _ss_is_meaningful(state) and old_status in ('meaningful', 'corrupt'):
+        _ss_log(f'CHAN save-rong: tu choi ghi de (old={old_status} {old_len} bytes, new={len(new_txt)} bytes). Neu muon reset that su, xoa cac file session_state.json* trong {BASE_DIR} roi restart.')
+        raise ValueError('session_state guardian: tu choi ghi de state rong len state co du lieu/hong')
+    try:
+        _ss_rotate_backups()
+        _ss_atomic_write(SESSION_STATE_FILE, new_txt)
+    except ValueError:
+        raise
+    except Exception as e:
+        _ss_log(f'save atomic that bai ({e}) — fallback ghi truyen thong')
+        SESSION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SESSION_STATE_FILE.write_text(new_txt, encoding='utf-8')
+    try:
+        ext = SS_EXT_DIR / SESSION_STATE_FILE.name
+        if _SS_EXT_LAST.get('txt') != new_txt:
+            _ss_atomic_write(ext, new_txt)
+            _SS_EXT_LAST['txt'] = new_txt
+    except Exception as e:
+        _ss_log(f'copy /data that bai (khong anh huong luu chinh): {e}')
 
 def get_session_meta(session_id, tag=None):
     state = load_session_state()
@@ -1783,12 +879,20 @@ def get_session_meta(session_id, tag=None):
         for k, v in sess.items():
             nk = normalize_tag(k)
             if nk and isinstance(v, dict):
-                normalized[nk] = v
+                if nk in normalized and isinstance(normalized[nk], dict):
+                    normalized[nk].update(v)
+                else:
+                    normalized[nk] = dict(v)
         return normalized
     key = normalize_tag(tag)
     item = sess.get(key, sess.get(str(tag), sess.get(str(tag).upper(), {})))
-    return item if isinstance(item, dict) else {}
-
+    if isinstance(item, dict):
+        return item
+    merged = {}
+    for k, v in sess.items():
+        if str(k).lower() == key.lower() and isinstance(v, dict):
+            merged.update(v)
+    return merged
 
 def get_meta_section(state=None):
     state = state if isinstance(state, dict) else load_session_state()
@@ -1796,8 +900,7 @@ def get_meta_section(state=None):
     if not isinstance(meta, dict):
         meta = {}
         state['__meta__'] = meta
-    return state, meta
-
+    return (state, meta)
 
 def get_session_display_name(session_id):
     session_id = str(session_id)
@@ -1807,13 +910,11 @@ def get_session_display_name(session_id):
     name = str(names.get(session_id, '')).strip()
     return name or f'CẤU HÌNH {session_id}'
 
-
 def get_app_title_prefix():
     state = load_session_state()
     _state, meta = get_meta_section(state)
     value = str(meta.get('app_title_prefix', '')).strip()
     return value or 'Genrouter'
-
 
 def export_all_sessions_payload(include_hidden=True):
     sessions = get_available_sessions(include_hidden=include_hidden)
@@ -1822,34 +923,214 @@ def export_all_sessions_payload(include_hidden=True):
     for item in sessions:
         session_id = str(item.get('session', '')).strip()
         path = SESSION_FILES.get(session_id)
-        if not session_id or not path or not path.exists():
+        if not session_id or not path or (not path.exists()):
             continue
         rows = extract_rows(load_json(path), session=session_id)
         total_rows += len(rows)
-        session_items.append({
-            'session': session_id,
-            'name': get_session_display_name(session_id),
-            'hidden': bool(item.get('hidden', False)),
-            'rows': rows,
-        })
-    return {
-        'ok': True,
-        'router_title': get_app_title_prefix(),
-        'exported_at': int(time.time()),
-        'session_count': len(session_items),
-        'row_count': total_rows,
-        'sessions': session_items,
-    }
+        session_items.append({'session': session_id, 'name': get_session_display_name(session_id), 'hidden': bool(item.get('hidden', False)), 'rows': rows})
+    return {'ok': True, 'router_title': get_app_title_prefix(), 'exported_at': int(time.time()), 'session_count': len(session_items), 'row_count': total_rows, 'sessions': session_items}
+LICENSE_FILE = BASE_DIR / 'license.json'
+ACTIVE_URL = 'https://script.google.com/macros/s/AKfycbx0nfNl1O3cOHpGA2c69nAZgUHib9T7WQch-4ZzdfV8GD-HxT7m5eAg-zro2fmqmV1T/exec'
+LICENSE_CHECK_INTERVAL = 45
+_license_state = {'data': {}, 'ok': False, 'lock': threading.Lock()}
 
+def _read_hw_value(path):
+    try:
+        return Path(path).read_text(encoding='utf-8', errors='replace').strip()
+    except Exception:
+        return ''
+
+def get_machine_id():
+    parts = [_read_hw_value('/etc/machine-id'), _read_hw_value('/sys/class/net/eth0/address'), _read_hw_value('/sys/class/dmi/id/product_uuid'), socket.gethostname()]
+    raw = 'GEN-V1|' + '|'.join((p.lower() for p in parts if p))
+    digest = hashlib.sha256(raw.encode('utf-8')).hexdigest().upper()
+    groups = [digest[i * 5:(i + 1) * 5] for i in range(6)]
+    return 'GEN-' + '-'.join(groups)
+
+def load_license():
+    try:
+        data = json.loads(LICENSE_FILE.read_text(encoding='utf-8'))
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {}
+
+def save_license(data):
+    try:
+        LICENSE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    except Exception:
+        pass
+
+def _parse_expire_datetime(value):
+    s = str(value or '').strip()
+    if not s:
+        return None
+    try:
+        base = s.split(' GMT')[0].split(' (')[0].strip()
+        return datetime.strptime(base, '%a %b %d %Y %H:%M:%S')
+    except Exception:
+        pass
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d', '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M', '%d/%m/%Y'):
+        try:
+            sample = s[:19] if ' ' in s else s[:10]
+            dt = datetime.strptime(sample, fmt)
+            if fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+                dt = dt.replace(hour=23, minute=59, second=59)
+            return dt
+        except Exception:
+            pass
+    try:
+        return datetime.fromisoformat(s.replace('Z', '+00:00')).replace(tzinfo=None)
+    except Exception:
+        return None
+
+def _now_vn():
+    return datetime.utcnow() + timedelta(hours=7)
+
+def license_active(data=None):
+    d = data if isinstance(data, dict) else load_license()
+    machine_id = str(d.get('machine_id') or '').strip().upper()
+    current = get_machine_id().upper()
+    active = bool(d.get('active')) or str(d.get('status') or '').strip().lower() in ('active', 'ok', 'valid')
+    if not active:
+        return False
+    if machine_id and machine_id != current:
+        return False
+    exp = _parse_expire_datetime(d.get('expire') or d.get('expires_at') or d.get('expiry'))
+    if exp is None:
+        return False
+    return _now_vn() <= exp
+
+def format_active_info(data=None):
+    d = data if isinstance(data, dict) else load_license()
+    if not license_active(d):
+        return 'CHƯA ACTIVE – gửi ID máy cho admin để kích hoạt'
+    plan = str(d.get('plan') or 'FULL').upper()
+    exp = _parse_expire_datetime(d.get('expire') or d.get('expires_at') or d.get('expiry'))
+    total = int((exp - _now_vn()).total_seconds()) if exp else 0
+    days, rem = divmod(max(total, 0), 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    expire = f'Còn {days} ngày {hours:02d}:{minutes:02d}' if days < 366 else f'Còn {days // 365} năm {days % 365} ngày' if days < 3650 else f'Còn {days // 365} năm'
+    customer = str(d.get('customer') or '').strip()
+    max_devices = str(d.get('max_devices') or '').strip()
+    device_text = '' if not max_devices or max_devices.lower() in ('0', 'unlimited', 'no_limit') else f' | Giới hạn: {max_devices} máy'
+    extra = f' | {customer}' if customer else ''
+    return f'ACTIVE: {plan} | Hạn: {expire}{device_text}{extra}'
+
+def license_public_payload():
+    mid = get_machine_id()
+    lic = load_license()
+    msg = str(lic.get('message') or lic.get('status') or '')
+    return {'ok': True, 'machine_id': mid, 'active': bool(license_active(lic)), 'info': format_active_info(lic), 'message': msg, 'checked_at': int(time.time())}
+
+def license_check_loop():
+    while True:
+        ok_now = False
+        try:
+            sep = '&' if '?' in ACTIVE_URL else '?'
+            url = ACTIVE_URL + sep + urlencode({'machine_id': get_machine_id(), 't': int(time.time())})
+            req = urllib.request.Request(url, headers={'User-Agent': 'genrouter-license'})
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                data = json.loads(resp.read().decode('utf-8', 'replace'))
+            if isinstance(data, dict):
+                data['machine_id'] = get_machine_id()
+                data['checked_at'] = int(time.time())
+                ok_now = license_active(data)
+                with _license_state['lock']:
+                    _license_state['data'] = data
+                    _license_state['ok'] = ok_now
+                save_license(data)
+        except Exception:
+            pass
+        if ok_now:
+            try:
+                push_proxies_to_sheet_once()
+            except Exception:
+                pass
+        time.sleep(LICENSE_CHECK_INTERVAL)
+
+def license_gate_ok():
+    with _license_state['lock']:
+        if _license_state['ok']:
+            return True
+        cached = load_license()
+        ok = license_active(cached)
+        _license_state['data'] = cached
+        _license_state['ok'] = ok
+        return ok
+_proxy_sync_state = {'hash': '', 'fail_count': 0, 'last_fail': 0}
+
+def build_proxy_sync_payload():
+    try:
+        exported = export_all_sessions_payload(include_hidden=True)
+    except Exception:
+        return None
+    configs = []
+    for item in exported.get('sessions', []):
+        proxies = []
+        for row in item.get('rows', []):
+            if not row.get('configured'):
+                continue
+            proxy = str(row.get('proxy', '')).strip()
+            if proxy:
+                proxies.append(proxy)
+        sid = str(item.get('session', '')).strip()
+        name = str(item.get('name') or '').strip() or 'Session ' + sid
+        configs.append({'name': name, 'session': sid, 'proxies': proxies})
+    if not configs:
+        return None
+    return {'action': 'sync_proxies', 'machine_id': get_machine_id(), 'router_name': get_app_title_prefix(), 'hostname': socket.gethostname(), 'exported_at': int(time.time()), 'configs': configs}
+
+def push_proxies_to_sheet_once(force=False):
+    payload = build_proxy_sync_payload()
+    if not payload:
+        return False
+    blob = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    new_hash = hashlib.sha256(blob.encode('utf-8')).hexdigest()
+    with _license_state['lock']:
+        if not force:
+            if new_hash == _proxy_sync_state['hash']:
+                return False
+            if _proxy_sync_state['fail_count'] >= 5 and time.time() - _proxy_sync_state.get('last_fail', 0) < 900:
+                return False
+        _proxy_sync_state['hash'] = new_hash
+    req = urllib.request.Request(ACTIVE_URL, data=blob.encode('utf-8'), method='POST', headers={'Content-Type': 'application/json; charset=utf-8', 'User-Agent': 'genrouter-license'})
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            resp.read()
+        with _license_state['lock']:
+            _proxy_sync_state['fail_count'] = 0
+            _proxy_sync_state['last_fail'] = 0
+        return True
+    except Exception:
+        with _license_state['lock']:
+            _proxy_sync_state['fail_count'] += 1
+            _proxy_sync_state['last_fail'] = time.time()
+            if _proxy_sync_state['fail_count'] < 5:
+                _proxy_sync_state['hash'] = ''
+        raise
+PROXY_SHEET_STATE_FILE = BASE_DIR / 'sheet_sync_state.json'
+
+def spawn_proxy_sheet_push():
+
+    def _worker():
+        try:
+            push_proxies_to_sheet_once()
+        except Exception:
+            try:
+                with _license_state['lock']:
+                    _proxy_sync_state['fail_count'] += 1
+            except Exception:
+                pass
+    try:
+        threading.Thread(target=_worker, daemon=True).start()
+    except Exception:
+        pass
 
 def load_collector_config():
-    cfg = {
-        'collector_url': DEFAULT_COLLECTOR_URL,
-        'router_id': '',
-        'remote_url': '',
-        'enabled': True,
-        'push_interval_sec': 60,
-    }
+    cfg = {'collector_url': DEFAULT_COLLECTOR_URL, 'router_id': '', 'remote_url': '', 'enabled': True, 'push_interval_sec': 60}
     try:
         if COLLECTOR_CONFIG_FILE.exists():
             data = load_json(COLLECTOR_CONFIG_FILE)
@@ -1859,39 +1140,20 @@ def load_collector_config():
         pass
     return cfg
 
-
 def save_collector_config(cfg):
     save_json(COLLECTOR_CONFIG_FILE, cfg)
     return cfg
 
-
-def get_router_id_from_frpc_config():
-    try:
-        frpc = load_json(FRPC_CFG, {})
-        custom_domain = str(frpc.get('custom_domain', '')).strip().lower()
-        if custom_domain.startswith('router-') and '.aeg.ooguy.com' in custom_domain:
-            return custom_domain.split('.', 1)[0]
-    except Exception:
-        pass
-    return ''
-
-
 def get_router_id():
     cfg = load_collector_config()
     router_id = str(cfg.get('router_id', '')).strip()
-    frpc_router_id = get_router_id_from_frpc_config()
-    if frpc_router_id and router_id != frpc_router_id:
-        cfg['router_id'] = frpc_router_id
-        save_collector_config(cfg)
-        return frpc_router_id
     if router_id:
         return router_id
-    raw = f"{get_app_title_prefix()}|{socket.gethostname()}"
+    raw = f'{get_app_title_prefix()}|{socket.gethostname()}'
     router_id = 'router-' + hashlib.md5(raw.encode('utf-8')).hexdigest()[:12]
     cfg['router_id'] = router_id
     save_collector_config(cfg)
     return router_id
-
 
 def push_export_to_collector_once():
     cfg = load_collector_config()
@@ -1903,15 +1165,9 @@ def push_export_to_collector_once():
     payload['router_title'] = get_app_title_prefix()
     payload['remote_url'] = str(cfg.get('remote_url', '')).strip()
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-    req = urllib.request.Request(
-        collector_url + '/api/collector/push',
-        data=data,
-        method='POST',
-        headers={'Content-Type': 'application/json; charset=utf-8'}
-    )
+    req = urllib.request.Request(collector_url + '/api/collector/push', data=data, method='POST', headers={'Content-Type': 'application/json; charset=utf-8'})
     with urllib.request.urlopen(req, timeout=20) as resp:
         return json.loads(resp.read().decode('utf-8'))
-
 
 def collector_push_loop():
     while True:
@@ -1927,7 +1183,6 @@ def collector_push_loop():
         except Exception:
             time.sleep(60)
 
-
 def set_app_title_prefix(value):
     state = load_session_state()
     state, meta = get_meta_section(state)
@@ -1935,7 +1190,6 @@ def set_app_title_prefix(value):
     meta['app_title_prefix'] = value
     save_session_state(state)
     return value
-
 
 def get_saved_ip_identity_text(session_id=None):
     state = load_session_state()
@@ -1949,7 +1203,6 @@ def get_saved_ip_identity_text(session_id=None):
     if session_id is None:
         return ''
     return str(values.get(str(session_id), '')).strip()
-
 
 def set_saved_ip_identity_text(session_id, text):
     state = load_session_state()
@@ -1965,7 +1218,6 @@ def set_saved_ip_identity_text(session_id, text):
     save_session_state(state)
     return normalized
 
-
 def set_session_display_name(session_id, name):
     session_id = str(session_id)
     name = str(name or '').strip() or f'CẤU HÌNH {session_id}'
@@ -1979,6 +1231,21 @@ def set_session_display_name(session_id, name):
     save_session_state(state)
     return name
 
+def sess_item(sess, tag):
+    """Lay/tao item meta cua 1 tag trong session, tai su dung key da co
+    (khong phan biet hoa/thuong: PROXY_5 va proxy_5 la cung 1 may)
+    de tranh sinh key trung lam mat du lieu khi normalize."""
+    want = str(tag or '').strip()
+    if want:
+        for k in list(sess.keys()):
+            if str(k).lower() == want.lower():
+                item = sess[k]
+                if not isinstance(item, dict):
+                    item = {}
+                    sess[k] = item
+                return item
+    item = sess.setdefault(want, {})
+    return item if isinstance(item, dict) else {}
 
 def update_session_rows_meta(session_id, rows):
     session_id = str(session_id)
@@ -1988,16 +1255,20 @@ def update_session_rows_meta(session_id, rows):
         tag = normalize_tag((row or {}).get('tag', ''))
         if not tag:
             continue
-        item = sess.setdefault(tag, {})
+        item = sess_item(sess, tag)
         if 'note' in row:
             item['note'] = str(row.get('note', '')).strip()
+        if 'vpn_account' in row:
+            acc = str(row.get('vpn_account') or '').strip()
+            if acc:
+                item['vpn_account'] = acc
+            else:
+                item.pop('vpn_account', None)
     save_session_state(state)
-
 
 def normalize_mac(mac):
     mac = str(mac or '').strip().upper().replace('-', ':')
     return mac
-
 
 def load_static_hosts_raw():
     if not STATIC_HOSTS_FILE.exists():
@@ -2011,22 +1282,13 @@ def load_static_hosts_raw():
         for key, val in data.items():
             if not isinstance(val, dict):
                 continue
-            rows.append({
-                'key': str(key),
-                'ip': str(val.get('ip', '')).strip(),
-                'mac': normalize_mac(val.get('mac', '')),
-            })
+            rows.append({'key': str(key), 'ip': str(val.get('ip', '')).strip(), 'mac': normalize_mac(val.get('mac', ''))})
     elif isinstance(data, list):
         for i, val in enumerate(data, 1):
             if not isinstance(val, dict):
                 continue
-            rows.append({
-                'key': str(val.get('key') or i),
-                'ip': str(val.get('ip', '')).strip(),
-                'mac': normalize_mac(val.get('mac', '')),
-            })
+            rows.append({'key': str(val.get('key') or i), 'ip': str(val.get('ip', '')).strip(), 'mac': normalize_mac(val.get('mac', ''))})
     return rows
-
 
 def save_static_hosts_rows(rows):
     data = {}
@@ -2038,18 +1300,13 @@ def save_static_hosts_rows(rows):
         data[str(i)] = {'ip': ip, 'mac': mac}
     save_json(STATIC_HOSTS_FILE, data)
 
-
 def load_device_map():
     device_map = {}
     for row in load_static_hosts_raw():
         ip = str(row.get('ip', '')).strip()
         if not ip:
             continue
-        device_map[ip] = {
-            'mac': normalize_mac(row.get('mac', '')),
-            'status': 'offline'
-        }
-
+        device_map[ip] = {'mac': normalize_mac(row.get('mac', '')), 'status': 'offline'}
     if LEASES_FILE.exists():
         try:
             now = int(time.time())
@@ -2070,7 +1327,6 @@ def load_device_map():
             pass
     return device_map
 
-
 def build_route_ip_to_tag(data):
     route_by_ip = {}
     for rule in data.get('route', {}).get('rules', []):
@@ -2083,7 +1339,6 @@ def build_route_ip_to_tag(data):
         route_by_ip[ip] = tag
     return route_by_ip
 
-
 def build_tag_to_ip(data):
     mapping = {}
     for rule in data.get('route', {}).get('rules', []):
@@ -2091,17 +1346,16 @@ def build_tag_to_ip(data):
             continue
         tag = str(rule.get('outbound', '')).strip()
         ip = str(rule.get('source_ip_cidr', '')).strip()
-        if tag.startswith('proxy_') and ip and tag not in mapping:
+        if tag.startswith('proxy_') and ip and (tag not in mapping):
             mapping[tag] = ip
     for rule in data.get('dns', {}).get('rules', []):
         if str(rule.get('action', '')).strip() != 'route':
             continue
         tag = str(rule.get('server', '')).strip()
         ip = str(rule.get('source_ip_cidr', '')).strip()
-        if tag.startswith('proxy_') and ip and tag not in mapping:
+        if tag.startswith('proxy_') and ip and (tag not in mapping):
             mapping[tag] = ip
     return mapping
-
 
 def build_ip_identity_rows_from_data(data):
     mapping = build_tag_to_ip(data)
@@ -2114,7 +1368,6 @@ def build_ip_identity_rows_from_data(data):
         rows.append({'machine': str(proxy_tag_num(tag)), 'tag': tag, 'ip': ip})
     return rows
 
-
 def looks_like_default_full_mapping(data):
     rows = build_ip_identity_rows_from_data(data)
     if len(rows) < MAX_PROXY_TAG:
@@ -2122,13 +1375,21 @@ def looks_like_default_full_mapping(data):
     first = rows[:3]
     if not first:
         return False
-    expected = [
-        ('proxy_1', '192.15.4.1'),
-        ('proxy_2', '192.15.4.2'),
-        ('proxy_3', '192.15.4.3'),
-    ]
+    expected = [('proxy_1', '192.15.4.1'), ('proxy_2', '192.15.4.2'), ('proxy_3', '192.15.4.3')]
     return [(r.get('tag'), r.get('ip')) for r in first] == expected
+VPN_MAP_PATH = '/data/vpn/map.txt'
 
+def load_vpn_map():
+    mapping = {}
+    try:
+        with open(VPN_MAP_PATH, 'r', encoding='utf-8', errors='replace') as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) >= 2:
+                    mapping[parts[0].strip()] = parts[1].strip()
+    except OSError:
+        pass
+    return mapping
 
 def format_proxy(outbound):
     server = str(outbound.get('server', '')).strip()
@@ -2137,8 +1398,7 @@ def format_proxy(outbound):
     password = str(outbound.get('password', '')).strip()
     if not server or not port:
         return ''
-    return f"{server}:{port}:{user}:{password}"
-
+    return f'{server}:{port}:{user}:{password}'
 
 def format_proxy_type(outbound):
     t = str((outbound or {}).get('type', '')).strip().lower()
@@ -2146,32 +1406,18 @@ def format_proxy_type(outbound):
         return 'http'
     return 'socks5'
 
-
 def extract_rows(data, session='1'):
-    outbounds = {
-        str(item.get('tag')): item
-        for item in data.get('outbounds', [])
-        if str(item.get('tag', '')).startswith('proxy_')
-    }
-    static_mac_by_ip = {
-        str(row.get('ip', '')).strip(): normalize_mac(row.get('mac', ''))
-        for row in load_static_hosts_raw()
-        if str(row.get('ip', '')).strip()
-    }
+    outbounds = {str(item.get('tag')): item for item in data.get('outbounds', []) if str(item.get('tag', '')).startswith('proxy_')}
+    static_mac_by_ip = {str(row.get('ip', '')).strip(): normalize_mac(row.get('mac', '')) for row in load_static_hosts_raw() if str(row.get('ip', '')).strip()}
     devices = load_device_map()
     route_by_ip = {str(ip).strip(): normalize_tag(tag) for ip, tag in build_route_ip_to_tag(data).items() if str(ip).strip()}
+    vpn_map = load_vpn_map()
     session_meta = get_session_meta(session)
     saved_text = get_saved_ip_identity_text(session)
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
-    saved_ip_to_tag = {
-        str(item.get('ip', '')).strip(): normalize_tag(item.get('tag', ''))
-        for item in configured_rows
-        if str(item.get('ip', '')).strip()
-    }
-
+    saved_ip_to_tag = {str(item.get('ip', '')).strip(): normalize_tag(item.get('tag', '')) for item in configured_rows if str(item.get('ip', '')).strip()}
     rows = []
     configured_ips = set()
-
     for item in configured_rows:
         ip = str(item.get('ip', '')).strip()
         tag = normalize_tag(item.get('tag', '')) or route_by_ip.get(ip, '')
@@ -2182,18 +1428,13 @@ def extract_rows(data, session='1'):
         dev = devices.get(ip, {})
         meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
         outbound = outbounds.get(tag, {}) if tag else {}
-        rows.append({
-            'machine': machine,
-            'ip': ip,
-            'tag': tag,
-            'proxy': format_proxy(outbound),
-            'proxyType': format_proxy_type(outbound),
-            'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')),
-            'status': str(dev.get('status', 'offline')).strip() or 'offline',
-            'note': str(meta.get('note', '')).strip(),
-            'configured': True,
-        })
-
+        ob_type = str((outbound or {}).get('type', '')).strip().lower() if isinstance(outbound, dict) else ''
+        if tag and ob_type == 'direct':
+            vpn_acc = str((meta or {}).get('vpn_account', '') or '').strip() or vpn_map.get(ip, '')
+            proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
+        else:
+            proxy_val, ptype = (format_proxy(outbound), format_proxy_type(outbound))
+        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': True})
     for ip, dev in sorted(devices.items(), key=lambda kv: kv[0]):
         ip = str(ip).strip()
         if not ip or ip in configured_ips:
@@ -2202,35 +1443,23 @@ def extract_rows(data, session='1'):
         machine = ''
         meta = {}
         outbound = {}
-        rows.append({
-            'machine': machine,
-            'ip': ip,
-            'tag': tag,
-            'proxy': format_proxy(outbound),
-            'proxyType': 'socks5',
-            'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')),
-            'status': str(dev.get('status', 'offline')).strip() or 'offline',
-            'note': str(meta.get('note', '')).strip(),
-            'configured': False,
-        })
-
+        vpn_acc = vpn_map.get(ip, '')
+        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': 'vpn:' + vpn_acc if vpn_acc else format_proxy(outbound), 'proxyType': 'vpn' if vpn_acc else 'socks5', 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': False})
     return rows
 
 def apply_rows_to_data(data, rows_by_tag, session='1'):
     outbounds = data.setdefault('outbounds', [])
     outbound_idx = {str(item.get('tag')): i for i, item in enumerate(outbounds) if item.get('tag')}
-
     touched_rows = []
     for tag, row in rows_by_tag.items():
         proxy = str(row.get('proxy', '')).strip()
         proxy_type = str(row.get('proxyType', 'socks5') or 'socks5').strip().lower()
         set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type)
-        touched_rows.append({
-            'tag': tag,
-            'mac': row.get('mac', ''),
-            'note': row.get('note', ''),
-        })
-
+        ptype_norm = str(proxy_type or 'socks5').strip().lower()
+        vpn_acc_row = ''
+        if ptype_norm == 'vpn' or str(proxy).startswith('vpn:'):
+            vpn_acc_row = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
+        touched_rows.append({'tag': tag, 'mac': row.get('mac', ''), 'note': row.get('note', ''), 'vpn_account': vpn_acc_row})
     update_session_rows_meta(session, touched_rows)
     return data
 
@@ -2241,28 +1470,15 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
     if not proxy:
         outbounds[idx] = {'tag': tag, 'type': 'block'}
         return
-    server, port, user, password = parse_proxy(proxy)
     normalized_type = str(proxy_type or 'socks5').strip().lower()
-    if normalized_type == 'http':
-        outbounds[idx] = {
-            'tag': tag,
-            'type': 'http',
-            'server': server,
-            'server_port': port,
-            'username': user,
-            'password': password,
-        }
+    if normalized_type == 'vpn' or str(proxy).startswith('vpn:'):
+        outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
-    outbounds[idx] = {
-        'tag': tag,
-        'type': 'socks',
-        'server': server,
-        'server_port': port,
-        'username': user,
-        'password': password,
-        'version': '5'
-    }
-
+    server, port, user, password = parse_proxy(proxy)
+    if normalized_type == 'http':
+        outbounds[idx] = {'tag': tag, 'type': 'http', 'server': server, 'server_port': port, 'username': user, 'password': password}
+        return
+    outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': server, 'server_port': port, 'username': user, 'password': password, 'version': '5'}
 
 def parse_proxy(proxy):
     parts = proxy.split(':')
@@ -2272,8 +1488,7 @@ def parse_proxy(proxy):
     port = int(parts[1].strip())
     user = parts[2].strip()
     password = ':'.join(parts[3:]).strip()
-    return server, port, user, password
-
+    return (server, port, user, password)
 
 def clear_session_proxies(data):
     for item in data.get('outbounds', []):
@@ -2282,7 +1497,6 @@ def clear_session_proxies(data):
             item.clear()
             item.update({'tag': tag, 'type': 'block'})
 
-
 def remap_ip_by_tag(data):
     mapping = {}
     for i in range(1, MAX_PROXY_TAG + 1):
@@ -2290,91 +1504,90 @@ def remap_ip_by_tag(data):
     rebuild_gencore_rules(data, mapping)
     return data
 
-
 def rebuild_gencore_rules(data, tag_to_ip_map):
     dns = data.setdefault('dns', {})
     route = data.setdefault('route', {})
     outbounds = data.setdefault('outbounds', [])
-
-    input_map = {
-        str(tag).strip(): str(ip).strip()
-        for tag, ip in (tag_to_ip_map or {}).items()
-        if str(tag).strip().startswith('proxy_') and str(ip).strip()
-    }
+    input_map = {str(tag).strip(): str(ip).strip() for tag, ip in (tag_to_ip_map or {}).items() if str(tag).strip().startswith('proxy_') and str(ip).strip()}
     ordered_items = sorted(input_map.items(), key=lambda kv: proxy_tag_num(kv[0]))
-
     old_dns_rules = list(dns.get('rules', []) or [])
     old_dns_servers = list(dns.get('servers', []) or [])
     old_route_rules = list(route.get('rules', []) or [])
     old_outbounds = list(outbounds or [])
-    old_outbound_map = {
-        str(item.get('tag', '')).strip(): item
-        for item in old_outbounds
-        if str(item.get('tag', '')).strip().startswith('proxy_')
-    }
-
-    dns_rules = [
-        rule for rule in old_dns_rules
-        if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('server', '')).strip().startswith('proxy_'))
-    ]
+    old_outbound_map = {str(item.get('tag', '')).strip(): item for item in old_outbounds if str(item.get('tag', '')).strip().startswith('proxy_')}
+    dns_rules = [rule for rule in old_dns_rules if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('server', '')).strip().startswith('proxy_'))]
     if not dns_rules:
         dns_rules = [{'outbound': 'any', 'server': 'google'}]
-
-    dns_servers = [
-        server for server in old_dns_servers
-        if not str(server.get('tag', '')).strip().startswith('proxy_')
-    ]
-
-    route_rules = [
-        rule for rule in old_route_rules
-        if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip().startswith('proxy_'))
-    ]
+    dns_servers = [server for server in old_dns_servers if not str(server.get('tag', '')).strip().startswith('proxy_')]
+    route_rules = [rule for rule in old_route_rules if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip().startswith('proxy_'))]
     if not route_rules:
-        route_rules = [
-            {'action': 'sniff'},
-            {'action': 'reject', 'method': 'drop', 'protocol': 'stun'},
-            {'action': 'hijack-dns', 'protocol': 'dns'},
-        ]
-
-    non_proxy_outbounds = [
-        item for item in old_outbounds
-        if not str(item.get('tag', '')).strip().startswith('proxy_')
-    ]
-
+        route_rules = [{'action': 'sniff'}, {'action': 'reject', 'method': 'drop', 'protocol': 'stun'}, {'action': 'hijack-dns', 'protocol': 'dns'}]
+    non_proxy_outbounds = [item for item in old_outbounds if not str(item.get('tag', '')).strip().startswith('proxy_')]
     for tag, ip in ordered_items:
         dns_rules.append({'action': 'route', 'server': tag, 'source_ip_cidr': ip})
         dns_servers.append({'address': 'tcp://8.8.8.8', 'detour': tag, 'tag': tag})
-
-    route_rules = [
-        rule for rule in route_rules
-        if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip() == 'direct')
-    ]
-
+    route_rules = [rule for rule in route_rules if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip() in ('direct', 'proxy'))]
     for tag, ip in ordered_items:
         route_rules.append({'action': 'route', 'outbound': tag, 'source_ip_cidr': ip})
-
+    route_rules.append({'action': 'route', 'outbound': 'block'})
     rebuilt_outbounds = list(non_proxy_outbounds)
     for tag, _ip in ordered_items:
         rebuilt_outbounds.append(old_outbound_map.get(tag, {'tag': tag, 'type': 'block'}))
-
     dns['rules'] = dns_rules
     dns['servers'] = dns_servers
     route['rules'] = route_rules
     data['outbounds'] = rebuilt_outbounds
     return data
 
+def _record_vpn_declaration(ipaddr, account):
+    """Gan/bo gan VPN tu panel cung phai ghi lai vao session ACTIVE:
+    - gan   -> meta vpn_account + outbound thanh direct (vpn:<ten>)
+    - bo gan-> xoa meta vpn_account + outbound thanh block
+    Nho vay apply lai chinh cfg khong mat may da gan VPN, va doi cfg
+    thi dong bo theo dung y dinh moi."""
+    try:
+        sid = ''
+        try:
+            sid = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '').strip()
+        except Exception:
+            sid = ''
+        sid = sid if sid in SESSION_FILES else '1'
+        if not SESSION_FILES[sid].exists():
+            return
+        tag = ''
+        saved_text = get_saved_ip_identity_text(sid)
+        if saved_text:
+            for it in parse_ip_identity_text(saved_text):
+                if str(it.get('ip', '')).strip() == str(ipaddr).strip():
+                    tag = normalize_tag(it.get('tag', ''))
+                    break
+        state = load_session_state()
+        sess = state.setdefault(str(sid), {})
+        if tag:
+            item = sess_item(sess, tag)
+            acc = str(account or '').strip()
+            if acc:
+                item['vpn_account'] = acc
+            else:
+                item.pop('vpn_account', None)
+            save_session_state(state)
+            data = load_json(SESSION_FILES[sid])
+            obs = data.setdefault('outbounds', [])
+            idx = {str(o.get('tag')): i for i, o in enumerate(obs) if o.get('tag')}
+            set_outbound_proxy(obs, idx, tag, 'vpn:' + acc if acc else '', 'vpn' if acc else 'socks5')
+            save_json(SESSION_FILES[sid], data)
+    except Exception:
+        pass
 
 def build_ip_identity_text(data, session='1'):
     rows = build_ip_identity_rows_from_data(data)
     rows.sort(key=lambda x: machine_num(x.get('machine', '')))
-    return '\n'.join(format_ip_identity_row(row, include_machine=True) for row in rows)
-
+    return '\n'.join((format_ip_identity_row(row, include_machine=True) for row in rows))
 
 def normalize_ip_identity_text(text):
     text = str(text or '').replace('\r\n', '\n').replace('\r', '\n')
-    text = __import__('re').sub(r'(?<![\n|])(?=proxy_\d+\|)', '\n', text)
+    text = __import__('re').sub('(?<![\\n|])(?=proxy_\\d+\\|)', '\n', text)
     return text.strip()
-
 
 def parse_ip_identity_text(text):
     text = normalize_ip_identity_text(text)
@@ -2385,7 +1598,6 @@ def parse_ip_identity_text(text):
     dup_tags = set()
     dup_ips = set()
     dup_machines = set()
-
     for raw in str(text or '').splitlines():
         line = raw.strip()
         if not line:
@@ -2422,7 +1634,6 @@ def parse_ip_identity_text(text):
             else:
                 seen_machines.add(machine)
         rows.append({'machine': machine, 'tag': tag, 'ip': ip})
-
     errs = []
     if dup_tags:
         errs.append('Proxy bị trùng: ' + ', '.join(sorted(dup_tags, key=proxy_tag_num)))
@@ -2430,7 +1641,6 @@ def parse_ip_identity_text(text):
         errs.append('IP bị trùng: ' + ', '.join(sorted(dup_ips)))
     if dup_machines:
         errs.append('Số máy bị trùng: ' + ', '.join(sorted(dup_machines, key=machine_num)))
-
     got_tags = {row['tag'] for row in rows}
     extra_tags = sorted([tag for tag in got_tags if proxy_tag_num(tag) > MAX_PROXY_TAG or proxy_tag_num(tag) < 1], key=proxy_tag_num)
     if len(rows) > MAX_PROXY_TAG:
@@ -2439,17 +1649,14 @@ def parse_ip_identity_text(text):
         errs.append('Proxy ngoài phạm vi: ' + ', '.join(extra_tags))
     if errs:
         raise ValueError(' | '.join(errs))
-
     rows.sort(key=lambda x: (machine_num(x.get('machine', '')), proxy_tag_num(x['tag']), x['ip']))
     return rows
-
 
 def apply_ip_identity_config(data, text, session='1'):
     rows = parse_ip_identity_text(text)
     tag_to_ip_map = {row['tag']: row['ip'] for row in rows}
     rebuild_gencore_rules(data, tag_to_ip_map)
     return data
-
 
 def build_old_gui_update_proxy_payload_from_rows(rows):
     payload = {}
@@ -2473,71 +1680,164 @@ def build_old_gui_update_proxy_payload_from_rows(rows):
             payload[ip] = 'ALLOW'
     return payload
 
+def _store_session_vpn_accounts(session_id, tag_accounts):
+    if not tag_accounts:
+        return
+    state = load_session_state()
+    sess = state.setdefault(str(session_id), {})
+    for item in tag_accounts:
+        tag = normalize_tag(item.get('tag', ''))
+        acc = str(item.get('vpn_account') or '').strip()
+        if not tag or not acc:
+            continue
+        sess_item(sess, tag)['vpn_account'] = acc
+    save_session_state(state)
+
+def _session_vpn_desires(session_id, runtime_data):
+    """Cau hinh nay khai bao may nao chay VPN -> ({tag: ten_account}, [adopt])"""
+    direct_tags = set()
+    for item in (runtime_data or {}).get('outbounds', []) or []:
+        try:
+            tag = normalize_tag(str((item or {}).get('tag', '')))
+            if not tag.startswith('proxy_'):
+                continue
+            if str((item or {}).get('type', '')).strip().lower() == 'direct':
+                direct_tags.add(tag)
+        except Exception:
+            continue
+    if not direct_tags:
+        return ({}, [])
+    meta = get_session_meta(session_id)
+    current_map = load_vpn_map()
+    saved_text = get_saved_ip_identity_text(session_id)
+    tag_ip = {}
+    if saved_text:
+        try:
+            for it in parse_ip_identity_text(saved_text):
+                t = normalize_tag(it.get('tag', ''))
+                ip = str(it.get('ip', '')).strip()
+                if t and ip:
+                    tag_ip[t] = ip
+        except Exception:
+            tag_ip = {}
+    desires = {}
+    adopt = []
+    for tag in sorted(direct_tags):
+        info = meta.get(tag) if isinstance(meta, dict) else None
+        acc = str((info or {}).get('vpn_account', '') or '').strip() if isinstance(info, dict) else ''
+        if not acc:
+            old = current_map.get(tag_ip.get(tag, ''), '')
+            if old:
+                acc = old
+                adopt.append({'tag': tag, 'vpn_account': acc})
+        if acc:
+            desires[tag] = acc
+    return (desires, adopt)
+
+def sync_vpn_state_on_apply(session_id, runtime_data, results):
+    """Apply cau hinh nao thi trang thai VPN phai theo dung cau hinh do:
+    - may cfg KHONG khai bao VPN ma van con map/rule VPN -> tu bo gan
+    - may cfg khai bao VPN -> giu/gan dung account (chi gan khi tunnel UP)
+    - don rule rac tro den table cua tunnel da chet (vd tun mat bat thuong)"""
+    cmd = 'dong bo VPN theo cau hinh'
+    summary = {'declared': 0, 'unassigned': [], 'assigned': [], 'skipped': [], 'clean_stale_ok': None}
+    try:
+        desires_by_tag, adopt = _session_vpn_desires(session_id, runtime_data)
+        if adopt:
+            _store_session_vpn_accounts(session_id, adopt)
+        desired_ips = {}
+        saved_text = get_saved_ip_identity_text(session_id)
+        if saved_text:
+            tag_ip = {}
+            try:
+                for it in parse_ip_identity_text(saved_text):
+                    t = normalize_tag(it.get('tag', ''))
+                    ip = str(it.get('ip', '')).strip()
+                    if t and ip:
+                        tag_ip[t] = ip
+            except Exception:
+                tag_ip = {}
+            for tag, acc in desires_by_tag.items():
+                ip = tag_ip.get(tag, '')
+                if ip:
+                    desired_ips[ip] = acc
+        summary['declared'] = len(desired_ips)
+        current = load_vpn_map()
+        status = {}
+        try:
+            status = {str(a.get('name', '')): a for a in vpn_status_json()}
+        except Exception:
+            status = {}
+        if saved_text:
+            for ip in sorted(current):
+                if ip in desired_ips:
+                    continue
+                r = vpn_run(['unassign', ip], timeout=60)
+                summary['unassigned'].append({'ip': ip, 'ok': bool(r.get('ok'))})
+            for ip, acc in sorted(desired_ips.items()):
+                cur_acc = current.get(ip, '')
+                if cur_acc == acc:
+                    continue
+                acc_info = status.get(acc) or {}
+                if not acc_info.get('running'):
+                    summary['skipped'].append({'ip': ip, 'account': acc, 'reason': 'tunnel khong chay'})
+                    continue
+                r = vpn_run(['assign', acc, ip], timeout=120)
+                summary['assigned'].append({'ip': ip, 'account': acc, 'ok': bool(r.get('ok')), 'output': (r.get('output') or '')[:120]})
+        rc = vpn_run(['clean-stale'], timeout=120)
+        summary['clean_stale_ok'] = bool(rc.get('ok'))
+        results.append({'cmd': cmd, 'ok': True, **summary})
+    except Exception as e:
+        results.append({'cmd': cmd, 'ok': False, 'error': str(e), **summary})
 
 def run_apply(session: str, rows_override=None):
     preset_source = SESSION_FILES[session]
     results = []
-
     preset_data = load_json(preset_source)
-    rows = rows_override if isinstance(rows_override, list) else extract_rows(preset_data, session=session)
-    tag_to_ip_map = {
-        str(row.get('tag', '')).strip(): str(row.get('ip', '')).strip()
-        for row in (rows or [])
-        if str(row.get('tag', '')).strip().startswith('proxy_') and str(row.get('ip', '')).strip()
-    }
-    runtime_data = rebuild_gencore_rules(preset_data, tag_to_ip_map)
-    apply_ip_identity_config(runtime_data, build_ip_identity_text(runtime_data, session=session), session=session)
-    save_json(RUNTIME_SOURCE_FILE, runtime_data)
-    results.append({
-        'cmd': 'write runtime source directly',
-        'ok': True,
-        'source': str(preset_source),
-        'target': str(RUNTIME_SOURCE_FILE),
-        'count': len(tag_to_ip_map),
-    })
-
-    if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
-        save_json(RUNTIME_FILE, runtime_data)
-        results.append({
-            'cmd': 'sync runtime file',
-            'ok': True,
-            'source': str(RUNTIME_SOURCE_FILE),
-            'target': str(RUNTIME_FILE),
-        })
+    if str(preset_source) != str(RUNTIME_SOURCE_FILE):
+        save_json(RUNTIME_SOURCE_FILE, preset_data)
+        results.append({'cmd': 'copy selected preset to gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE)})
     else:
-        results.append({
-            'cmd': 'sync runtime file',
-            'ok': True,
-            'source': str(RUNTIME_SOURCE_FILE),
-            'target': str(RUNTIME_FILE),
-            'skipped': True,
-        })
-
+        results.append({'cmd': 'copy selected preset to gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE), 'skipped': True})
+    if isinstance(rows_override, list):
+        rows_by_tag = {}
+        for row in rows_override:
+            tag = normalize_tag((row or {}).get('tag', ''))
+            if tag:
+                rows_by_tag[tag] = row or {}
+        runtime_data = apply_rows_to_data(load_json(RUNTIME_SOURCE_FILE), rows_by_tag, session=session)
+        save_json(preset_source, runtime_data)
+        save_json(RUNTIME_SOURCE_FILE, runtime_data)
+        results.append({'cmd': 'save posted proxy assignments to preset and gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE), 'count': len(rows_by_tag)})
+    else:
+        runtime_data = load_json(RUNTIME_SOURCE_FILE)
+    rows = extract_rows(runtime_data, session=session)
+    payload = build_old_gui_update_proxy_payload_from_rows(rows)
+    try:
+        resp = call_old_gui('/api/update_proxy', method='POST', data=payload)
+        results.append({'cmd': 'POST old GUI /api/update_proxy', 'ok': True, 'source': str(RUNTIME_SOURCE_FILE), 'count': len(payload), 'response': resp.get('data') if isinstance(resp, dict) else resp})
+    except Exception as e:
+        results.append({'cmd': 'POST old GUI /api/update_proxy', 'ok': False, 'source': str(RUNTIME_SOURCE_FILE), 'count': len(payload), 'error': str(e)})
+    if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
+        save_json(RUNTIME_FILE, load_json(RUNTIME_SOURCE_FILE))
+        results.append({'cmd': 'sync runtime file copy only', 'ok': True, 'source': str(RUNTIME_SOURCE_FILE), 'target': str(RUNTIME_FILE)})
+    else:
+        results.append({'cmd': 'sync runtime file copy only', 'ok': True, 'source': str(RUNTIME_SOURCE_FILE), 'target': str(RUNTIME_FILE), 'skipped': True})
+    sync_vpn_state_on_apply(session, runtime_data, results)
     try:
         if GENRUNNER.exists():
             proc = subprocess.run([str(GENRUNNER), 'check', '-c', str(RUNTIME_SOURCE_FILE)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
-            results.append({
-                'cmd': 'genrunner check',
-                'ok': proc.returncode == 0,
-                'returncode': proc.returncode,
-                'stdout': (proc.stdout or '').strip(),
-                'stderr': (proc.stderr or '').strip(),
-            })
+            results.append({'cmd': 'genrunner check only', 'ok': proc.returncode == 0, 'returncode': proc.returncode, 'stdout': (proc.stdout or '').strip(), 'stderr': (proc.stderr or '').strip()})
         else:
-            results.append({
-                'cmd': 'genrunner check',
-                'ok': False,
-                'skipped': True,
-                'error': f'Không thấy GENRUNNER: {GENRUNNER}',
-            })
+            results.append({'cmd': 'genrunner check only', 'ok': True, 'skipped': True, 'reason': f'not found: {GENRUNNER}'})
     except Exception as e:
-        results.append({
-            'cmd': 'genrunner check',
-            'ok': False,
-            'error': str(e),
-        })
+        results.append({'cmd': 'genrunner check only', 'ok': False, 'error': str(e)})
+    if any((r.get('ok') for r in results)):
+        try:
+            spawn_proxy_sheet_push()
+        except Exception:
+            pass
     return results
-
 
 def recv_exact(sock, n):
     data = b''
@@ -2548,7 +1848,6 @@ def recv_exact(sock, n):
         data += chunk
     return data
 
-
 def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.1', target_port=80, timeout=12, send_http=True):
     sock = socket.create_connection((proxy_host, proxy_port), timeout=timeout)
     try:
@@ -2557,7 +1856,6 @@ def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.
         resp = recv_exact(sock, 2)
         if resp[0] != 5 or resp[1] != 2:
             raise OSError('SOCKS5 auth method không hợp lệ')
-
         u = username.encode('utf-8')
         p = password.encode('utf-8')
         if len(u) > 255 or len(p) > 255:
@@ -2566,19 +1864,16 @@ def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.
         auth = recv_exact(sock, 2)
         if auth[1] != 0:
             raise OSError('Sai user/pass proxy')
-
         try:
             addr = socket.inet_aton(target_host)
             req = b'\x05\x01\x00\x01' + addr + struct.pack('!H', target_port)
         except OSError:
             host_bytes = target_host.encode('idna')
             req = b'\x05\x01\x00\x03' + bytes([len(host_bytes)]) + host_bytes + struct.pack('!H', target_port)
-
         sock.sendall(req)
         head = recv_exact(sock, 4)
         if head[1] != 0:
             raise OSError(f'SOCKS5 connect fail code {head[1]}')
-
         atyp = head[3]
         if atyp == 1:
             recv_exact(sock, 4)
@@ -2588,10 +1883,8 @@ def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.
         elif atyp == 4:
             recv_exact(sock, 16)
         recv_exact(sock, 2)
-
         if not send_http:
             return True
-
         sock.sendall(f'HEAD / HTTP/1.1\r\nHost: {target_host}\r\nConnection: close\r\n\r\n'.encode('utf-8'))
         data = sock.recv(32)
         return bool(data)
@@ -2601,38 +1894,24 @@ def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.
         except Exception:
             pass
 
-
 def socks5_probe_multi(proxy_host, proxy_port, username, password, timeout=12):
-    targets = [
-        ('1.1.1.1', 80, True),
-        ('8.8.8.8', 53, False),
-        ('api.ipify.org', 443, False),
-        ('ifconfig.me', 443, False),
-    ]
+    targets = [('1.1.1.1', 80, True), ('8.8.8.8', 53, False), ('api.ipify.org', 443, False), ('ifconfig.me', 443, False)]
     last_error = None
     for host, port, send_http in targets:
         try:
             if socks5_probe(proxy_host, proxy_port, username, password, target_host=host, target_port=port, timeout=timeout, send_http=send_http):
-                return True, host, port
+                return (True, host, port)
         except Exception as e:
             last_error = e
     if last_error:
         raise last_error
-    return False, None, None
-
+    return (False, None, None)
 
 def get_proxy_public_ip(proxy_host, proxy_port, username, password, timeout=15):
     proxy_url = f'socks5://{username}:{password}@{proxy_host}:{proxy_port}'
-    handlers = [
-        urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url}),
-        urllib.request.HTTPSHandler(context=None),
-    ]
+    handlers = [urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url}), urllib.request.HTTPSHandler(context=None)]
     opener = urllib.request.build_opener(*handlers)
-    urls = [
-        'https://api.ipify.org',
-        'https://ifconfig.me/ip',
-        'https://icanhazip.com',
-    ]
+    urls = ['https://api.ipify.org', 'https://ifconfig.me/ip', 'https://icanhazip.com']
     last_error = None
     for url in urls:
         try:
@@ -2645,7 +1924,6 @@ def get_proxy_public_ip(proxy_host, proxy_port, username, password, timeout=15):
     if last_error:
         raise last_error
     raise OSError('Không lấy được public IP')
-
 
 def find_duplicate_proxy_tags(public_ip, session='1'):
     duplicates = []
@@ -2662,7 +1940,6 @@ def find_duplicate_proxy_tags(public_ip, session='1'):
         pass
     duplicates.sort(key=proxy_tag_num)
     return duplicates
-
 
 def check_proxy(proxy: str, session='1'):
     if not proxy.strip():
@@ -2683,7 +1960,6 @@ def check_proxy(proxy: str, session='1'):
         return {'ok': True, 'status': 'live', 'message': 'LIVE', 'ip': public_ip, 'public_ip': public_ip, 'duplicates': duplicates}
     except Exception:
         return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
-
 
 def check_proxy_batch(items, session='1', max_workers=64):
     jobs = []
@@ -2708,7 +1984,6 @@ def check_proxy_batch(items, session='1', max_workers=64):
                 results[tag] = {'ok': False, 'status': 'dead', 'message': 'DEAD', 'error': str(e)}
     return results
 
-
 def call_old_gui(path, method='GET', data=None):
     body = None
     headers = {}
@@ -2720,13 +1995,45 @@ def call_old_gui(path, method='GET', data=None):
         path = path + ('&' if '?' in path else '?') + qs
     url = OLD_GUI_BASE + path
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        raw = resp.read().decode('utf-8', errors='ignore')
-        try:
-            return {'ok': True, 'data': json.loads(raw) if raw else {}}
-        except Exception:
-            return {'ok': True, 'data': raw}
-
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode('utf-8', errors='ignore')
+            try:
+                return {'ok': True, 'data': json.loads(raw) if raw else {}}
+            except Exception:
+                return {'ok': True, 'data': raw}
+    except Exception as remote_error:
+        if path == '/api/router/info':
+            ip = ''
+            prefix = 24
+            try:
+                ip = subprocess.check_output(['uci', '-q', 'get', 'network.lan.ipaddr'], text=True, timeout=5).strip()
+            except Exception:
+                pass
+            try:
+                mask = subprocess.check_output(['uci', '-q', 'get', 'network.lan.netmask'], text=True, timeout=5).strip()
+                import ipaddress
+                prefix = ipaddress.IPv4Network('0.0.0.0/' + mask).prefixlen
+            except Exception:
+                pass
+            ports = []
+            try:
+                raw_ports = subprocess.check_output(['uci', '-q', 'get', 'network.lan.ports'], text=True, timeout=5).strip()
+                ports = [x for x in raw_ports.split() if x]
+            except Exception:
+                pass
+            return {'ok': True, 'data': {'data': {'lan': {'networks': [{'ip': ip, 'prefix_length': prefix, 'device': 'br-lan', 'ports': ports, 'id': 'lan'}]}}, 'success': True}}
+        if path == '/api/router/change_lan':
+            ip_lan = str((data or {}).get('ip_lan') or '').strip()
+            if not ip_lan:
+                raise ValueError('ip_lan trống')
+            subprocess.run(['uci', 'set', f'network.lan.ipaddr={ip_lan}'], check=True, timeout=10)
+            subprocess.run(['uci', 'commit', 'network'], check=True, timeout=10)
+            subprocess.Popen(['/etc/init.d/network', 'reload'])
+            return {'ok': True, 'data': {'success': True, 'ip_lan': ip_lan, 'mode': 'local-compat'}}
+        if path == '/api/update_proxy':
+            return {'ok': True, 'data': {'success': True, 'ok': True, 'mode': 'local-compat', 'warning': 'old GUI 9000 unavailable; gencore config already updated'}}
+        raise remote_error
 
 def call_static_api(path, method='GET', data=None):
     body = None
@@ -2746,7 +2053,6 @@ def call_static_api(path, method='GET', data=None):
         except Exception:
             return {'ok': True, 'data': raw}
 
-
 def sync_static_to_router(rows, clear_first=False):
     valid_rows = []
     for row in rows or []:
@@ -2755,7 +2061,6 @@ def sync_static_to_router(rows, clear_first=False):
         if not ip or not mac:
             continue
         valid_rows.append({'ip': ip, 'mac': mac})
-
     if clear_first and valid_rows:
         try:
             call_static_api('/del_all_static', method='GET')
@@ -2772,139 +2077,587 @@ def sync_static_to_router(rows, clear_first=False):
             call_static_api('/del_static', method='GET', data={'mac': mac})
         except Exception:
             pass
-        call_static_api('/add_static', method='GET', data={
-            'ip': ip,
-            'mac': mac,
-        })
+        call_static_api('/add_static', method='GET', data={'ip': ip, 'mac': mac})
+VPN_MGR = '/data/vpn/vpn_mgr.sh'
+VPN_HOSTS_FILE = '/data/vpn/express_hosts.txt'
 
-
-def rewrite_xxtouch_remote_html(html: str, machine_no: str, port: str):
-    machine_no = str(machine_no or '').strip()
-    port = str(port or '').strip()
-
-    def _asset_url(rel_path: str):
-        rel_path = str(rel_path or '').lstrip('./')
-        return f'/api/xxtouch/remote-assets/{rel_path}?machine={quote(machine_no)}&port={quote(port)}'
-
-    patterns = [
-        (r'(?P<attr>src|href)="(?P<path>(?:\.?/)?(?:js|mdui|css)/[^\"]+)"'),
-        (r'(?P<attr>src|href)="(?P<path>(?:\.?/)?screen\.js)"'),
-        (r'(?P<attr>src|href)="(?P<path>(?:\.?/)?index\.html)"'),
-        (r'(?P<attr>src|href)="(?P<path>/xxtouch\.png)"'),
-    ]
-
-    def _repl(match):
-        attr = match.group('attr')
-        path = match.group('path')
-        clean = str(path or '').lstrip('/')
-        return f'{attr}="{_asset_url(clean)}"'
-
-    out = html
-    for pattern in patterns:
-        out = re.sub(pattern, _repl, out)
-    return out
-
-
-def xxtouch_fetch_remote_asset(target: str, remote_path: str, timeout=15):
-    parsed = urlparse(target)
-    host = parsed.hostname or ''
-    port = int(parsed.port or 80)
-    path = parsed.path or '/'
-    if parsed.query:
-        path += '?' + parsed.query
-    conn = http.client.HTTPConnection(host, port, timeout=timeout)
+def ensure_vpn_mgr():
+    """Tu phat hien + phuc hoi /data/vpn/vpn_mgr.sh tu ban gan trong app (tools/vpn_mgr.sh).
+    Moi router tu lai ngay sau update/restart, khong phu thuoc deploy tay. Tra True neu engine san sang."""
     try:
-        conn.request('GET', path, headers={'Connection': 'close', 'User-Agent': 'proxy-manager-xxtouch/1.0'})
-        resp = conn.getresponse()
-        content_type = resp.getheader('Content-Type') or mimetypes.guess_type(remote_path)[0] or 'application/octet-stream'
-        remote_lower = str(remote_path or '').lower()
-        max_bytes = 512 * 1024
-        if remote_lower.endswith('.html') or remote_lower.endswith('.js') or remote_lower.endswith('.css') or remote_lower.endswith('.json'):
-            max_bytes = 2 * 1024 * 1024
-        content_length = resp.getheader('Content-Length')
-        if content_length:
+        Path('/data/vpn').mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    dst = Path(VPN_MGR)
+    src = BASE_DIR / 'tools' / 'vpn_mgr.sh'
+    try:
+        if src.exists() and (not dst.exists() or dst.stat().st_size != src.stat().st_size):
+            shutil.copy(str(src), str(dst))
             try:
-                expected = min(int(content_length), max_bytes)
-                data = resp.read(expected)
-                return data, content_type
+                os.chmod(str(dst), 493)
             except Exception:
                 pass
-        chunks = []
-        total = 0
+    except Exception:
+        pass
+    return dst.exists()
+_VPN_DEPS = {'openvpn': None, 'wg': None, 'installing': False, 'log': '', 'ts': 0}
+_VPN_DEPS_LOCK = threading.Lock()
+_FEEDS_FILE = Path('/etc/opkg/distfeeds.conf')
+_FEED_FIX_RE = re.compile('https://mirrors\\.vsean\\.net/openwrt/releases/[^/\\s]+')
+_FEED_FIX_TO = 'https://downloads.openwrt.org/releases/23.05.5'
+
+def _fix_opkg_feeds():
+    """Mirror vsean lac quan -> doi cac feed userspace sang downloads.openwrt.org release,
+    GIU NGUYEN dong kmods (kernel module phai dung snapshot trung vermagic). Giu file .bak goc."""
+    try:
+        if not _FEEDS_FILE.exists():
+            return False
+        text = _FEEDS_FILE.read_text(encoding='utf-8', errors='replace')
+        out_lines = []
+        changed = False
+        for ln in text.splitlines():
+            if 'kmods' not in ln and 'mirrors.vsean.net' in ln:
+                new_ln = _FEED_FIX_RE.sub(_FEED_FIX_TO, ln)
+                if new_ln != ln:
+                    changed = True
+                ln = new_ln
+            out_lines.append(ln)
+        if not changed:
+            return False
+        bak = _FEEDS_FILE.with_name('distfeeds.conf.bak')
+        if not bak.exists():
+            try:
+                bak.write_text(text, encoding='utf-8')
+            except Exception:
+                pass
+        _FEEDS_FILE.write_text('\n'.join(out_lines) + '\n', encoding='utf-8')
+        return True
+    except Exception:
+        return False
+
+def _which(name):
+    try:
+        p = subprocess.run(['which', name], capture_output=True, text=True, timeout=5)
+        return bool(p.returncode == 0 and (p.stdout or '').strip())
+    except Exception:
+        return False
+
+def _vpn_deps_missing():
+    return [b for b in ('openvpn', 'wg') if not _which(b)]
+
+def _install_vpn_deps_worker(missing):
+    try:
+        pkgs = []
+        if 'openvpn' in missing:
+            pkgs.append('openvpn-openssl')
+        if 'wg' in missing:
+            pkgs += ['wireguard-tools', 'kmod-wireguard']
+        logs = ['Tu cai dat phan mem con thieu: ' + ' '.join(pkgs)]
+
+        def _opkg(args, timeout=420):
+            p = subprocess.run(['opkg'] + args, capture_output=True, text=True, timeout=timeout)
+            return (p.returncode, ((p.stdout or '') + (p.stderr or '')).strip())
+        try:
+            upd_ok = False
+            for attempt in (1, 2, 3):
+                rc, out = _opkg(['update'])
+                logs.append('$ opkg update (lan ' + str(attempt) + ') -> rc=' + str(rc))
+                logs.extend(('  ' + ln for ln in out.splitlines()[-3:]))
+                if rc == 0:
+                    upd_ok = True
+                    break
+                time.sleep(5)
+            if not upd_ok and _fix_opkg_feeds():
+                logs.append('Mirror lac quan lien tuc -> tu doi feed userspace sang downloads.openwrt.org (backup distfeeds.conf.bak, giu nguyen feed kmods), thu lai:')
+                rc, out = _opkg(['update'])
+                logs.append('$ opkg update (sau khi sua feed) -> rc=' + str(rc))
+                logs.extend(('  ' + ln for ln in out.splitlines()[-3:]))
+        except Exception as e:
+            logs.append('$ opkg update -> LOI ' + str(e))
+        for pkg in pkgs:
+            try:
+                rc = 1
+                out = ''
+                for attempt in (1, 2, 3):
+                    rc, out = _opkg(['install', pkg])
+                    logs.append('$ opkg install ' + pkg + ' (lan ' + str(attempt) + ') -> rc=' + str(rc))
+                    logs.extend(('  ' + ln for ln in out.splitlines()[-2:]))
+                    if rc == 0:
+                        break
+                    time.sleep(4)
+                if rc != 0 and pkg in ('openvpn-openssl', 'wireguard-tools'):
+                    rc, out = _opkg(['install', '--force-depends', pkg])
+                    logs.append('$ opkg install --force-depends ' + pkg + ' -> rc=' + str(rc) + ' (fallback userspace, bo dep kernel)')
+                    logs.extend(('  ' + ln for ln in out.splitlines()[-2:]))
+            except Exception as e:
+                logs.append('$ opkg install ' + pkg + ' -> LOI ' + str(e))
+        with _VPN_DEPS_LOCK:
+            _VPN_DEPS['installing'] = False
+            _VPN_DEPS['log'] = '\n'.join(logs)[-2400:]
+            _VPN_DEPS['ts'] = int(time.time())
+            _VPN_DEPS['openvpn'] = _which('openvpn')
+            _VPN_DEPS['wg'] = _which('wg')
+            summary = []
+            summary.append('KET QUA: openvpn=' + ('OK' if _VPN_DEPS['openvpn'] else 'THAT BAI') + ', wg=' + ('OK' if _VPN_DEPS['wg'] else 'THAT BAI'))
+            if not _VPN_DEPS['wg']:
+                summary.append('Luu y: kmod-wireguard co the khong hop kernel firmware nay — openvpn van dung binh thuong, WG can firmware co WireGuard.')
+            _VPN_DEPS['log'] = (_VPN_DEPS['log'] + '\n' + '\n'.join(summary))[-2400:]
+    except Exception:
+        with _VPN_DEPS_LOCK:
+            _VPN_DEPS['installing'] = False
+
+def ensure_vpn_deps_async():
+    """Tu cai openvpn/wireguard-tools/kmod-wireguard qua opkg khi thieu (chay nen, khong block request)."""
+    missing = _vpn_deps_missing()
+    if not missing:
+        return None
+    with _VPN_DEPS_LOCK:
+        if _VPN_DEPS['installing']:
+            return 'installing'
+        _VPN_DEPS['installing'] = True
+    threading.Thread(target=_install_vpn_deps_worker, args=(missing,), daemon=True).start()
+    return 'installing'
+
+def vpn_deps_status():
+    with _VPN_DEPS_LOCK:
+        installing = _VPN_DEPS['installing']
+        log = _VPN_DEPS['log']
+    return {'openvpn': _which('openvpn'), 'wg': _which('wg'), 'installing': installing, 'log': log}
+
+def vpn_run(args, timeout=150):
+    try:
+        if not ensure_vpn_mgr():
+            return {'ok': False, 'error': 'vpn_mgr.sh missing', 'output': 'Thiếu vpn_mgr.sh trên router và không có bản dự phòng tools/vpn_mgr.sh trong thư mục app — hãy bấm Cập nhật lên bản mới nhất rồi thử lại.'}
+        a0 = str(args[0]) if args else ''
+        missing = _vpn_deps_missing()
+        if missing:
+            need_ovpn = a0 in ('add-openvpn', 'add-express', 'up', 'startall', 'test')
+            need_wg = a0 in ('add-wg',)
+            if need_ovpn and 'openvpn' in missing or (need_wg and 'wg' in missing):
+                ensure_vpn_deps_async()
+                return {'ok': False, 'error': 'deps missing', 'output': 'Thiếu ' + '/'.join(missing) + ' — app đang TỰ CÀI trong nền (opkg, ~1-2 phút). Chờ xíu rồi bấm lại lệnh này nhé.'}
+        p = subprocess.run(['/bin/sh', VPN_MGR] + [str(a) for a in args], capture_output=True, text=True, timeout=timeout)
+        return {'ok': p.returncode == 0, 'rc': p.returncode, 'output': ((p.stdout or '') + (p.stderr or '')).strip()}
+    except Exception as e:
+        return {'ok': False, 'error': str(e), 'output': str(e)}
+
+def vpn_machine_map():
+    """IP -> so may, lay tu identity text DUNG CHUNG (meta) nen khong phu thuoc
+    session active — trang /vpn mo rieng tab van hien so may dung."""
+    out = {}
+    try:
+        text = get_saved_ip_identity_text()
+        if text:
+            for it in parse_ip_identity_text(text):
+                ip = str(it.get('ip', '')).strip()
+                num = str(it.get('machine', '')).strip()
+                if ip and num:
+                    out[ip] = num
+    except Exception:
+        pass
+    return out
+
+def vpn_status_json():
+    r = vpn_run(['json'])
+    try:
+        return json.loads((r.get('output') or '[]').strip() or '[]')
+    except Exception:
+        return []
+
+def vpn_exit_ip(name):
+    acc = next((a for a in vpn_status_json() if a.get('name') == name), None)
+    if not acc:
+        return {'ok': False, 'error': f'khong co tai khoan {name}'}
+    if not acc.get('running'):
+        return {'ok': False, 'error': 'tunnel chua UP'}
+    dev, tbl = (acc.get('dev'), str(acc.get('table')))
+    lip = ''
+    try:
+        out = subprocess.run(['ip', '-4', 'addr', 'show', dev], capture_output=True, text=True).stdout
+        m = re.search('inet (\\d+\\.\\d+\\.\\d+\\.\\d+)', out or '')
+        if m:
+            lip = m.group(1)
+    except Exception:
+        pass
+    if not lip:
+        return {'ok': False, 'error': 'khong lay duoc IP trong tunnel'}
+    added = subprocess.run(['ip', 'rule', 'add', 'from', lip, 'table', tbl, 'priority', '5'], capture_output=True).returncode == 0
+    ip_out, err = ('', '')
+    try:
+        s = socket.socket()
+        s.settimeout(8)
+        s.bind((lip, 0))
+        s.connect(('api.ipify.org', 80))
+        s.sendall(b'GET / HTTP/1.0\r\nHost: api.ipify.org\r\n\r\n')
+        data = b''
         while True:
-            remain = max_bytes - total
-            if remain <= 0:
-                break
-            chunk = resp.read(min(64 * 1024, remain))
+            chunk = s.recv(512)
             if not chunk:
                 break
-            chunks.append(chunk)
-            total += len(chunk)
-            if total >= max_bytes:
-                break
-        return b''.join(chunks), content_type
+            data += chunk
+        ip_out = data.decode('utf-8', 'replace').split('\r\n\r\n')[-1].strip()
+    except Exception as e:
+        err = str(e)
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        if added:
+            subprocess.run(['ip', 'rule', 'del', 'from', lip, 'table', tbl, 'priority', '5'], capture_output=True)
+    if err:
+        return {'ok': False, 'error': err}
+    return {'ok': True, 'exit_ip': ip_out, 'local_tunnel_ip': lip, 'dev': dev}
+EXITIP_CACHE_FILE = '/data/vpn/exitips.json'
+_EXITIPS = {}
+_EXITIPS_BUSY = {'v': False}
+_EXITIP_LOCK = threading.Lock()
+try:
+    with open(EXITIP_CACHE_FILE, encoding='utf-8') as _f:
+        _EXITIPS = json.load(_f) or {}
+except Exception:
+    _EXITIPS = {}
 
-
-def xxtouch_proxy_target(cfg, machine_no: str, port: str):
-    machine_no = str(machine_no or '').strip()
-    port = str(port or '').strip() or '46952'
-    machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no})
-    if not machines:
-        raise ValueError('Không tìm thấy máy remote')
-    target_ip = str(machines[0].get('ip') or '').strip()
-    if not target_ip:
-        raise ValueError('IP máy remote không hợp lệ')
-    return machines[0], target_ip, port
-
-
-def xxtouch_forward_post(ip: str, port: str, remote_path: str, body: bytes, content_type: str, timeout=20):
-    conn = http.client.HTTPConnection(str(ip).strip(), int(port), timeout=timeout)
+def _probe_exit_ip_dev(dev, tbl, timeout=8):
+    """Bind socket vao IP trong tunnel roi hoi api.ipify.org — tra ve exit IP hoac None."""
+    lip = ''
     try:
-        headers = {'Connection': 'close'}
-        if content_type:
-            headers['Content-Type'] = content_type
-        conn.request('POST', remote_path, body=body or b'', headers=headers)
-        resp = conn.getresponse()
-        data = resp.read()
-        resp_ct = resp.getheader('Content-Type') or 'application/json; charset=utf-8'
-        status = int(getattr(resp, 'status', 200) or 200)
-        return status, data, resp_ct
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-
-
-def get_xxtouch_remote_online_info():
-    try:
-        frpc = load_json(BASE_DIR / 'frpc_config.json', {})
-        app_cfg = load_json(COLLECTOR_CONFIG_FILE, {})
-        router_id = str(app_cfg.get('router_id', '')).strip() or 'unknown-router'
-        suffix = str(frpc.get('domain_suffix', 'aeg.ooguy.com')).strip() or 'aeg.ooguy.com'
-        server_host = str(frpc.get('server_host', 'aeg.ooguy.com')).strip() or 'aeg.ooguy.com'
-        remote_http_domain = str(frpc.get('remote_http_domain', '')).strip() or f'{router_id}-remote.{suffix}'
-        ws_remote_port = int(frpc.get('remote_ws_port', 0) or 0)
-        if ws_remote_port <= 0:
-            ws_remote_port = 24000 + sum(ord(ch) for ch in router_id) % 10000
-        return {
-            'router_id': router_id,
-            'http_domain': remote_http_domain,
-            'http_url': f'http://{remote_http_domain}',
-            'ws_host': server_host,
-            'ws_port': ws_remote_port,
-            'ws_url': f'ws://{server_host}:{ws_remote_port}',
-        }
+        out = subprocess.run(['ip', '-4', 'addr', 'show', dev], capture_output=True, text=True).stdout
+        m = re.search('inet (\\d+\\.\\d+\\.\\d+\\.\\d+)', out or '')
+        if m:
+            lip = m.group(1)
     except Exception:
-        return {}
+        return None
+    if not lip:
+        return None
+    added = subprocess.run(['ip', 'rule', 'add', 'from', lip, 'table', str(tbl), 'priority', '5'], capture_output=True).returncode == 0
+    ip_out = ''
+    try:
+        s = socket.socket()
+        s.settimeout(timeout)
+        s.bind((lip, 0))
+        s.connect(('api.ipify.org', 80))
+        s.sendall(b'GET / HTTP/1.0\r\nHost: api.ipify.org\r\n\r\n')
+        data = b''
+        while True:
+            chunk = s.recv(512)
+            if not chunk:
+                break
+            data += chunk
+        ip_out = data.decode('utf-8', 'replace').split('\r\n\r\n')[-1].strip()
+    except Exception:
+        return None
+    finally:
+        if added:
+            subprocess.run(['ip', 'rule', 'del', 'from', lip, 'table', str(tbl), 'priority', '5'], capture_output=True)
+    return ip_out or None
 
+def _refresh_exitips_worker():
+    try:
+        accs = [a for a in vpn_status_json() if a.get('running')]
+        results = {}
+
+        def _job(a):
+            try:
+                results[a['name']] = _probe_exit_ip_dev(a.get('dev'), a.get('table'))
+            except Exception:
+                pass
+        for i in range(0, len(accs), 8):
+            batch = accs[i:i + 8]
+            ths = [threading.Thread(target=_job, args=(a,), daemon=True) for a in batch]
+            for t in ths:
+                t.start()
+            for t in ths:
+                t.join(14)
+        now = int(time.time())
+        running_names = {a['name'] for a in accs}
+        merged = {}
+        for name in sorted(set(list(_EXITIPS.keys()) + list(results.keys()))):
+            if name in results and results[name]:
+                merged[name] = {'ip': results[name], 'ts': now}
+            elif name not in running_names:
+                continue
+            else:
+                merged[name] = _EXITIPS.get(name)
+        merged = {k: v for k, v in merged.items() if v}
+        with _EXITIP_LOCK:
+            _EXITIPS.clear()
+            _EXITIPS.update(merged)
+            try:
+                Path('/data/vpn').mkdir(parents=True, exist_ok=True)
+                with open(EXITIP_CACHE_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(_EXITIPS, f)
+            except Exception:
+                pass
+    finally:
+        _EXITIPS_BUSY['v'] = False
+
+def vpn_refresh_exitips_async():
+    if _EXITIPS_BUSY['v']:
+        return False
+    _EXITIPS_BUSY['v'] = True
+    threading.Thread(target=_refresh_exitips_worker, daemon=True).start()
+    return True
+WD_PERSIST_DIR = BASE_DIR / 'persist'
+WD_LOG_FILE = BASE_DIR / 'logs' / 'gencore_watchdog.log'
+WD_STATE = {'hits': 0, 'last_restart': 0.0, 'last_start': 0.0, 'snap': ''}
+WD_ZOMBIE_PORT = '5888'
+
+def _wd_log(msg):
+    try:
+        WD_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if WD_LOG_FILE.exists() and WD_LOG_FILE.stat().st_size > 262144:
+            txt = WD_LOG_FILE.read_text(errors='replace')
+            WD_LOG_FILE.write_text(txt[-131072:], encoding='utf-8', errors='replace')
+        ts = time.strftime('%Y-%m-%d %H:%M:%S')
+        with open(WD_LOG_FILE, 'a', encoding='utf-8') as fh:
+            fh.write(f'{ts} {msg}\n')
+    except Exception:
+        pass
+
+def _wd_thresholds():
+    thr = {'zombie_tw': 5000, 'ct_total': 40000, 'consecutive': 2, 'cooldown_sec': 600, 'fd_max': 800, 'log_stale_sec': 600, 'traffic_min_bytes': 1024, 'traffic_stale_sec': 900}
+    try:
+        cfg = json.loads((WD_PERSIST_DIR / 'watchdog.json').read_text())
+        for k in list(thr.keys()):
+            v = cfg.get(k)
+            if isinstance(v, (int, float)) and v > 0:
+                thr[k] = v
+    except Exception:
+        pass
+    return thr
+
+def _wd_gencore_fd_count(pid):
+    """Dem so file descriptor dang mo cua gencore PID. Tra None neu loi."""
+    try:
+        if not pid:
+            return None
+        fd_dir = f'/proc/{pid}/fd'
+        return len(os.listdir(fd_dir))
+    except Exception:
+        return None
+
+def _wd_log_mtime():
+    """Tra mtime (epoch) cua /tmp/gencore_run.log. Tra None neu khong co."""
+    try:
+        p = Path('/tmp/gencore_run.log')
+        if not p.exists():
+            return None
+        return p.stat().st_mtime
+    except Exception:
+        return None
+
+def _wd_traffic_counter():
+    """Dem tong bytes proxy di qua (in+out) tu nf_conntrack. Tra None neu khong co."""
+    try:
+        total = 0
+        with open('/proc/net/nf_conntrack', 'r', encoding='utf-8', errors='replace') as fh:
+            for line in fh:
+                # parse bytes=NNN (co the xuat hien 1 hoac 2 lan cho in/out)
+                for tok in line.split():
+                    if tok.startswith('bytes='):
+                        try:
+                            total += int(tok.split('=', 1)[1])
+                        except Exception:
+                            pass
+        return total
+    except Exception:
+        return None
+
+def _wd_conntrack_counts():
+    tw = total = 0
+    try:
+        with open('/proc/net/nf_conntrack', 'r', encoding='utf-8', errors='replace') as fh:
+            for line in fh:
+                total += 1
+                if 'TIME_WAIT' in line and f'dport={WD_ZOMBIE_PORT} ' in line:
+                    tw += 1
+    except OSError:
+        return None
+    return (tw, total)
+
+def _wd_uptime_sec():
+    try:
+        with open('/proc/uptime') as fh:
+            return float(fh.read().split()[0])
+    except Exception:
+        return 1000000000.0
+
+def _gencore_pid():
+    try:
+        r = subprocess.run(['pidof', 'gencore'], capture_output=True, text=True, timeout=8)
+        return (r.stdout or '').strip()
+    except Exception:
+        return ''
+
+def gencore_start_detached(reason='manual'):
+    if not Path('/usr/bin/gencore').exists():
+        return
+    try:
+        subprocess.Popen(['sh', '-c', '( /usr/bin/gencore run -c /etc/genrouter/gencore.json >/tmp/gencore_run.log 2>&1 </dev/null & )'], start_new_session=True)
+        _wd_log(f'START gencore reason={reason}')
+    except Exception as e:
+        _wd_log(f'START fail reason={reason}: {e}')
+
+def gencore_restart_detached(reason='storm'):
+    try:
+        subprocess.run(['sh', '-c', 'kill $(pidof gencore) 2>/dev/null; sleep 2; pidof gencore >/dev/null 2>&1 && kill -9 $(pidof gencore) 2>/dev/null; sleep 1; true'], timeout=20)
+    except Exception:
+        pass
+    gencore_start_detached(reason)
+
+def _wd_persist_runtime(accounts):
+    try:
+        WD_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+        mapping = {}
+        try:
+            with open('/data/vpn/map.txt', 'r', encoding='utf-8', errors='replace') as fh:
+                for line in fh:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        mapping[parts[0].strip()] = parts[1].strip()
+        except OSError:
+            pass
+        snap = {'ts': int(time.time()), 'running': sorted((str(a.get('name')) for a in accounts if a.get('running'))), 'map': mapping}
+        raw = json.dumps(snap, ensure_ascii=False)
+        if raw != WD_STATE.get('snap'):
+            WD_STATE['snap'] = raw
+            (WD_PERSIST_DIR / 'vpn_runtime.json').write_text(raw, encoding='utf-8')
+    except Exception as e:
+        _wd_log(f'persist error: {e}')
+
+def wd_boot_recover(force=False):
+    """Sau reboot: map.txt (tmpfs) bị xoá + tunnel rơi -> trả lại đúng snapshot trước mất."""
+    res = {'ok': True, 'actions': []}
+    try:
+        if not force and _wd_uptime_sec() > 900:
+            res['skipped'] = 'uptime > 900s (khong phai vua reboot)'
+            return res
+        snap_f = WD_PERSIST_DIR / 'vpn_runtime.json'
+        snap = json.loads(snap_f.read_text()) if snap_f.exists() else {}
+        mapping = snap.get('map') or {}
+        running = snap.get('running') or []
+        map_path = Path('/data/vpn/map.txt')
+        map_missing = not map_path.exists() or map_path.stat().st_size == 0
+        if mapping and map_missing:
+            lines = [f'{ip} {acc}' for ip, acc in mapping.items()]
+            map_path.parent.mkdir(parents=True, exist_ok=True)
+            map_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+            res['actions'].append(f'restored map.txt ({len(lines)} entries)')
+            _wd_log(f'BOOT-RECOVER map.txt restored {len(lines)} entries')
+        if running:
+            try:
+                cur = vpn_status_json()
+                still = {str(a.get('name')) for a in cur if a.get('running')}
+            except Exception:
+                still = set()
+            for name in running:
+                if name in still:
+                    continue
+                r = vpn_run(['up', name])
+                res['actions'].append(f"up {name}: rc={r.get('rc')}")
+                _wd_log(f"BOOT-RECOVER up {name}: rc={r.get('rc')} {(r.get('output') or '')[:100]}")
+                time.sleep(3)
+    except Exception as e:
+        res = {'ok': False, 'error': str(e)}
+        _wd_log(f'boot_recover error: {e}')
+    return res
+
+def gencore_watchdog_loop():
+    _wd_log('WATCHDOG start (Ver 2.20 — FD + log_mtime + traffic + conntrack)')
+    time.sleep(25)
+    try:
+        wd_boot_recover()
+    except Exception:
+        pass
+    last_traffic = {'ts': 0.0, 'bytes': None}
+    while True:
+        try:
+            time.sleep(60)
+            thr = _wd_thresholds()
+            cnt = _wd_conntrack_counts()
+            if cnt is None:
+                continue
+            tw, total = cnt
+            pid = _gencore_pid()
+            now = time.time()
+            if not pid:
+                if not Path('/usr/bin/gencore').exists():
+                    continue
+                if now - WD_STATE.get('last_start', 0) >= 180:
+                    WD_STATE['last_start'] = now
+                    WD_STATE['restarts'] = WD_STATE.get('restarts', 0) + 1
+                    gencore_start_detached('dead')
+                continue
+
+            # --- Ver 2.20: kiem tra them FD count + log_mtime + traffic counter ---
+            reasons = []
+            fd_count = _wd_gencore_fd_count(pid)
+            if fd_count is not None and fd_count > thr['fd_max']:
+                reasons.append(f'fd_high={fd_count}/{thr["fd_max"]}')
+            log_mt = _wd_log_mtime()
+            if log_mt is not None and (now - log_mt) > thr['log_stale_sec']:
+                reasons.append(f'log_stale={(int(now-log_mt))}s/{thr["log_stale_sec"]}')
+            # traffic: so sanh so bytes conntrack hien tai voi luu 15 phut truoc
+            cur_bytes = _wd_traffic_counter()
+            if cur_bytes is not None and last_traffic.get('bytes') is not None:
+                if (now - last_traffic['ts']) > thr['traffic_stale_sec']:
+                    delta = cur_bytes - last_traffic['bytes']
+                    if delta < thr['traffic_min_bytes']:
+                        reasons.append(f'traffic_flat delta={delta}B/{int(now-last_traffic["ts"])}s')
+            if cur_bytes is not None:
+                if last_traffic.get('ts') == 0 or (now - last_traffic['ts']) > thr['traffic_stale_sec']:
+                    last_traffic = {'ts': now, 'bytes': cur_bytes}
+
+            storm = (tw >= thr['zombie_tw'] or total >= thr['ct_total'])
+            if storm or reasons:
+                WD_STATE['hits'] = WD_STATE.get('hits', 0) + 1
+                reason_str = ','.join(reasons) if reasons else f'storm_tw={tw}_total={total}'
+                _wd_log(f"STORM hit={WD_STATE['hits']} pid={pid} reasons=[{reason_str}]")
+                if WD_STATE['hits'] >= thr['consecutive'] and now - WD_STATE.get('last_restart', 0) >= thr['cooldown_sec']:
+                    WD_STATE['last_restart'] = now
+                    WD_STATE['hits'] = 0
+                    WD_STATE['restarts'] = WD_STATE.get('restarts', 0) + 1
+                    _wd_log(f'RESTART gencore Ver2.20 reasons=[{reason_str}]')
+                    gencore_restart_detached('ver220:' + (reasons[0] if reasons else 'storm'))
+            elif WD_STATE.get('hits'):
+                WD_STATE['hits'] = 0
+            try:
+                accounts = vpn_status_json()
+            except Exception:
+                accounts = []
+            if accounts:
+                _wd_persist_runtime(accounts)
+        except Exception as e:
+            _wd_log(f'loop error: {e}')
+
+def vpn_add_openvpn_text(name, text, user='', password=''):
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix='vpn_upload_', suffix='.ovpn')
+    with os.fdopen(fd, 'w', encoding='utf-8', errors='replace') as f:
+        f.write(text.replace('\r\n', '\n'))
+    try:
+        args = ['add-openvpn', name, tmp]
+        if user:
+            args += [user, password]
+        return vpn_run(args)
+    finally:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+
+def vpn_add_wg_text(name, text):
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix='vpn_upload_', suffix='.conf')
+    with os.fdopen(fd, 'w', encoding='utf-8', errors='replace') as f:
+        f.write(text.replace('\r\n', '\n'))
+    try:
+        return vpn_run(['add-wg', name, tmp])
+    finally:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
 
 class Handler(BaseHTTPRequestHandler):
+
     def _send_no_cache_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
         self.send_header('Pragma', 'no-cache')
@@ -2950,83 +2703,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _serve_xxtouch(self, request_path: str):
-        ensure_xxtouch_workspace()
-        if not XXTOUCH_WEB_DIR.exists():
-            return self._send_json({'error': 'XXTouch web not found'}, 404)
-        raw = request_path[len('/xxtouch'):].lstrip('/') if request_path.startswith('/xxtouch') else ''
-        raw = unquote(raw)
-        rel = raw or 'index.html'
-        safe = (XXTOUCH_WEB_DIR / rel).resolve()
-        base = XXTOUCH_WEB_DIR.resolve()
-        if base not in safe.parents and safe != base:
-            return self._send_json({'error': 'Invalid path'}, 400)
-        if safe.is_dir():
-            safe = safe / 'index.html'
-        return self._send_disk_file(safe)
-
     def do_GET(self):
         ensure_sessions_exist()
         path = urlparse(self.path).path
-        if path == '/api/xxtouch/remote-screen' or path.startswith('/api/xxtouch/remote-assets/') or path.startswith('/api/xxtouch/remote-proxy/'):
-            try:
-                cfg = load_admanager_config()
-                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
-                params = dict(parse_qs(urlparse(self.path).query))
-                machine_no = str((params.get('machine') or [''])[0]).strip()
-                port = str((params.get('port') or [ui.get('port') or '46952'])[0]).strip()
-                _machine, target_ip, port = xxtouch_proxy_target(cfg, machine_no, port)
-                remote_path = 'screen.html'
-                asset_prefix = '/api/xxtouch/remote-proxy/'
-                if path.startswith('/api/xxtouch/remote-assets/'):
-                    remote_path = path[len('/api/xxtouch/remote-assets/'):].lstrip('/') or 'screen.html'
-                    asset_prefix = '/api/xxtouch/remote-assets/'
-                elif path.startswith('/api/xxtouch/remote-proxy/'):
-                    remote_path = path[len('/api/xxtouch/remote-proxy/'):].lstrip('/') or 'screen.html'
-                    asset_prefix = '/api/xxtouch/remote-proxy/'
-                target = f"http://{target_ip}:{port}/{remote_path}"
-                data, content_type = xxtouch_fetch_remote_asset(target, remote_path, timeout=15)
-                if remote_path.endswith('.html') or remote_path == 'screen.html':
-                    html = data.decode('utf-8', errors='ignore')
-                    html = html.replace('src="js/', f'src="{asset_prefix}js/')
-                    html = html.replace('src="mdui/', f'src="{asset_prefix}mdui/')
-                    html = html.replace('src="screen.js"', f'src="{asset_prefix}screen.js')
-                    html = html.replace('href="mdui/', f'href="{asset_prefix}mdui/')
-                    html = html.replace('href="css/', f'href="{asset_prefix}css/')
-                    html = html.replace('src="/xxtouch.png"', f'src="{asset_prefix}xxtouch.png')
-                    html = html.replace('href="./index.html"', f'href="{asset_prefix}index.html')
-                    html = html.replace('src="snapshot?', f'src="{asset_prefix}snapshot?')
-                    sep = '&' if '?' in asset_prefix else '?'
-                    html = html.replace(f'{asset_prefix}js/', f'{asset_prefix}js/{sep}machine={quote(machine_no)}&port={quote(port)}')
-                    html = html.replace(f'{asset_prefix}mdui/', f'{asset_prefix}mdui/{sep}machine={quote(machine_no)}&port={quote(port)}')
-                    html = html.replace(f'{asset_prefix}screen.js', f'{asset_prefix}screen.js{sep}machine={quote(machine_no)}&port={quote(port)}')
-                    html = html.replace(f'{asset_prefix}css/', f'{asset_prefix}css/{sep}machine={quote(machine_no)}&port={quote(port)}')
-                    html = html.replace(f'{asset_prefix}xxtouch.png', f'{asset_prefix}xxtouch.png{sep}machine={quote(machine_no)}&port={quote(port)}')
-                    html = html.replace(f'{asset_prefix}index.html', f'{asset_prefix}index.html{sep}machine={quote(machine_no)}&port={quote(port)}')
-                    html = html.replace(f'{asset_prefix}snapshot?', f'{asset_prefix}snapshot?machine={quote(machine_no)}&port={quote(port)}&')
-                    data = html.encode('utf-8')
-                    content_type = 'text/html; charset=utf-8'
-                elif remote_path.endswith('screen.js'):
-                    js = data.decode('utf-8', errors='ignore')
-                    js = js.replace('"ws://" + document.domain + ":46968"', f'"ws://{target_ip}:46968"')
-                    js = js.replace('$.post("/write_file"', f'$.post("/api/xxtouch/remote-proxy/write_file?machine={quote(machine_no)}&port={quote(port)}"')
-                    js = js.replace('$.post("/command_spawn"', f'$.post("/api/xxtouch/remote-proxy/command_spawn?machine={quote(machine_no)}&port={quote(port)}"')
-                    js = js.replace('"snapshot?ext=', f'"/api/xxtouch/remote-proxy/snapshot?machine={quote(machine_no)}&port={quote(port)}&ext=')
-                    data = js.encode('utf-8')
-                    content_type = 'application/javascript; charset=utf-8'
-                self.send_response(200)
-                self.send_header('Content-Type', content_type)
-                self.send_header('Content-Length', str(len(data)))
-                self._send_no_cache_headers()
-                self.end_headers()
-                self.wfile.write(data)
-                return
-            except Exception as e:
-                return self._send_json({'ok': False, 'error': f'Remote screen lỗi: {e}'}, 502)
+        if path == '/api/license':
+            return self._send_json(license_public_payload())
+        if not license_gate_ok():
+            return self._send_json({'error': 'License inactive or expired', 'license_required': True}, 403)
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
-        if path == '/xxtouch' or path.startswith('/xxtouch/'):
-            return self._serve_xxtouch(path)
         if path == '/api/pm/sessions':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             return self._send_json({'ok': True, 'sessions': get_available_sessions(include_hidden=include_hidden), 'max_sessions': MAX_SESSION_COUNT})
@@ -3035,12 +2720,48 @@ class Handler(BaseHTTPRequestHandler):
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                 return self._send_json({'session': session_id, 'name': get_session_display_name(session_id), 'source': str(SESSION_FILES[session_id]), 'rows': extract_rows(load_json(SESSION_FILES[session_id]), session=session_id)})
         if path == '/api/pm/router-network':
-            return self._send_json(call_old_gui('/api/system/network'))
+            probes = [('https://api.ipify.org', 'wan_ip'), ('https://ifconfig.me/ip', 'wan_ip')]
+            errors = []
+            for url, field in probes:
+                try:
+                    probe = urllib.request.Request(url, headers={'User-Agent': 'pm-network-check'})
+                    with urllib.request.urlopen(probe, timeout=8) as resp:
+                        value = resp.read().decode('utf-8', 'replace').strip()
+                    if value:
+                        return self._send_json({'ok': True, 'connected': True, field: value, 'probe': url})
+                except Exception as e:
+                    errors.append(f'{url}: {e}')
+            try:
+                ping = subprocess.run(['ping', '-c', '1', '1.1.1.1'], capture_output=True, text=True, timeout=10)
+                if ping.returncode == 0:
+                    return self._send_json({'ok': True, 'connected': True, 'probe': 'ping'})
+            except Exception as e:
+                errors.append(f'ping: {e}')
+            return self._send_json({'ok': False, 'connected': False, 'error': ' | '.join(errors)})
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
             version_info = get_repo_version_info()
-            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info})
+            active_session = ''
+            try:
+                active_session = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '')
+            except (OSError, ValueError):
+                pass
+            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
+        if path == '/vpn':
+            return self._send_file(STATIC_DIR / 'vpn.html')
+        if path == '/api/vpn/status':
+            return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map(), 'deps': vpn_deps_status()})
+        if path == '/api/vpn/exitips':
+            return self._send_json({'ok': True, 'ips': dict(_EXITIPS), 'busy': _EXITIPS_BUSY['v']})
+        if path == '/api/vpn/express-hosts':
+            hosts = []
+            try:
+                with open(VPN_HOSTS_FILE, 'r', encoding='utf-8', errors='replace') as f:
+                    hosts = [ln.strip() for ln in f if ln.strip()]
+            except Exception:
+                pass
+            return self._send_json({'ok': True, 'hosts': hosts})
         if path == '/api/pm/export-all':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             return self._send_json(export_all_sessions_payload(include_hidden=include_hidden))
@@ -3048,17 +2769,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'config': load_collector_config(), 'router_id': get_router_id()})
         if path == '/api/admanager/config':
             cfg = load_admanager_config()
-            router_ctx = xxtouch_get_router_machine_context(cfg, cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {})
+            router_ctx = get_router_machine_context(cfg, cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {})
             return self._send_json({'ok': True, 'config': cfg, 'machine_note': router_ctx.get('note', ''), 'machine_indexes': router_ctx.get('available', [])})
-        if path == '/api/pm/xxtouch/workspace':
-            ensure_xxtouch_workspace()
-            return self._send_json({
-                'ok': True,
-                'work_dir': str(XXTOUCH_WORK_DIR),
-                'data_dir': str(XXTOUCH_DATA_DIR),
-                'log_dir': str(XXTOUCH_LOG_DIR),
-                'tmp_dir': str(XXTOUCH_TMP_DIR),
-            })
         if path.startswith('/api/pm/ip-mac-config/'):
             session_id = path.rsplit('/', 1)[-1]
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
@@ -3067,35 +2779,15 @@ class Handler(BaseHTTPRequestHandler):
                 if not saved_text:
                     rows = build_ip_identity_rows_from_data(data)
                     if rows and len(rows) < MAX_PROXY_TAG:
-                        saved_text = set_saved_ip_identity_text(session_id, '\n'.join(format_ip_identity_row(row, include_machine=True) for row in rows))
+                        saved_text = set_saved_ip_identity_text(session_id, '\n'.join((format_ip_identity_row(row, include_machine=True) for row in rows)))
                 return self._send_json({'ok': True, 'session': session_id, 'shared': True, 'text': saved_text or build_ip_identity_text(data, session='1')})
         self._send_json({'error': 'Not found'}, 404)
 
     def do_POST(self):
         ensure_sessions_exist()
         path = urlparse(self.path).path
-        if path.startswith('/api/xxtouch/remote-proxy/'):
-            try:
-                cfg = load_admanager_config()
-                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
-                params = dict(parse_qs(urlparse(self.path).query))
-                machine_no = str((params.get('machine') or [''])[0]).strip()
-                port = str((params.get('port') or [ui.get('port') or '46952'])[0]).strip()
-                _machine, target_ip, port = xxtouch_proxy_target(cfg, machine_no, port)
-                remote_path = '/' + path[len('/api/xxtouch/remote-proxy/'):].lstrip('/')
-                length = int(self.headers.get('Content-Length', '0') or '0')
-                raw_body = self.rfile.read(length) if length else b''
-                content_type = str(self.headers.get('Content-Type') or '').strip()
-                status, data, resp_ct = xxtouch_forward_post(target_ip, port, remote_path, raw_body, content_type, timeout=20)
-                self.send_response(status)
-                self.send_header('Content-Type', resp_ct)
-                self.send_header('Content-Length', str(len(data)))
-                self._send_no_cache_headers()
-                self.end_headers()
-                self.wfile.write(data)
-                return
-            except Exception as e:
-                return self._send_json({'ok': False, 'error': f'Remote proxy POST lỗi: {e}'}, 502)
+        if path != '/api/pm/reboot-router' and (not license_gate_ok()):
+            return self._send_json({'error': 'License inactive or expired', 'license_required': True}, 403)
         length = int(self.headers.get('Content-Length', '0') or '0')
         body = self.rfile.read(length) if length else b'{}'
         payload = json.loads(body.decode('utf-8') or '{}')
@@ -3124,12 +2816,20 @@ class Handler(BaseHTTPRequestHandler):
                         name = set_session_display_name(session_id, name)
                     else:
                         name = get_session_display_name(session_id)
+                    try:
+                        spawn_proxy_sheet_push()
+                    except Exception:
+                        pass
                     return self._send_json({'ok': True, 'session': session_id, 'name': name})
             if path.startswith('/api/pm/apply/'):
                 session_id = path.rsplit('/', 1)[-1]
                 if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                     rows_override = payload.get('rows') if isinstance(payload, dict) else None
                     results = run_apply(session_id, rows_override=rows_override)
+                    try:
+                        ACTIVE_SESSION_FILE.write_text(json.dumps({'active': str(session_id)}), encoding='utf-8')
+                    except OSError:
+                        pass
                     return self._send_json({'ok': True, 'applied': session_id, 'results': results})
             if path == '/api/pm/clone/1-to-2':
                 save_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
@@ -3144,6 +2844,10 @@ class Handler(BaseHTTPRequestHandler):
                     if isinstance(ip_text, dict) and '1' in ip_text:
                         ip_text['2'] = ip_text['1']
                     save_session_state(state)
+                try:
+                    spawn_proxy_sheet_push()
+                except Exception:
+                    pass
                 return self._send_json({'ok': True})
             if path == '/api/pm/meta':
                 prefix = set_app_title_prefix(payload.get('app_title_prefix', 'Genrouter'))
@@ -3151,281 +2855,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/version/update':
                 result = update_repo_from_remote(payload.get('password', ''))
                 return self._send_json(result)
-            if path == '/api/xxtouch/scan-devices':
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                router_ctx = xxtouch_get_router_machine_context(cfg, state)
-                validation = admanager_validate_machine_selection(router_ctx.get('router', ''), router_ctx.get('router_obj', {}), state.get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all', state.get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '', state.get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
-                if validation.get('invalid'):
-                    invalid_text = ', '.join(str(x) for x in validation.get('invalid', []))
-                    return self._send_json({'ok': False, 'error': f'Máy này không nằm trong router này: {invalid_text}. Dải hợp lệ: {validation.get("note")}'}, 400)
-                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
-                port = str(state.get('port') or ui.get('port') or '46952').strip()
-                machines = xxtouch_get_selected_machines(cfg, state)
-
-                def scan_one(m):
-                    machine_key = f"{m['index']}|{m['ip']}"
-                    if not xxtouch_try_claim_scan(machine_key):
-                        return {
-                            'router': '',
-                            'index': m['index'],
-                            'machine': str(m['index']),
-                            'ip': m['ip'],
-                            'status': 'waiting',
-                            'model': '',
-                            'ios': '',
-                            'error': 'đang scan, chờ lượt hiện tại xong',
-                            'capacity_label': '',
-                            'free_label': '',
-                            'free_percent': 0,
-                        }
-                    try:
-                        probe = xxtouch_http_probe(m['ip'], port, timeout=3)
-                        model = ''
-                        ios = ''
-                        df = {}
-                        info_error = ''
-                        try:
-                            info = xxtouch_device_info(m['ip'], port, timeout=4)
-                            data = info.get('data') or {}
-                            model = data.get('marketing_name') or data.get('devtype') or ''
-                            ios = data.get('sysversion') or ''
-                            try:
-                                df = xxtouch_df_info(m['ip'], port)
-                            except Exception:
-                                df = {}
-                        except Exception as e:
-                            info_error = str(e)
-                        return {
-                            'router': '',
-                            'index': m['index'],
-                            'machine': str(m['index']),
-                            'ip': m['ip'],
-                            'status': 'online',
-                            'model': model,
-                            'ios': ios,
-                            'error': info_error,
-                            'probe_path': probe.get('path') or '',
-                            **df,
-                        }
-                    except Exception as e:
-                        return {
-                            'router': '',
-                            'index': m['index'],
-                            'machine': str(m['index']),
-                            'ip': m['ip'],
-                            'status': 'offline',
-                            'model': '',
-                            'ios': '',
-                            'error': str(e),
-                            'capacity_label': '',
-                            'free_label': '',
-                            'free_percent': 0,
-                        }
-                    finally:
-                        xxtouch_release_scan(machine_key)
-
-                rows = []
-                if len(machines) <= 1:
-                    rows = [scan_one(m) for m in machines]
-                else:
-                    max_workers = min(8, len(machines))
-                    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                        future_map = {ex.submit(scan_one, m): m for m in machines}
-                        for future in as_completed(future_map):
-                            rows.append(future.result())
-                    rows.sort(key=lambda x: (str(x.get('router') or ''), int(x.get('index') or 0)))
-
-                online_rows = [r for r in rows if r.get('status') == 'online']
-                waiting_rows = [r for r in rows if r.get('status') == 'waiting']
-                offline_rows = [r for r in rows if r.get('status') not in ('online', 'waiting')]
-                online = [str(r.get('index')) for r in online_rows]
-                offline = [str(r.get('index')) for r in offline_rows]
-                waiting = [str(r.get('index')) for r in waiting_rows]
-                return self._send_json({'ok': True, 'rows': rows, 'online': online, 'offline': offline, 'waiting': waiting, 'online_count': len(online_rows), 'offline_count': len(offline_rows), 'waiting_count': len(waiting_rows)})
-            if path == '/api/xxtouch/group3-schedule/status':
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                router = str(state.get('router') or '').strip()
-                action = str(state.get('action') or '').strip()
-                if not router:
-                    router_ctx = xxtouch_get_router_machine_context(cfg, state)
-                    router = str(router_ctx.get('router') or '').strip()
-                job_key = group3_schedule_job_key(router, action)
-                with GROUP3_SCHEDULE_LOCK:
-                    store = load_group3_schedule_store()
-                    job = (store.get('jobs') or {}).get(job_key)
-                return self._send_json({'ok': True, 'job': group3_schedule_public(job) if job else None})
-            if path == '/api/xxtouch/group3-schedule/create':
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                interval_seconds = max(1, int(state.get('interval_seconds') or 0))
-                run_count = max(1, int(state.get('run_count') or 0))
-                job_key, job = create_group3_schedule_job({**state, 'interval_seconds': interval_seconds, 'run_count': run_count}, cfg)
-                job['status'] = 'waiting'
-                job['next_run_at'] = int(time.time())
-                with GROUP3_SCHEDULE_LOCK:
-                    store = load_group3_schedule_store()
-                    store.setdefault('jobs', {})[job_key] = job
-                    save_group3_schedule_store(store)
-                group3_schedule_start_worker(job_key)
-                return self._send_json({'ok': True, 'job': group3_schedule_public(job), 'message': 'Đã lưu lịch hẹn giờ'})
-            if path == '/api/xxtouch/group3-schedule/cancel':
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                router = str(state.get('router') or '').strip()
-                action = str(state.get('action') or '').strip()
-                if not router:
-                    router_ctx = xxtouch_get_router_machine_context(cfg, state)
-                    router = str(router_ctx.get('router') or '').strip()
-                job_key = group3_schedule_job_key(router, action)
-                with GROUP3_SCHEDULE_LOCK:
-                    store = load_group3_schedule_store()
-                    job = (store.get('jobs') or {}).pop(job_key, None)
-                    save_group3_schedule_store(store)
-                return self._send_json({'ok': True, 'job': group3_schedule_public(job) if job else None, 'message': 'Đã hủy lịch hẹn giờ'})
-            if path == '/api/xxtouch/action':
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                router_ctx = xxtouch_get_router_machine_context(cfg, state)
-                validation = admanager_validate_machine_selection(router_ctx.get('router', ''), router_ctx.get('router_obj', {}), state.get('machineMode') or ((cfg.get('uiState') or {}).get('machineMode')) or 'all', state.get('machineGroup') or ((cfg.get('uiState') or {}).get('machineGroup')) or ((cfg.get('uiState') or {}).get('machineRange')) or '', state.get('machineList') or ((cfg.get('uiState') or {}).get('machineList')) or '')
-                if validation.get('invalid'):
-                    invalid_text = ', '.join(str(x) for x in validation.get('invalid', []))
-                    return self._send_json({'ok': False, 'error': f'Máy này không nằm trong router này: {invalid_text}. Dải hợp lệ: {validation.get("note")}'}, 400)
-                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
-                port = str(state.get('port') or ui.get('port') or '46952').strip()
-                action = str(state.get('action') or '').strip()
-                machines = xxtouch_get_selected_machines(cfg, state)
-                if not machines:
-                    return self._send_json({'ok': False, 'error': 'Không tìm thấy máy XXTouch hợp lệ để chạy lệnh'}, 400)
-                logs = []
-                ok_count = 0
-                if action == 'send_files':
-                    files = state.get('files') if isinstance(state.get('files'), list) else []
-                    target_machines = state.get('targetMachines') if isinstance(state.get('targetMachines'), list) else []
-                    if not files:
-                        return self._send_json({'ok': False, 'error': 'Chưa chọn file nào'}, 400)
-                    if not target_machines:
-                        return self._send_json({'ok': False, 'error': 'Hãy SCAN trước để chốt đúng máy online rồi mới SEND FILE'}, 400)
-                    if not machines:
-                        return self._send_json({'ok': False, 'error': 'Không có máy online hợp lệ để gửi file'}, 400)
-                    if len(machines) <= 1:
-                        for m in machines:
-                            try:
-                                ok, lines = xxtouch_send_files_to_machine(m, port, files, remote_dir='/var/mobile/Media/1ferver/lua/examples')
-                                logs.extend(lines)
-                                if ok:
-                                    ok_count += 1
-                            except Exception as e:
-                                logs.append(f"[{m['label']}] lỗi gửi file: {e}")
-                    else:
-                        max_workers = max(1, len(machines))
-                        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                            future_map = {ex.submit(xxtouch_send_files_to_machine, m, port, files, '/var/mobile/Media/1ferver/lua/examples'): m for m in machines}
-                            ordered_results = []
-                            for future in as_completed(future_map):
-                                m = future_map[future]
-                                try:
-                                    ok, lines = future.result()
-                                except Exception as e:
-                                    ok, lines = False, [f"[{m['label']}] lỗi gửi file: {e}"]
-                                ordered_results.append({
-                                    'index': int(m.get('index') or 0),
-                                    'label': str(m.get('label') or ''),
-                                    'ok': ok,
-                                    'lines': lines,
-                                })
-                        ordered_results.sort(key=lambda item: (item['index'], item['label']))
-                        for item in ordered_results:
-                            logs.extend(item['lines'])
-                            if item['ok']:
-                                ok_count += 1
-                    failed_indexes = [int(m.get('index') or 0) for m in machines if int(m.get('index') or 0) not in {int(mm.get('index') or 0) for mm in machines[:0]}]
-                    failed_indexes = []
-                    for m in machines:
-                        pass
-                    return self._send_json({'ok': True, 'logs': logs, 'message': xxtouch_build_action_summary('send_files', machines, ok_count, failed_indexes)})
-                failed_indexes = []
-                if len(machines) <= 1:
-                    for m in machines:
-                        try:
-                            ok, lines = xxtouch_run_action_on_machine(m, port, action, state.get('group3App') or 'tiktok_lite')
-                            logs.extend(lines)
-                            if ok:
-                                ok_count += 1
-                            else:
-                                failed_indexes.append(int(m.get('index') or 0))
-                        except Exception as e:
-                            logs.append(f"[{m['label']}] lỗi: {e}")
-                            failed_indexes.append(int(m.get('index') or 0))
-                else:
-                    group3_app = state.get('group3App') or 'tiktok_lite'
-                    ordered_results = []
-                    if action == 'event_video_180_tiktok' and len(machines) >= 10:
-                        ordered_results = []
-                        total = len(machines)
-                        for batch_start in range(0, total, 10):
-                            batch = machines[batch_start:batch_start + 10]
-                            batch_end = batch_start + len(batch)
-                            logs.append(f'[BATCH] Event Video 180: chạy đợt {batch_start // 10 + 1}, máy {batch_start + 1}-{batch_end}/{total}')
-                            with ThreadPoolExecutor(max_workers=len(batch)) as ex:
-                                future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action, group3_app): m for m in batch}
-                                for future in as_completed(future_map):
-                                    m = future_map[future]
-                                    try:
-                                        ok, lines = future.result()
-                                    except Exception as e:
-                                        ok, lines = False, [f"[{m['label']}] lỗi: {e}"]
-                                    ordered_results.append({
-                                        'index': int(m.get('index') or 0),
-                                        'label': str(m.get('label') or ''),
-                                        'ok': ok,
-                                        'lines': lines,
-                                    })
-                            if batch_end < total:
-                                logs.append('[BATCH] Event Video 180: chờ 30s trước đợt tiếp theo')
-                                time.sleep(30)
-                    else:
-                        max_workers = max(1, len(machines))
-                        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                            future_map = {ex.submit(xxtouch_run_action_on_machine, m, port, action, group3_app): m for m in machines}
-                            ordered_results = []
-                            for future in as_completed(future_map):
-                                m = future_map[future]
-                                try:
-                                    ok, lines = future.result()
-                                except Exception as e:
-                                    ok, lines = False, [f"[{m['label']}] lỗi: {e}"]
-                                ordered_results.append({
-                                    'index': int(m.get('index') or 0),
-                                    'label': str(m.get('label') or ''),
-                                    'ok': ok,
-                                    'lines': lines,
-                                })
-                    ordered_results.sort(key=lambda item: (item['index'], item['label']))
-                    for item in ordered_results:
-                        logs.extend(item['lines'])
-                        if item['ok']:
-                            ok_count += 1
-                        else:
-                            failed_indexes.append(int(item.get('index') or 0))
-                return self._send_json({'ok': True, 'logs': logs, 'message': xxtouch_build_action_summary(action, machines, ok_count, failed_indexes)})
-            if path == '/api/xxtouch/remote-link':
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                router_ctx = xxtouch_get_router_machine_context(cfg, state)
-                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
-                port = str(state.get('port') or ui.get('port') or '46952').strip()
-                machine_no = str(state.get('machine') or '').strip()
-                remote_validation = admanager_validate_machine_selection(router_ctx.get('router', ''), router_ctx.get('router_obj', {}), 'list', '', machine_no)
-                if remote_validation.get('invalid'):
-                    invalid_text = ', '.join(str(x) for x in remote_validation.get('invalid', []))
-                    raise ValueError(f'Máy này không nằm trong router này: {invalid_text}. Dải hợp lệ: {remote_validation.get("note")}')
-                machines = xxtouch_get_selected_machines(cfg, {'machineMode': 'list', 'machineList': machine_no, 'router': router_ctx.get('router', '')})
-                if not machines:
-                    raise ValueError('Không tìm thấy máy để remote theo Gán IP')
-                machine = machines[0]
-                return self._send_json({'ok': True, 'url': f"http://{machine['ip']}:{port}/screen.html", 'machine': machine})
             if path == '/api/admanager/save-config':
                 cfg = load_admanager_config()
                 incoming = payload.get('config') if isinstance(payload, dict) else {}
@@ -3435,149 +2864,6 @@ class Handler(BaseHTTPRequestHandler):
                             cfg[key] = incoming[key]
                 save_admanager_local(cfg)
                 return self._send_json({'ok': True})
-            if path == '/api/admanager/scan':
-                ensure_xxtouch_workspace()
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
-                router_key = state.get('router') or ui.get('router') or 'All'
-                port = str(state.get('port') or ui.get('port') or '46952').strip()
-                machine_mode = state.get('machineMode') or ui.get('machineMode') or 'all'
-                machine_range = state.get('machineRange') or ui.get('machineRange') or '1-10'
-                machine_list = state.get('machineList') or ui.get('machineList') or ''
-                date_mode = state.get('dateMode') or ui.get('dateMode') or 'one'
-                date_start = state.get('dateStart') or ui.get('dateStart') or ''
-                date_end = state.get('dateEnd') or ui.get('dateEnd') or date_start
-                app_filter = 'All'
-                full_scan = bool(state.get('fullScan', ui.get('fullScan', False)))
-                apps_cfg = cfg.get('apps') or {}
-                if full_scan:
-                    date_allow = None
-                    mmdd_allow = None
-                else:
-                    if date_mode != 'range':
-                        date_end = date_start
-                    ds_mmdd = admanager_parse_daymonth(date_start)
-                    de_mmdd = admanager_parse_daymonth(date_end)
-                    if ds_mmdd and de_mmdd:
-                        mmdd_allow = (ds_mmdd, de_mmdd)
-                        date_allow = None
-                    else:
-                        ds = admanager_parse_date_input(date_start)
-                        de = admanager_parse_date_input(date_end)
-                        if not ds or not de:
-                            raise ValueError('Định dạng ngày không hợp lệ')
-                        if ds > de:
-                            ds, de = de, ds
-                        date_allow = (ds, de)
-                        mmdd_allow = None
-                app_targets = [info.get('label', key) for key, info in apps_cfg.items()] if app_filter == 'All' else [app_filter]
-                rows = []
-                summary = []
-                failed = []
-                total_files = 0
-                summary_map = {}
-                for rk, router in admanager_routers_to_scan(cfg, router_key):
-                    selected = admanager_iter_machines(rk, router, machine_mode, machine_range, machine_list)
-                    for m in selected:
-                        for app_lbl in app_targets:
-                            summary_map[(rk, m['label'], m['ip'], app_lbl)] = 0
-                    for m in selected:
-                        try:
-                            obj = admanager_command_spawn(m['ip'], port, f'echo {ADMANAGER_REMOTE_DIR}/*', timeout=20)
-                            stdout = (((obj or {}).get('result') or {}).get('stdout') or '').strip()
-                            names = []
-                            for token in stdout.split():
-                                fname = token.rsplit('/', 1)[-1]
-                                mm = ADMANAGER_FILE_RE.match(fname)
-                                if mm:
-                                    base, _fn, date8, time6 = admanager_parse_base(mm)
-                                    names.append((fname, base, date8, time6))
-                            names = sorted(set(names))
-                            total_files += len(names)
-                            plist_path = admanager_download_backups_plist(m['ip'], port)
-                            status_map = admanager_parse_backups_plist_map(plist_path)
-                            for (name, base, date8, time6) in names:
-                                if date_allow is not None and not (date_allow[0] <= date8 <= date_allow[1]):
-                                    continue
-                                if mmdd_allow is not None and not admanager_in_mmdd_range(date8[4:8], mmdd_allow[0], mmdd_allow[1]):
-                                    continue
-                                app_label = admanager_detect_app_label(apps_cfg, base)
-                                if app_filter != 'All' and app_label != app_filter:
-                                    continue
-                                ok = status_map.get(base, True)
-                                if not ok:
-                                    continue
-                                row = {'router': rk, 'machine': m['label'], 'ip': m['ip'], 'app': app_label, 'ok': True, 'date8': date8, 'time6': time6, 'filename': name}
-                                rows.append(row)
-                                key = (rk, m['label'], m['ip'], app_label)
-                                summary_map[key] = summary_map.get(key, 0) + 1
-                        except Exception as e:
-                            failed.append({'router': rk, 'machine': m['label'], 'ip': m['ip'], 'error': str(e)})
-                admanager_cleanup_tmp()
-                for (rk, machine, ip, app), count in sorted(summary_map.items()):
-                    summary.append({'router': rk, 'machine': machine, 'ip': ip, 'app': app, 'count': count})
-                return self._send_json({'ok': True, 'rows': rows, 'summary': summary, 'failed': failed, 'total_files': total_files})
-            if path == '/api/admanager/pull':
-                ensure_xxtouch_workspace()
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
-                port = str(state.get('port') or ui.get('port') or '46952').strip()
-                output_root = str(state.get('outputRoot') or ui.get('outputRoot') or cfg.get('defaultOutput') or XXTOUCH_DATA_DIR)
-                do_backup = bool(state.get('doBackupBeforePull', ui.get('doBackupBeforePull', False)))
-                delete_after = bool(state.get('deleteAfterPull', ui.get('deleteAfterPull', False)))
-                rows = state.get('rows') if isinstance(state.get('rows'), list) else []
-                results = []
-                cnt = 0
-                total = len(rows) or 1
-                for r in rows:
-                    try:
-                        if do_backup:
-                            cmd = (cfg.get('backupCommands') or {}).get(r.get('app'))
-                            if cmd:
-                                try:
-                                    admanager_command_spawn(r['ip'], port, cmd, timeout=40)
-                                except Exception:
-                                    pass
-                        subdir = Path(output_root) / str(r['machine'])
-                        remote = f"{ADMANAGER_REMOTE_DIR}/{r['filename']}"
-                        local = subdir / r['filename']
-                        admanager_download_file(r['ip'], port, remote, local, timeout=120)
-                        if delete_after:
-                            try:
-                                admanager_command_spawn(r['ip'], port, f"rm -f '{remote}'", timeout=20)
-                            except Exception:
-                                pass
-                        cnt += 1
-                        results.append({'ok': True, 'machine': r['machine'], 'filename': r['filename'], 'size': local.stat().st_size if local.exists() else 0, 'progress': int(cnt * 100 / total)})
-                    except Exception as e:
-                        results.append({'ok': False, 'machine': r.get('machine'), 'filename': r.get('filename'), 'error': str(e)})
-                return self._send_json({'ok': True, 'results': results, 'output_root': output_root})
-            if path == '/api/admanager/backup':
-                cfg = load_admanager_config()
-                state = payload if isinstance(payload, dict) else {}
-                ui = cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {}
-                router_key = state.get('router') or ui.get('router') or 'All'
-                port = str(state.get('port') or ui.get('port') or '46952').strip()
-                machine_mode = state.get('machineMode') or ui.get('machineMode') or 'all'
-                machine_range = state.get('machineRange') or ui.get('machineRange') or '1-10'
-                machine_list = state.get('machineList') or ui.get('machineList') or ''
-                app_filter = 'All'
-                cmds = cfg.get('backupCommands') or {}
-                results = []
-                for rk, router in admanager_routers_to_scan(cfg, router_key):
-                    for m in admanager_iter_machines(rk, router, machine_mode, machine_range, machine_list):
-                        candidates = [('TikTok', cmds.get('TikTok')), ('TikTok Lite', cmds.get('TikTok Lite'))] if app_filter == 'All' else [(app_filter, cmds.get(app_filter))]
-                        for app_lbl, cmd in candidates:
-                            if not cmd:
-                                continue
-                            try:
-                                admanager_command_spawn(m['ip'], port, cmd, timeout=40)
-                                results.append({'ok': True, 'machine': m['label'], 'ip': m['ip'], 'app': app_lbl})
-                            except Exception as e:
-                                results.append({'ok': False, 'machine': m['label'], 'ip': m['ip'], 'app': app_lbl, 'error': str(e)})
-                return self._send_json({'ok': True, 'results': results})
             if path.startswith('/api/pm/map-ip/'):
                 session_id = path.rsplit('/', 1)[-1]
                 if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
@@ -3608,18 +2894,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', '')), session=str(payload.get('session', '1'))))
             if path == '/api/pm/check-proxy-batch':
-                return self._send_json({'ok': True, 'results': check_proxy_batch(payload.get('items', []), session=str(payload.get('session', '1')) )})
+                return self._send_json({'ok': True, 'results': check_proxy_batch(payload.get('items', []), session=str(payload.get('session', '1')))})
             if path == '/api/pm/reboot-router':
                 return self._send_json(call_old_gui('/api/system/reboot', method='GET'))
             if path == '/api/pm/collector-config':
                 cfg = load_collector_config()
-                cfg.update({
-                    'collector_url': str(payload.get('collector_url', cfg.get('collector_url', ''))).strip(),
-                    'router_id': str(payload.get('router_id', cfg.get('router_id', ''))).strip(),
-                    'remote_url': str(payload.get('remote_url', cfg.get('remote_url', ''))).strip(),
-                    'enabled': bool(payload.get('enabled', cfg.get('enabled', False))),
-                    'push_interval_sec': int(payload.get('push_interval_sec', cfg.get('push_interval_sec', 60)) or 60),
-                })
+                cfg.update({'collector_url': str(payload.get('collector_url', cfg.get('collector_url', ''))).strip(), 'router_id': str(payload.get('router_id', cfg.get('router_id', ''))).strip(), 'remote_url': str(payload.get('remote_url', cfg.get('remote_url', ''))).strip(), 'enabled': bool(payload.get('enabled', cfg.get('enabled', False))), 'push_interval_sec': int(payload.get('push_interval_sec', cfg.get('push_interval_sec', 60)) or 60)})
                 save_collector_config(cfg)
                 return self._send_json({'ok': True, 'config': cfg, 'router_id': get_router_id()})
             if path == '/api/pm/collector-push-now':
@@ -3627,15 +2907,71 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/router-change-lan':
                 ip_lan = str(payload.get('ip_lan', '')).strip()
                 return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data={'ip_lan': ip_lan}))
+            if path == '/api/vpn/action':
+                action = str(payload.get('action', '')).strip()
+                name = str(payload.get('name', '')).strip()
+                ipaddr = str(payload.get('ip', '')).strip()
+                if action not in ('unassign', 'refresh-exitips') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
+                    return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
+                if action == 'up':
+                    return self._send_json(vpn_run(['up', name]))
+                if action == 'down':
+                    return self._send_json(vpn_run(['down', name]))
+                if action == 'del':
+                    return self._send_json(vpn_run(['del', name]))
+                if action in ('autostart_on', 'autostart_off'):
+                    return self._send_json(vpn_run(['autostart', name, 'on' if action == 'autostart_on' else 'off']))
+                if action == 'assign':
+                    if not re.match('^\\d{1,3}(\\.\\d{1,3}){3}$', ipaddr):
+                        return self._send_json({'ok': False, 'error': 'IP khong hop le'})
+                    r = vpn_run(['assign', name, ipaddr])
+                    if r.get('ok'):
+                        _record_vpn_declaration(ipaddr, name)
+                    return self._send_json(r)
+                if action == 'unassign':
+                    if not re.match('^\\d{1,3}(\\.\\d{1,3}){3}$', ipaddr):
+                        return self._send_json({'ok': False, 'error': 'IP khong hop le'})
+                    r = vpn_run(['unassign', ipaddr])
+                    if r.get('ok'):
+                        _record_vpn_declaration(ipaddr, '')
+                    return self._send_json(r)
+                if action == 'add-express':
+                    host = str(payload.get('host', '')).strip()
+                    user = str(payload.get('username', '')).strip()
+                    pwd = str(payload.get('password', ''))
+                    if not host or not user:
+                        return self._send_json({'ok': False, 'error': 'thieu host/username'})
+                    return self._send_json(vpn_run(['add-express', name, host, user, pwd]))
+                if action == 'add-openvpn':
+                    ovpn_text = str(payload.get('ovpn_text', '') or '')
+                    user = str(payload.get('username', '')).strip()
+                    pwd = str(payload.get('password', ''))
+                    if len(ovpn_text) < 50:
+                        return self._send_json({'ok': False, 'error': 'thieu noi dung file .ovpn'})
+                    return self._send_json(vpn_add_openvpn_text(name, ovpn_text, user, pwd))
+                if action == 'add-wg':
+                    wg_text = str(payload.get('wg_text', '') or '')
+                    if '[Interface]' not in wg_text or 'PrivateKey' not in wg_text:
+                        return self._send_json({'ok': False, 'error': 'file khong dung dinh dang WireGuard (thieu [Interface]/PrivateKey)'})
+                    return self._send_json(vpn_add_wg_text(name, wg_text))
+                if action == 'test-exitip':
+                    return self._send_json(vpn_exit_ip(name))
+                if action == 'refresh-exitips':
+                    started = vpn_refresh_exitips_async()
+                    return self._send_json({'ok': True, 'started': started})
+                return self._send_json({'ok': False, 'error': f'action khong ho tro: {action}'})
             return self._send_json({'error': 'Not found'}, 404)
         except urllib.error.HTTPError as e:
             return self._send_json({'ok': False, 'error': f'HTTP {e.code}'}, 400)
         except Exception as e:
             return self._send_json({'error': str(e)}, 400)
-
-
 if __name__ == '__main__':
     ensure_sessions_exist()
-    ensure_xxtouch_workspace()
+    pass
+    ensure_vpn_mgr()
+    ensure_vpn_deps_async()
+    _ss_seed_backups()
+    threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
+    threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()
