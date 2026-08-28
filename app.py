@@ -59,6 +59,14 @@ RUNTIME_SOURCE_FILE = CONFIG_DIR / 'gencore.json'
 MAX_PROXY_TAG = 1000
 TAGS_PER_SUBNET = 250
 BASE_SUBNET_OCTET = 4
+# DNS resolver dung cho tung proxy outbound (detour qua chinh proxy do).
+# BAT BUOC dung DoH tren port 443: nhieu nha cung cap proxy (lumi, ...) CHAN
+# port 53/853/5353 va tra ve SOCKS5 reply code=2 (connection not allowed by
+# ruleset) => toan bo DNS query cua client fail => web khong load duoc.
+# Dung dia chi IP (khong dung hostname) de tranh chicken-and-egg: gencore
+# khong the resolve hostname cua resolver truoc khi co resolver.
+PROXY_DNS_ADDRESS = 'https://8.8.8.8/dns-query'
+PROXY_DNS_LEGACY_ADDRESSES = ('tcp://8.8.8.8', 'tcp://1.1.1.1', '8.8.8.8:53', '1.1.1.1:53')
 REPO_REMOTE_URL = 'https://github.com/thttd94/GEN.git'
 REPO_BRANCH = 'main'
 DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
@@ -1402,6 +1410,46 @@ def extract_rows(data, session='1'):
         rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': 'vpn:' + vpn_acc if vpn_acc else format_proxy(outbound), 'proxyType': 'vpn' if vpn_acc else 'socks5', 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': False})
     return rows
 
+def migrate_proxy_dns_servers(data):
+    """Doi cac DNS server cua proxy_* tu port 53/853 sang DoH 443.
+
+    Ly do: proxy provider (lumi, ...) chan port 53 va tra SOCKS5 rep=2 =>
+    moi DNS query cua client fail => web khong load. Ham nay tu chua config
+    cu, chay moi lan apply va moi lan khoi dong app.
+    Tra ve so entry da doi.
+    """
+    changed = 0
+    try:
+        servers = ((data or {}).get('dns') or {}).get('servers') or []
+    except Exception:
+        return 0
+    for server in servers:
+        if not isinstance(server, dict):
+            continue
+        if not str(server.get('tag', '')).strip().startswith('proxy_'):
+            continue
+        addr = str(server.get('address', '')).strip()
+        if addr in PROXY_DNS_LEGACY_ADDRESSES or addr.startswith('tcp://') or addr.startswith('tls://'):
+            server['address'] = PROXY_DNS_ADDRESS
+            changed += 1
+    return changed
+
+def migrate_proxy_dns_file(path: Path):
+    """Tu chua 1 file config tren disk. Tra ve so entry da doi (0 neu khong can)."""
+    try:
+        if not path.exists():
+            return 0
+        data = load_json(path)
+    except Exception:
+        return 0
+    changed = migrate_proxy_dns_servers(data)
+    if changed:
+        try:
+            save_json(path, data)
+        except Exception:
+            return 0
+    return changed
+
 def apply_rows_to_data(data, rows_by_tag, session='1'):
     outbounds = data.setdefault('outbounds', [])
     outbound_idx = {str(item.get('tag')): i for i, item in enumerate(outbounds) if item.get('tag')}
@@ -1480,7 +1528,7 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     non_proxy_outbounds = [item for item in old_outbounds if not str(item.get('tag', '')).strip().startswith('proxy_')]
     for tag, ip in ordered_items:
         dns_rules.append({'action': 'route', 'server': tag, 'source_ip_cidr': ip})
-        dns_servers.append({'address': 'tcp://8.8.8.8', 'detour': tag, 'tag': tag})
+        dns_servers.append({'address': PROXY_DNS_ADDRESS, 'detour': tag, 'tag': tag})
     route_rules = [rule for rule in route_rules if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip() in ('direct', 'proxy'))]
     for tag, ip in ordered_items:
         route_rules.append({'action': 'route', 'outbound': tag, 'source_ip_cidr': ip})
@@ -1766,6 +1814,10 @@ def run_apply(session: str, rows_override=None):
         results.append({'cmd': 'save posted proxy assignments to preset and gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE), 'count': len(rows_by_tag)})
     else:
         runtime_data = load_json(RUNTIME_SOURCE_FILE)
+    dns_migrated = migrate_proxy_dns_servers(runtime_data)
+    if dns_migrated:
+        save_json(RUNTIME_SOURCE_FILE, runtime_data)
+        results.append({'cmd': 'migrate proxy DNS servers to DoH 443', 'ok': True, 'target': str(RUNTIME_SOURCE_FILE), 'count': dns_migrated})
     rows = extract_rows(runtime_data, session=session)
     payload = build_old_gui_update_proxy_payload_from_rows(rows)
     try:
@@ -1850,7 +1902,9 @@ def socks5_probe(proxy_host, proxy_port, username, password, target_host='1.1.1.
             pass
 
 def socks5_probe_multi(proxy_host, proxy_port, username, password, timeout=12):
-    targets = [('1.1.1.1', 80, True), ('8.8.8.8', 53, False), ('api.ipify.org', 443, False), ('ifconfig.me', 443, False)]
+    # Khong probe port 53: nhieu proxy provider chan port nay va tra rep=2,
+    # lam probe bao proxy chet oan. Chi probe cac port thuc su duoc phep.
+    targets = [('1.1.1.1', 80, True), ('1.1.1.1', 443, False), ('api.ipify.org', 443, False), ('ifconfig.me', 443, False)]
     last_error = None
     for host, port, send_http in targets:
         try:
@@ -2860,9 +2914,37 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': False, 'error': f'HTTP {e.code}'}, 400)
         except Exception as e:
             return self._send_json({'error': str(e)}, 400)
+def startup_migrate_proxy_dns():
+    """Chay 1 lan khi app start: tu chua config cu con dung DNS port 53.
+
+    Neu co thay doi thi restart gencore de config moi co hieu luc, vi neu
+    khong client se tiep tuc khong resolve duoc DNS.
+    """
+    total = 0
+    for path in (RUNTIME_SOURCE_FILE, RUNTIME_FILE):
+        try:
+            total += migrate_proxy_dns_file(path)
+        except Exception:
+            pass
+    for path in SESSION_FILES.values():
+        try:
+            total += migrate_proxy_dns_file(path)
+        except Exception:
+            pass
+    if total:
+        try:
+            _wd_log(f'STARTUP MIGRATE: doi {total} DNS server proxy_* sang {PROXY_DNS_ADDRESS} (port 53 bi proxy chan)')
+        except Exception:
+            pass
+        try:
+            gencore_restart_detached('dns_doh_migrate')
+        except Exception:
+            pass
+    return total
+
 if __name__ == '__main__':
     ensure_sessions_exist()
-    pass
+    startup_migrate_proxy_dns()
     ensure_vpn_mgr()
     ensure_vpn_deps_async()
     _ss_seed_backups()

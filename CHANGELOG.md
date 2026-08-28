@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## Ver 2.30
+- FIX GOC RE vu "proxy khong vao duoc web / lag kinh khung" (su co 28/08 tren con .14): DNS query cua MOI client bi proxy tu choi 100%.
+  - Nguyen nhan: `apply_rows_to_data` sinh DNS server cho tung proxy la `tcp://8.8.8.8`, tuc DNS-over-TCP **port 53**. Nha cung cap proxy (lumi va nhieu ben khac) **CHAN port 53/853/5353** va tra ve SOCKS5 reply **code=2** (connection not allowed by ruleset). Do do 322/322 DNS server deu fail => client khong resolve duoc ten mien => web khong load, retry lien tuc gay lag.
+  - Do kiem chung qua chinh lumi (`as.lumiproxy.io:5888`): `8.8.8.8:53` REJECT rep=2, `1.1.1.1:53` REJECT rep=2; con `:80`, `:443`, `:8080` deu OK. TLS tới `8.8.8.8:443` qua proxy pass full cert verification + ALPN h2 (cert CN = dns.google) nen sing-box DoH chay duoc.
+  - Fix: DNS server cua proxy_* doi sang **DoH `https://8.8.8.8/dns-query` (port 443)**. Dung dia chi IP chu khong dung hostname de tranh chicken-and-egg (gencore khong the resolve ten cua resolver truoc khi co resolver). Dat trong hang so `PROXY_DNS_ADDRESS` de sau doi 1 cho.
+  - TU CHUA config cu (khong can sua tay tung router):
+    - `migrate_proxy_dns_servers()` doi moi DNS server proxy_* dang `tcp://`/`tls://`/`:53` sang DoH; chay trong `run_apply` moi lan Apply.
+    - `startup_migrate_proxy_dns()` chay khi app khoi dong: quet `config/gencore.json`, `gencore.json` runtime va ca 5 file session; neu co doi thi ghi log watchdog roi **tu restart gencore** de config moi co hieu luc ngay.
+  - Fix bug thu hai cung goc: `socks5_probe_multi` dung target `('8.8.8.8', 53)` de health-check proxy. Vi port 53 bi chan, moi lan check phai cho het timeout tren target do roi moi thu target sau => health-check cham va bao proxy chet oan. Da doi sang `('1.1.1.1', 443)`.
+  - Bai hoc ghi lai: "log gencore het loi" KHONG dong nghia "client vao duoc web". Phai co bang chung end-to-end tu client that truoc khi ket luan.
+
 ## Ver 2.18
 - SESSION STATE GUARDIAN — fix goc re vu mat ca cau hinh proxy khi reboot giua luc ghi (su co 26/08: reboot tay lam hong session_state.json, app nuot loi tra {} roi ghi de trang -> toan bo may nhay sang CHUA CAU HINH):
   - Ghi nguyen tu (atomic write + fsync + os.replace) cho moi file JSON: tren dia chi ton tai ban cu hoan chinh HOAC ban moi hoan chinh, khong bao gio co file do dang nua.
@@ -236,7 +247,8 @@
   - Ham dmanager_command_spawn, dmanager_download_file, dmanager_download_backups_plist, dmanager_parse_backups_plist_map, dmanager_cleanup_tmp, dmanager_iter_machines, dmanager_validate_machine_selection, dmanager_routers_to_scan, dmanager_detect_app_label, dmanager_get_machine_ip_pairs, dmanager_machine_note_text, dmanager_parse_machine_tokens, dmanager_parse_base, dmanager_parse_date_input, dmanager_parse_daymonth, dmanager_in_mmdd_range, xxtouch_spawn_checked
   - Ham group3_schedule_* (worker, execute, public, job_key, start_worker)
   - Ham load_group3_schedule_store, save_group3_schedule_store, create_group3_schedule_job, ensure_xxtouch_workspace
-  - Ham ewrite_xxtouch_remote_html, get_xxtouch_remote_online_info
+  - Ham 
+ewrite_xxtouch_remote_html, get_xxtouch_remote_online_info
   - Ham uild_event_video_180_script, uild_nurture_tiktok_script, uild_event_dd_20p_tiktok_lite_script, uild_group3_*_script
   - Const: XXTOUCH_*, ADMANAGER_REMOTE_DIR, ADMANAGER_FILE_RE, GROUP3_SCHEDULE_LOCK, GROUP3_SCHEDULE_FILE, GROUP3_SCHEDULE_THREADS, NURTURE_TIKTOK_*, EVENT_DD_20P_*, GROUP3_NURTURE_*, GROUP3_EVENT_*
   - Method _serve_xxtouch
@@ -244,6 +256,7 @@
 - **Folder**: static/xxtouch/ da duoc rename thanh static/xxtouch.disabled_<timestamp> (giu lai de rollback neu can)
 - **Kich thuoc**: app.py 220KB -> 126KB (-43%)
 - **Backup**: /data/genrouter_backups/app_pre_remove_xxtouch_<timestamp>.py
-- **Script xoa**: emove_xxtouch_v8.py + ix_remaining.py + ix2.py + ix3.py (chay lan luot)
+- **Script xoa**: 
+emove_xxtouch_v8.py + ix_remaining.py + ix2.py + ix3.py (chay lan luot)
 - **Restart**: ( python3 /opt/proxy-manager-v1/app.py >/tmp/pmv1_v219.log 2>&1 </dev/null & ) (BusyBox subshell pattern, vi khong co init.d)
 - **Test pass**: / 200, /api/pm/sessions 200, /api/admanager/config 200, /api/xxtouch/* 404, /api/admanager/scan|pull|backup 404, /api/vpn/status 200
