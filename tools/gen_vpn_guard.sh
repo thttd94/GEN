@@ -46,6 +46,15 @@ MODE="${1:-fix}"
 CHANGED=0
 REPORT=""
 
+# Neu router chua co ipset (ban firmware toi gian) -> tu chuyen sang che do
+# per-IP: sinh rule theo tung IP trong map.txt thay vi match-set. Cham hon va
+# de lech thu tu hon nhung van chua duoc duong VPN, khong bao gio bo trong.
+# GUARD_FORCE_NO_IPSET=1 chi dung de test nhanh nhanh per-IP tren may co ipset.
+HAVE_IPSET=1
+command -v ipset >/dev/null 2>&1 || HAVE_IPSET=0
+[ "${GUARD_FORCE_NO_IPSET:-0}" = 1 ] && HAVE_IPSET=0
+
+
 _ts() { date '+%Y-%m-%d %H:%M:%S'; }
 
 log() { # chi ghi khi co thay doi that
@@ -69,6 +78,7 @@ is_ipv4() {
 
 # ---------- 1) ipset ----------
 ensure_set() {
+  [ "$HAVE_IPSET" = 1 ] || return 1
   if ! ipset list -n "$VPN_SET" >/dev/null 2>&1; then
     [ "$MODE" = check ] && { log "[MISS] ipset $VPN_SET chua ton tai"; return 1; }
     ipset create "$VPN_SET" hash:ip family inet hashsize 256 maxelem 2000 2>/dev/null \
@@ -78,6 +88,10 @@ ensure_set() {
 }
 
 sync_set() {
+  if [ "$HAVE_IPSET" != 1 ]; then
+    log "[SKIP] khong co ipset -> dung che do per-IP"
+    return 1
+  fi
   ensure_set || return 1
   want="/tmp/.vpnguard_want.$$"
   have="/tmp/.vpnguard_have.$$"
@@ -120,7 +134,7 @@ sync_set() {
 
 # ---------- 2) rule, ep ve dau chain ----------
 # top_rule <table> <chain> <spec...>
-# Dam bao rule ton tai VA nam o vi tri 1. Neu sai vi tri -> xoa hết roi chen lai 1.
+# Dam bao rule ton tai VA nam o vi tri 1. Neu sai vi tri -> xoa het roi chen lai 1.
 top_rule() {
   tbl="$1"; ch="$2"; shift 2
   iptables -t "$tbl" -nL "$ch" >/dev/null 2>&1 || {
@@ -147,6 +161,22 @@ top_rule() {
 }
 
 ensure_rules() {
+  if [ "$HAVE_IPSET" != 1 ]; then
+    # che do per-IP: doc map.txt, ep rule cua tung IP ve dau chain.
+    # Duyet nguoc de IP dau file cuoi cung nam tren cung (thu tu khong quan trong
+    # vi cac rule nay doc lap nhau, chi can dung TRUOC rule chan cua tproxy).
+    [ -f "$MAPF" ] || return 0
+    while read -r ip acc rest; do
+      [ -n "${ip:-}" ] && [ -n "${acc:-}" ] || continue
+      case "$ip" in \#*) continue ;; esac
+      is_ipv4 "$ip" || continue
+      top_rule mangle PREROUTING -s "$ip" -j RETURN
+      top_rule mangle GENROUTER  -s "$ip" -j RETURN
+      top_rule mangle GEN_FW_UDP -s "$ip" -j RETURN
+      top_rule filter FORWARD    -s "$ip" -j ACCEPT
+    done < "$MAPF"
+    return 0
+  fi
   M="-m set --match-set $VPN_SET src"
   # thoat toan bo pipeline gencore/tproxy
   top_rule mangle PREROUTING $M -j RETURN
@@ -282,12 +312,14 @@ case "$MODE" in
 esac
 
 if [ "$MODE" = check ]; then
-  if [ -z "$REPORT" ]; then
+  # [SKIP]/[DOWN] chi la thong tin (khong co ipset, tunnel dang down) -> khong tinh lech.
+  PROBLEMS=$(printf '%s' "$REPORT" | grep -c -e '^\[MISS\]' -e '^\[ORDER\]' -e '^\[EXTRA\]')
+  [ -n "$REPORT" ] && printf '%s' "$REPORT"
+  if [ "${PROBLEMS:-0}" -eq 0 ] 2>/dev/null; then
     echo "[OK] duong VPN dung chuan, khong can sua"
     exit 0
   fi
-  printf '%s' "$REPORT"
-  echo "[WARN] co $(printf '%s' "$REPORT" | grep -c .) diem lech - chay '$0 fix' de chua"
+  echo "[WARN] co $PROBLEMS diem lech - chay '$0 fix' de chua"
   exit 1
 fi
 

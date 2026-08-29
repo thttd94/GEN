@@ -66,7 +66,13 @@ fi
 # ---------- 4) rc.local ----------
 if [ -f /etc/rc.local ] && ! grep -q 'genrouter_fix_fw' /etc/rc.local 2>/dev/null; then
   cp /etc/rc.local "/etc/rc.local.bak.$STAMP" 2>/dev/null || true
-  sed -i '/exit 0/i /etc/genrouter_fix_fw.sh' /etc/rc.local
+  # neo '^exit 0' de khong chen vao giua dong khac co chua chu 'exit 0'
+  if grep -q '^exit 0' /etc/rc.local 2>/dev/null; then
+    sed -i '/^exit 0/i /etc/genrouter_fix_fw.sh' /etc/rc.local
+  else
+    printf '%s\n' '/etc/genrouter_fix_fw.sh' 'exit 0' >> /etc/rc.local
+  fi
+  chmod +x /etc/rc.local 2>/dev/null || true
   echo "[OK] them /etc/genrouter_fix_fw.sh vao rc.local"
 else
   echo "[=] rc.local da goi genrouter_fix_fw.sh"

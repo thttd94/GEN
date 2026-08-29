@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Ver 2.31.1
+- Hoan thien Ver 2.31 (cung chu de: may gan VPN mat mang), 4 diem:
+  - `install.sh` KHONG con `cat > /etc/rc.local` ghi de ca file. Truoc day moi lan chay lai install.sh la router mat sach cac dong boot custom da co (`/etc/gen_runtime_tune.sh`, `/etc/genrouter/dyn24-runtime/start_dyn24.sh`, `/etc/genrouter_fix_fw.sh`) -> mat tune runtime + mat 24 shard gencore + mat firewall fix o lan reboot sau. Gio la MERGE: backup theo timestamp, chi `sed` bo cac dong frpc/reverse-tunnel, bao dam co `genrouter_fix_fw.sh` va `exit 0` o cuoi. Da test 4 truong hop tren router (co custom+frpc / chay lai lan 2 / khong co rc.local / khong co dong `exit 0`) -> giu du dong custom, idempotent, khong trung lap.
+  - `install.sh`: doi thu tu - `gen_fw_fix.sh` + `gen_vpn_guard_install.sh` chay SAU khi rc.local da on dinh, va doc file tu `$APP_DIR` (da copy) thay vi `$SCRIPT_DIR`.
+  - `tools/gen_vpn_guard.sh`: them fallback per-IP khi router khong co `ipset` (firmware toi gian) - doc `map.txt` roi ep rule `-s <ip>` ve dau chain, thay vi bo trong hoan toan. Bien `GUARD_FORCE_NO_IPSET=1` de test duong nay tren may co ipset. `check` gio chi tinh `[MISS]/[ORDER]/[EXTRA]` la loi, con `[SKIP]/[DOWN]` (tunnel dang down, thieu ipset) chi la thong tin -> khong con bao dong gia lam cron log ran rac.
+  - `tools/gen_vpn_guard_install.sh`: sua `sed -i '/exit 0/i ...'` thanh neo `^exit 0`, neu file khong co dong `exit 0` thi append; them `chmod +x /etc/rc.local`. Truoc day bat ky dong nao chua chu "exit 0" cung bi chen vao truoc.
+  - Bo non-ASCII con sot trong 2 file guard (BusyBox sh + locale C an toan hon).
+- Da deploy va verify lai tren con .17: `gen_vpn_guard.sh check` exit 0, cron van giu nguyen dong `ov.sh`, hook trong `genrouter_fix_fw.sh` dung 1 lan, client 192.17.4.1 REACHABLE va con 8 ket noi qua tun1.
+
 ## Ver 2.31
 - FIX GOC RE vu "gan VPN cho may xong may mat mang, VPN van ket noi OK" (su co 29/08 tren con .17, may 192.17.4.1 gan jp-171):
   - Nguyen nhan 1 (chinh): fw4/nftables chan forward `br-lan -> tun*`. Chain `forward` co `policy drop`; `forward_lan` chi `jump accept_to_wan` + `jump accept_to_lan`, ma `accept_to_wan` **RONG 0 rule** vi `tun1..tun4` khong thuoc zone nao. Goi moi tu client ra tun1 khong match gi -> roi xuong `handle_reject`. Bang chung: tun1 chi RX 18 pkt / TX 14 pkt trong khi VPN tunnel van up va router ping 8.8.8.8 qua tun1 OK 53ms.

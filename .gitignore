@@ -14,3 +14,5 @@ license.json
 update_tmp/
 gen_backup/
 update_codes.json
+tmp_router/
+*.tgz

@@ -89,13 +89,6 @@ mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxto
 chmod 755 "$APP_DIR/app.py"
 [ -f "$APP_DIR/setup_data_disk.sh" ] && chmod 755 "$APP_DIR/setup_data_disk.sh"
 
-[ -f "$SCRIPT_DIR/gen_fw_fix.sh" ] && sh "$SCRIPT_DIR/gen_fw_fix.sh" || true
-# gen_vpn_guard: chua duong br-lan -> tun* (ipset genrouter_vpn + fw4 include),
-# self-heal moi phut qua cron + hook trong genrouter_fix_fw.sh. Idempotent.
-if [ -f "$APP_DIR/tools/gen_vpn_guard_install.sh" ]; then
-  sh "$APP_DIR/tools/gen_vpn_guard_install.sh" "$APP_DIR/tools/gen_vpn_guard.sh" || true
-fi
-
 cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
 #!/bin/sh
 set -eu
@@ -145,16 +138,41 @@ for svc in genrouter-reverse-tunnel genrouter-frpc; do
   fi
 done
 
+# ---- rc.local: GIU NGUYEN cac dong custom, chi bo dong frpc/reverse-tunnel ----
+# BUG CU (truoc Ver 2.31): doan nay 'cat > /etc/rc.local' ghi de ca file bang
+# template trong -> XOA MAT cac dong boot quan trong da co san tren router dang
+# chay, vi du:
+#   /etc/gen_runtime_tune.sh ...
+#   /etc/genrouter/dyn24-runtime/start_dyn24.sh ...
+#   /etc/genrouter_fix_fw.sh
+# Hau qua: sau moi lan chay lai install.sh, router mat tune runtime + mat 24 shard
+# gencore + mat firewall fix cho tan lan reboot sau. Gio chuyen sang MERGE.
 if [ -f /etc/rc.local ]; then
-  cp /etc/rc.local /etc/rc.local.bak.gen_no_frpc 2>/dev/null || true
+  cp /etc/rc.local "/etc/rc.local.bak.gen_install.$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+  # bo cac dong frpc / reverse-tunnel cu (khong dung nua)
+  sed -i '/frpc/d; /reverse_tunnel/d; /start_frpc_loop/d' /etc/rc.local 2>/dev/null || true
+else
+  printf '%s\n' \
+    '# Put your custom commands here that should be executed once' \
+    '# the system init finished. By default this file does nothing.' \
+    '' \
+    'exit 0' > /etc/rc.local
 fi
-cat > /etc/rc.local <<'EOF'
-# Put your custom commands here that should be executed once
-# the system init finished. By default this file does nothing.
-
-exit 0
-EOF
+grep -q '^exit 0' /etc/rc.local 2>/dev/null || printf 'exit 0\n' >> /etc/rc.local
+# dam bao firewall fix chay luc boot (guard duoc goi ben trong file nay)
+if ! grep -q 'genrouter_fix_fw' /etc/rc.local 2>/dev/null; then
+  sed -i '/^exit 0/i /etc/genrouter_fix_fw.sh' /etc/rc.local
+fi
 chmod +x /etc/rc.local
+
+# ---- firewall + VPN guard: chay SAU khi rc.local da on dinh ----
+[ -f "$APP_DIR/gen_fw_fix.sh" ] && sh "$APP_DIR/gen_fw_fix.sh" || true
+# gen_vpn_guard: chua duong br-lan -> tun* (ipset genrouter_vpn + fw4 include),
+# self-heal moi phut qua cron + hook trong genrouter_fix_fw.sh. Idempotent.
+if [ -f "$APP_DIR/tools/gen_vpn_guard_install.sh" ]; then
+  sh "$APP_DIR/tools/gen_vpn_guard_install.sh" "$APP_DIR/tools/gen_vpn_guard.sh" || true
+fi
+
 killall frpc >/dev/null 2>&1 || true
 killall frpc_boot_loop.sh >/dev/null 2>&1 || true
 killall start_frpc_loop.sh >/dev/null 2>&1 || true
