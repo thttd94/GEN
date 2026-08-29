@@ -369,6 +369,17 @@ def update_repo_from_remote(password: str):
                 os.chmod('/data/vpn/vpn_mgr.sh', 493)
         except Exception:
             pass
+        try:
+            _vg_src = BASE_DIR / 'tools' / 'gen_vpn_guard.sh'
+            if _vg_src.exists():
+                shutil.copy(str(_vg_src), '/etc/gen_vpn_guard.sh')
+                os.chmod('/etc/gen_vpn_guard.sh', 493)
+                _vg_ins = BASE_DIR / 'tools' / 'gen_vpn_guard_install.sh'
+                if _vg_ins.exists():
+                    subprocess.run(['sh', str(_vg_ins), str(_vg_src)], timeout=60,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
         shutil.rmtree(tmp_root, ignore_errors=True)
         after_label = read_current_version_label()
         changed = after_label != before_label
@@ -2109,6 +2120,42 @@ def ensure_vpn_mgr():
     except Exception:
         pass
     return dst.exists()
+VPN_GUARD = '/etc/gen_vpn_guard.sh'
+
+def ensure_vpn_guard():
+    """Tu phat hien + phuc hoi /etc/gen_vpn_guard.sh tu ban gan trong app (tools/gen_vpn_guard.sh).
+
+    Guard nay chua duong di VPN (br-lan -> tun*): tproxy va gen_fw_fix.sh chen rule
+    chan theo interface (-i br-lan) len DAU chain moi lan apply, nen may da gan VPN
+    bi chan UDP/FORWARD. Guard ep 4 rule thoat theo ipset genrouter_vpn ve vi tri 1
+    va nap 2 file include cho fw4 (accept oifname tun* + MSS clamp).
+
+    Idempotent: chi copy khi khac size, chi cai hook/cron khi chua co.
+    Tra True neu guard san sang."""
+    src = BASE_DIR / 'tools' / 'gen_vpn_guard.sh'
+    dst = Path(VPN_GUARD)
+    try:
+        if src.exists() and (not dst.exists() or dst.stat().st_size != src.stat().st_size):
+            shutil.copy(str(src), str(dst))
+            try:
+                os.chmod(str(dst), 493)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    if not dst.exists():
+        return False
+    installer = BASE_DIR / 'tools' / 'gen_vpn_guard_install.sh'
+    try:
+        if installer.exists():
+            subprocess.run(['sh', str(installer), str(src)], timeout=60,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run(['sh', VPN_GUARD, 'fix'], timeout=60,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+    return True
 _VPN_DEPS = {'openvpn': None, 'wg': None, 'installing': False, 'log': '', 'ts': 0}
 _VPN_DEPS_LOCK = threading.Lock()
 _FEEDS_FILE = Path('/etc/opkg/distfeeds.conf')
@@ -2946,6 +2993,7 @@ if __name__ == '__main__':
     ensure_sessions_exist()
     startup_migrate_proxy_dns()
     ensure_vpn_mgr()
+    ensure_vpn_guard()
     ensure_vpn_deps_async()
     _ss_seed_backups()
     threading.Thread(target=license_check_loop, daemon=True).start()

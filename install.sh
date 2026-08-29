@@ -78,11 +78,23 @@ mkdir -p "$APP_DIR/xxtouch_jobs"
 if [ -d "$SCRIPT_DIR/xxtouch_jobs" ]; then
   cp -r "$SCRIPT_DIR/xxtouch_jobs/." "$APP_DIR/xxtouch_jobs/"
 fi
+# tools/ (vpn_mgr.sh, gen_vpn_guard.sh, gen_vpn_guard_install.sh) - app.py tu phuc hoi tu day
+if [ -d "$SCRIPT_DIR/tools" ]; then
+  mkdir -p "$APP_DIR/tools"
+  cp -r "$SCRIPT_DIR/tools/." "$APP_DIR/tools/"
+  chmod 755 "$APP_DIR/tools"/*.sh 2>/dev/null || true
+fi
+[ -f "$SCRIPT_DIR/gen_fw_fix.sh" ] && cp "$SCRIPT_DIR/gen_fw_fix.sh" "$APP_DIR/gen_fw_fix.sh"
 mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxtouch_jobs/tmp"
 chmod 755 "$APP_DIR/app.py"
 [ -f "$APP_DIR/setup_data_disk.sh" ] && chmod 755 "$APP_DIR/setup_data_disk.sh"
 
 [ -f "$SCRIPT_DIR/gen_fw_fix.sh" ] && sh "$SCRIPT_DIR/gen_fw_fix.sh" || true
+# gen_vpn_guard: chua duong br-lan -> tun* (ipset genrouter_vpn + fw4 include),
+# self-heal moi phut qua cron + hook trong genrouter_fix_fw.sh. Idempotent.
+if [ -f "$APP_DIR/tools/gen_vpn_guard_install.sh" ]; then
+  sh "$APP_DIR/tools/gen_vpn_guard_install.sh" "$APP_DIR/tools/gen_vpn_guard.sh" || true
+fi
 
 cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
 #!/bin/sh

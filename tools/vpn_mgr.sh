@@ -223,17 +223,38 @@ ensure_route() { # <dev> <tbl> - dam bao table co default route (openvpn reset t
   ip route show table "$2" 2>/dev/null | grep -q '^default' || \
     ip route replace default dev "$1" table "$2" 2>/dev/null
 }
+# ---------- guard: duong thoat theo ipset thay vi rule per-IP ----------
+# Ly do: /etc/genrouter/core/tproxy chen 'iptables -I FORWARD 1 -i br-lan -p udp
+# -j DROP' va gen_fw_fix.sh chen 'mangle -I PREROUTING 1 -i br-lan -p udp -j
+# GEN_FW_UDP' MOI LAN apply cau hinh -> rule per-IP bi day xuong duoi va het tac
+# dung. Dung ipset genrouter_vpn + 4 rule co dinh do gen_vpn_guard.sh ep ve dau
+# chain thi them/bo may VPN chi la ipset add/del, khong bao gio lech thu tu.
+VPN_GUARD=/etc/gen_vpn_guard.sh
+VPN_SET=genrouter_vpn
+
+guard_run() { [ -x "$VPN_GUARD" ] && "$VPN_GUARD" fix >/dev/null 2>&1; return 0; }
+guard_set_ok() { ipset list -n "$VPN_SET" >/dev/null 2>&1; }
+
 assign_rules_on() { # <IP> <tbl> <pri> [dev]
-  iptables -t mangle -C PREROUTING -s "$1" -j RETURN 2>/dev/null || \
-    iptables -t mangle -I PREROUTING 1 -s "$1" -j RETURN
+  if guard_set_ok; then
+    ipset add "$VPN_SET" "$1" -exist 2>/dev/null
+  else
+    # fallback khi chua cai guard: giu nguyen hanh vi cu
+    iptables -t mangle -C PREROUTING -s "$1" -j RETURN 2>/dev/null || \
+      iptables -t mangle -I PREROUTING 1 -s "$1" -j RETURN
+  fi
   ip rule show | grep -q "from $1 lookup $2" || \
     ip rule add from "$1" table "$2" priority "$3"
   [ -n "$4" ] && ensure_route "$4" "$2"
+  guard_run
   return 0
 }
 assign_rules_off() { # <IP> <tbl> <pri>
+  guard_set_ok && ipset del "$VPN_SET" "$1" 2>/dev/null
+  # don ca rule per-IP cu (ban truoc guard) de khong con rac
   while iptables -t mangle -D PREROUTING -s "$1" -j RETURN 2>/dev/null; do :; done
   while ip rule del from "$1" table "$2" priority "$3" 2>/dev/null; do :; done
+  return 0
 }
 masq_on()  { iptables -t nat -C POSTROUTING -o "$1" -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o "$1" -j MASQUERADE; }
 masq_off() { while iptables -t nat -D POSTROUTING -o "$1" -j MASQUERADE 2>/dev/null; do :; done; }
@@ -292,6 +313,7 @@ do_up() {
   ip route replace default dev "$dev" table "$tbl"
   masq_on "$dev"
   ( sleep 5; ensure_route "$dev" "$tbl" ) &
+  guard_run
   ok "'$name' UP ($dev):"
   ip -4 addr show "$dev" | grep inet
   restore_clients "$name"

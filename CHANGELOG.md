@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## Ver 2.31
+- FIX GOC RE vu "gan VPN cho may xong may mat mang, VPN van ket noi OK" (su co 29/08 tren con .17, may 192.17.4.1 gan jp-171):
+  - Nguyen nhan 1 (chinh): fw4/nftables chan forward `br-lan -> tun*`. Chain `forward` co `policy drop`; `forward_lan` chi `jump accept_to_wan` + `jump accept_to_lan`, ma `accept_to_wan` **RONG 0 rule** vi `tun1..tun4` khong thuoc zone nao. Goi moi tu client ra tun1 khong match gi -> roi xuong `handle_reject`. Bang chung: tun1 chi RX 18 pkt / TX 14 pkt trong khi VPN tunnel van up va router ping 8.8.8.8 qua tun1 OK 53ms.
+  - Nguyen nhan 2 (dong thoi): UDP cua may di VPN bi REJECT. `mangle PREROUTING` co `-i br-lan -p udp -j GEN_FW_UDP` -> `MARK 0x4d3` -> `ip rule fwmark 0x4d3 lookup 202` (local default dev lo) -> `INPUT ... -j REJECT icmp-port-unreachable` dem 3449 pkt/897K. Co che chong UDP-leak cho may di proxy nhung **khong loai tru may da gan VPN** -> QUIC/HTTP3 chet. Cong them legacy `FORWARD -i br-lan -p udp -j DROP` (1187 pkt).
+  - Vi sao khong sua truc tiep tproxy: `/etc/genrouter/core/tproxy` bi cron `/etc/shm/ov.sh` cp de lai MOI PHUT, va tproxy + gen_fw_fix.sh deu chen rule bang `-I ... 1` moi lan apply -> moi rule per-IP sua tay se bi day xuong duoi va het tac dung.
+  - Fix: them `tools/gen_vpn_guard.sh` - guard self-heal, idempotent:
+    - ipset `genrouter_vpn` (hash:ip) dong bo 2 chieu tu `/data/vpn/map.txt`. Them/bo may VPN = `ipset add/del`, **khong sinh rule moi** -> khong bao gio lech thu tu.
+    - 4 diem thoat luon bi EP VE VI TRI 1 cua chain (neu lech thi xoa het roi `-I ... 1`): `mangle PREROUTING` RETURN, `mangle GENROUTER` RETURN, `mangle GEN_FW_UDP` RETURN, `filter FORWARD` ACCEPT.
+    - 2 file include cho fw4 persist qua `fw4 reload`: `chain-pre/forward_lan/99-genrouter-vpn.nft` (accept `oifname "tun*"`) + `chain-pre/mangle_forward/99-genrouter-vpn-mss.nft` (MSS clamp `size set rt mtu`, vi `mtu_fix` chi ap cho device trong zone).
+    - Kiem tra/tu them `ip rule from <ip> lookup 3xx`.
+    - Log chi ghi khi CO thay doi -> `/data/vpn/logs/guard.log`, tu rotate > 200KB.
+  - 3 lop trigger de song qua reload + reboot + tproxy ghi lai: cron 1 phut, hook trong `/etc/genrouter_fix_fw.sh` (marker `gen_vpn_guard_v1`), va `rc.local` da goi `genrouter_fix_fw.sh` san.
+  - `gen_fw_fix.sh` them buoc 3: tu cai + goi guard SAU khi chen cac rule `-i br-lan` (vi buoc 2 vua day rule chan len dau chain).
+  - `tools/vpn_mgr.sh`: gan/bo VPN cho may chuyen sang `ipset add/del genrouter_vpn` thay vi sinh rule `mangle PREROUTING -s <ip> -j RETURN` per-IP; van co fallback hanh vi cu neu chua cai guard.
+  - `app.py`: them `ensure_vpn_guard()` - tu phuc hoi `/etc/gen_vpn_guard.sh` tu `tools/` khi khoi dong va sau moi lan update (giong `ensure_vpn_mgr`), nen moi router tu co guard, khong can deploy tay.
+  - `install.sh` / `gen_update.sh`: copy `tools/` va goi `gen_vpn_guard_install.sh` sau `gen_fw_fix.sh`.
+  - Da verify tren .17: client 192.17.4.1 ra internet qua tun1 (exit 10.96.0.44), 22 ket noi ESTABLISHED, counter tang lien tuc; test pha hoai (chen lai DROP udp len dau chain) -> guard tu chua ve vi tri 1; test `fw4 reload` -> fw4 tu include 2 file; test mo phong reboot (chay `genrouter_fix_fw.sh`) -> guard tu dung lai day du.
+  - Bai hoc ghi lai: fw4 **bo qua include cua chain rong**, nen muon persist rule vao `accept_to_wan` (rong) phai dat include o chain cha dang duoc render (`forward_lan`). Va: counter dong bang != firewall chan - phai check `ip neigh` + `conntrack -L | grep -c src=<ip>` xem client co online that khong truoc khi ket luan.
+
 ## Ver 2.30
 - FIX GOC RE vu "proxy khong vao duoc web / lag kinh khung" (su co 28/08 tren con .14): DNS query cua MOI client bi proxy tu choi 100%.
   - Nguyen nhan: `apply_rows_to_data` sinh DNS server cho tung proxy la `tcp://8.8.8.8`, tuc DNS-over-TCP **port 53**. Nha cung cap proxy (lumi va nhieu ben khac) **CHAN port 53/853/5353** va tra ve SOCKS5 reply **code=2** (connection not allowed by ruleset). Do do 322/322 DNS server deu fail => client khong resolve duoc ten mien => web khong load, retry lien tuc gay lag.

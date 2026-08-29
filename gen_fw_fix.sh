@@ -93,4 +93,41 @@ if [ -f /etc/rc.local ] && ! grep -q genrouter_fix_fw /etc/rc.local 2>/dev/null;
   sed -i '/exit 0/i /etc/genrouter_fix_fw.sh' /etc/rc.local
 fi
 
+# ---------- 3) chua lai duong VPN (tun*) ----------
+# Cac rule o buoc 2 chan theo INTERFACE (-i br-lan) nen chan luon may di VPN.
+# gen_vpn_guard.sh ep 4 rule thoat theo ipset genrouter_vpn ve dau chain, va
+# nap 2 file include cho fw4 (chain accept_to_wan cua fw4 rong + forward co
+# policy drop -> br-lan->tun* bi reject neu khong co accept nay).
+# Phai chay SAU buoc 2, vi buoc 2 vua chen rule -i br-lan len dau.
+MARK_VPN="gen_vpn_guard_v1"
+GUARD="/etc/gen_vpn_guard.sh"
+if [ ! -x "$GUARD" ]; then
+  for c in "$(dirname "$0")/tools/gen_vpn_guard.sh" \
+           "$(dirname "$0")/gen_vpn_guard.sh" \
+           /opt/proxy-manager-v1/tools/gen_vpn_guard.sh; do
+    [ -f "$c" ] && { cp "$c" "$GUARD" && chmod 755 "$GUARD"; break; }
+  done
+fi
+if ! grep -q "$MARK_VPN" "$FIXFW" 2>/dev/null; then
+  cat >> "$FIXFW" <<XEOF
+# $MARK_VPN - chua duong VPN sau khi rule -i br-lan duoc chen lai
+[ -x $GUARD ] && $GUARD fix >/dev/null 2>&1
+XEOF
+fi
+if [ -x "$GUARD" ]; then
+  # cron 1 phut: APPEND, giu nguyen cac dong san co (vi du /etc/shm/ov.sh)
+  CRONF=/etc/crontabs/root
+  mkdir -p /etc/crontabs 2>/dev/null
+  [ -f "$CRONF" ] || : > "$CRONF"
+  if ! grep -q 'gen_vpn_guard' "$CRONF" 2>/dev/null; then
+    cp "$CRONF" "$CRONF.bak.gen_fw_fix" 2>/dev/null || true
+    printf '* * * * * %s fix >/dev/null 2>&1\n' "$GUARD" >> "$CRONF"
+    /etc/init.d/cron reload >/dev/null 2>&1 || /etc/init.d/cron restart >/dev/null 2>&1 || true
+  fi
+  "$GUARD" fix >/dev/null 2>&1
+  echo "[OK] gen_vpn_guard active (ipset genrouter_vpn + fw4 include tun*)"
+else
+  echo "[WARN] khong tim thay gen_vpn_guard.sh - may di VPN co the bi chan UDP/FORWARD"
+fi
+
 echo "[OK] gen_fw_fix applied: ports 8000/9000 hidden, udp fast-reject active (DNS/DHCP/mDNS guarded)"

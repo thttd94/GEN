@@ -1,0 +1,300 @@
+#!/bin/sh
+# ============================================================
+# gen_vpn_guard.sh - tu phat hien + tu chua duong di VPN (tun*)
+#
+# VAN DE GOC
+#   Router GEN co HAI duong ra khac nhau:
+#     - proxy socks5 : ipset genrouter_clients -> TPROXY 9888 -> INPUT (local socket)
+#     - vpn tunnel   : map.txt -> ip rule lookup 30x -> FORWARD -> tun*
+#   Cac rule do /etc/genrouter/core/tproxy va gen_fw_fix.sh sinh ra chan theo
+#   INTERFACE (-i br-lan) chu khong theo client, nen chung chan luon ca may VPN:
+#     iptables -I FORWARD 1 -i br-lan -p udp -j DROP            (tproxy:50)
+#     iptables -I FORWARD 1 -i br-lan -p tcp --dport 53 -j DROP (tproxy:51)
+#     iptables -t mangle -I PREROUTING 1 -i br-lan -p udp -j GEN_FW_UDP
+#   Cong them: chain nft `accept_to_wan` cua fw4 RONG trong khi chain `forward`
+#   co policy drop -> moi goi br-lan -> tun* roi xuong handle_reject.
+#   Proxy khong bi anh huong vi no di qua INPUT, khong qua FORWARD.
+#
+# CACH CHUA (khong sua tproxy vi /etc/shm/ov.sh cp de lai moi phut)
+#   1. ipset genrouter_vpn  <- dong bo tu /data/vpn/map.txt
+#   2. 4 diem thoat theo ipset, luon bi ep ve dau chain:
+#        mangle PREROUTING 1 : match-set genrouter_vpn src -j RETURN
+#        mangle GENROUTER   1 : match-set genrouter_vpn src -j RETURN
+#        mangle GEN_FW_UDP  1 : match-set genrouter_vpn src -j RETURN
+#        filter FORWARD     1 : match-set genrouter_vpn src -j ACCEPT
+#   3. fw4 include persist: forward_lan accept oifname tun* + MSS clamp
+#   Them/bo may VPN = ipset add/del, KHONG sinh rule moi -> khong lech thu tu.
+#
+# IDEMPOTENT. Chay bao nhieu lan cung duoc. Chi ghi log khi co thay doi.
+#
+# Dung:
+#   gen_vpn_guard.sh            kiem tra + tu chua (mac dinh)
+#   gen_vpn_guard.sh check      chi bao cao, khong sua gi
+#   gen_vpn_guard.sh sync       chi dong bo ipset tu map.txt
+#   gen_vpn_guard.sh status     in trang thai hien tai
+# ============================================================
+set -u
+
+VPN_SET="genrouter_vpn"
+MAPF="/data/vpn/map.txt"
+LOGF="/data/vpn/logs/guard.log"
+LOG_MAX=200000
+NFT_DIR="/usr/share/nftables.d/chain-pre"
+LAN_IF="br-lan"
+MODE="${1:-fix}"
+
+CHANGED=0
+REPORT=""
+
+_ts() { date '+%Y-%m-%d %H:%M:%S'; }
+
+log() { # chi ghi khi co thay doi that
+  REPORT="$REPORT$1
+"
+  [ "$MODE" = check ] && return 0
+  mkdir -p "$(dirname "$LOGF")" 2>/dev/null
+  if [ -f "$LOGF" ]; then
+    sz=$(wc -c < "$LOGF" 2>/dev/null || echo 0)
+    [ "$sz" -gt "$LOG_MAX" ] 2>/dev/null && { tail -c 100000 "$LOGF" > "$LOGF.tmp" 2>/dev/null && mv "$LOGF.tmp" "$LOGF"; }
+  fi
+  echo "$(_ts) $1" >> "$LOGF" 2>/dev/null
+  return 0
+}
+
+note() { CHANGED=$((CHANGED+1)); log "$1"; }
+
+is_ipv4() {
+  printf '%s' "$1" | grep -qE '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'
+}
+
+# ---------- 1) ipset ----------
+ensure_set() {
+  if ! ipset list -n "$VPN_SET" >/dev/null 2>&1; then
+    [ "$MODE" = check ] && { log "[MISS] ipset $VPN_SET chua ton tai"; return 1; }
+    ipset create "$VPN_SET" hash:ip family inet hashsize 256 maxelem 2000 2>/dev/null \
+      && note "[FIX] tao ipset $VPN_SET"
+  fi
+  ipset list -n "$VPN_SET" >/dev/null 2>&1
+}
+
+sync_set() {
+  ensure_set || return 1
+  want="/tmp/.vpnguard_want.$$"
+  have="/tmp/.vpnguard_have.$$"
+  : > "$want"; : > "$have"
+  if [ -f "$MAPF" ]; then
+    while read -r ip acc rest; do
+      [ -n "${ip:-}" ] || continue
+      [ -n "${acc:-}" ] || continue
+      case "$ip" in \#*) continue ;; esac
+      is_ipv4 "$ip" || continue
+      echo "$ip" >> "$want"
+    done < "$MAPF"
+  fi
+  ipset list "$VPN_SET" 2>/dev/null | sed -n '/^Members:/,$p' | sed '1d' \
+    | while read -r m rest; do [ -n "${m:-}" ] && echo "$m"; done > "$have"
+
+  # them thieu
+  while read -r ip; do
+    [ -n "${ip:-}" ] || continue
+    grep -qxF "$ip" "$have" 2>/dev/null && continue
+    if [ "$MODE" = check ]; then
+      log "[MISS] ipset thieu $ip"
+    else
+      ipset add "$VPN_SET" "$ip" -exist 2>/dev/null && note "[FIX] ipset + $ip"
+    fi
+  done < "$want"
+  # bo thua
+  while read -r ip; do
+    [ -n "${ip:-}" ] || continue
+    grep -qxF "$ip" "$want" 2>/dev/null && continue
+    if [ "$MODE" = check ]; then
+      log "[EXTRA] ipset con $ip (khong trong map)"
+    else
+      ipset del "$VPN_SET" "$ip" 2>/dev/null && note "[FIX] ipset - $ip"
+    fi
+  done < "$have"
+  rm -f "$want" "$have"
+  return 0
+}
+
+# ---------- 2) rule, ep ve dau chain ----------
+# top_rule <table> <chain> <spec...>
+# Dam bao rule ton tai VA nam o vi tri 1. Neu sai vi tri -> xoa hết roi chen lai 1.
+top_rule() {
+  tbl="$1"; ch="$2"; shift 2
+  iptables -t "$tbl" -nL "$ch" >/dev/null 2>&1 || {
+    log "[SKIP] chain $tbl/$ch chua ton tai"
+    return 0
+  }
+  first=$(iptables -t "$tbl" -S "$ch" 2>/dev/null | sed -n '2p')
+  want="-A $ch $*"
+  if [ "$first" = "$want" ]; then
+    return 0
+  fi
+  if [ "$MODE" = check ]; then
+    if iptables -t "$tbl" -C "$ch" "$@" 2>/dev/null; then
+      log "[ORDER] $tbl/$ch: rule co nhung KHONG o vi tri 1 (vi tri 1 dang la: ${first:-<rong>})"
+    else
+      log "[MISS] $tbl/$ch: thieu rule: $*"
+    fi
+    return 0
+  fi
+  while iptables -t "$tbl" -D "$ch" "$@" 2>/dev/null; do :; done
+  iptables -t "$tbl" -I "$ch" 1 "$@" 2>/dev/null \
+    && note "[FIX] $tbl/$ch <- vi tri 1: $*"
+  return 0
+}
+
+ensure_rules() {
+  M="-m set --match-set $VPN_SET src"
+  # thoat toan bo pipeline gencore/tproxy
+  top_rule mangle PREROUTING $M -j RETURN
+  # phong tuyen 2: ngay trong chain con, khong phu thuoc thu tu PREROUTING
+  top_rule mangle GENROUTER  $M -j RETURN
+  top_rule mangle GEN_FW_UDP $M -j RETURN
+  # cho phep forward (vuot rule DROP udp / DROP tcp:53 cua tproxy)
+  top_rule filter FORWARD    $M -j ACCEPT
+}
+
+# ---------- 3) fw4 include (persist qua fw4 reload) ----------
+# Dat o chain-pre/forward_lan chu KHONG phai accept_to_wan: fw4 bo qua include
+# cua chain rong, ma accept_to_wan dang rong.
+NFT_FWD="$NFT_DIR/forward_lan/99-genrouter-vpn.nft"
+NFT_MSS="$NFT_DIR/mangle_forward/99-genrouter-vpn-mss.nft"
+NFT_FWD_BODY='oifname "tun*" counter accept comment "genrouter-vpn-fwd"'
+NFT_MSS_BODY='oifname "tun*" tcp flags syn / syn,rst tcp option maxseg size set rt mtu counter comment "genrouter-vpn-mss"'
+
+ensure_file() { # <path> <body>
+  d=$(dirname "$1")
+  if [ -f "$1" ] && [ "$(cat "$1" 2>/dev/null)" = "$2" ]; then
+    return 0
+  fi
+  if [ "$MODE" = check ]; then
+    log "[MISS] file include sai/thieu: $1"
+    return 0
+  fi
+  mkdir -p "$d" 2>/dev/null
+  printf '%s\n' "$2" > "$1" && note "[FIX] ghi $1"
+}
+
+ensure_nft() {
+  command -v nft >/dev/null 2>&1 || { log "[SKIP] khong co nft"; return 0; }
+  ensure_file "$NFT_FWD" "$NFT_FWD_BODY"
+  ensure_file "$NFT_MSS" "$NFT_MSS_BODY"
+
+  # rule dang chay trong nhan (file chi co hieu luc sau fw4 reload).
+  # Kiem tra tren CA table vi rule co the dang nam o accept_to_wan (ban chen tay
+  # truoc day) hoac o forward_lan (sau khi fw4 nap file include).
+  if ! nft list table inet fw4 2>/dev/null | grep -q 'genrouter-vpn-fwd'; then
+    if [ "$MODE" = check ]; then
+      log "[MISS] fw4 thieu accept oifname tun* (forward_lan/accept_to_wan)"
+    else
+      nft insert rule inet fw4 forward_lan oifname '"tun*"' counter accept comment '"genrouter-vpn-fwd"' 2>/dev/null \
+        && note "[FIX] nft insert forward_lan accept tun*"
+    fi
+  fi
+  if ! nft list table inet fw4 2>/dev/null | grep -q 'genrouter-vpn-mss'; then
+    if [ "$MODE" = check ]; then
+      log "[MISS] nft mangle_forward thieu MSS clamp cho tun*"
+    else
+      nft add rule inet fw4 mangle_forward oifname '"tun*"' tcp flags syn / syn,rst \
+        tcp option maxseg size set rt mtu counter comment '"genrouter-vpn-mss"' 2>/dev/null \
+        && note "[FIX] nft add mangle_forward MSS clamp tun*"
+    fi
+  fi
+}
+
+# ---------- 4) route/rule cua tung tunnel ----------
+ensure_routes() {
+  [ -f "$MAPF" ] || return 0
+  acct=/data/vpn/accounts
+  while read -r ip acc rest; do
+    [ -n "${ip:-}" ] && [ -n "${acc:-}" ] || continue
+    is_ipv4 "$ip" || continue
+    [ -d "$acct/$acc" ] || continue
+    dev=$(grep -o '^dev=.*'   "$acct/$acc/meta" 2>/dev/null | head -n1 | cut -d= -f2-)
+    tbl=$(grep -o '^table=.*' "$acct/$acc/meta" 2>/dev/null | head -n1 | cut -d= -f2-)
+    pri=$(grep -o '^prio=.*'  "$acct/$acc/meta" 2>/dev/null | head -n1 | cut -d= -f2-)
+    [ -n "${dev:-}" ] && [ -n "${tbl:-}" ] && [ -n "${pri:-}" ] || continue
+    ip link show "$dev" >/dev/null 2>&1 || { log "[DOWN] tunnel $acc ($dev) khong ton tai - bo qua $ip"; continue; }
+    if ! ip route show table "$tbl" 2>/dev/null | grep -q '^default'; then
+      if [ "$MODE" = check ]; then
+        log "[MISS] table $tbl thieu default dev $dev"
+      else
+        ip route replace default dev "$dev" table "$tbl" 2>/dev/null \
+          && note "[FIX] table $tbl <- default dev $dev"
+      fi
+    fi
+    if ! ip rule show 2>/dev/null | grep -q "from $ip lookup $tbl"; then
+      if [ "$MODE" = check ]; then
+        log "[MISS] thieu ip rule from $ip lookup $tbl"
+      else
+        ip rule add from "$ip" table "$tbl" priority "$pri" 2>/dev/null \
+          && note "[FIX] ip rule from $ip -> table $tbl"
+      fi
+    fi
+    if ! iptables -t nat -C POSTROUTING -o "$dev" -j MASQUERADE 2>/dev/null; then
+      if [ "$MODE" = check ]; then
+        log "[MISS] thieu MASQUERADE -o $dev"
+      else
+        iptables -t nat -A POSTROUTING -o "$dev" -j MASQUERADE 2>/dev/null \
+          && note "[FIX] MASQUERADE -o $dev"
+      fi
+    fi
+  done < "$MAPF"
+}
+
+# ---------- status ----------
+cmd_status() {
+  echo "== ipset $VPN_SET"
+  if ipset list -n "$VPN_SET" >/dev/null 2>&1; then
+    ipset list "$VPN_SET" 2>/dev/null | sed -n '/^Members:/,$p' | sed 's/^/   /'
+  else
+    echo "   (chua ton tai)"
+  fi
+  echo "== map.txt"
+  sed 's/^/   /' "$MAPF" 2>/dev/null || echo "   (khong co)"
+  echo "== mangle PREROUTING (5 dong dau)"
+  iptables -t mangle -L PREROUTING -n -v --line-numbers 2>/dev/null | sed -n '3,7p' | sed 's/^/   /'
+  echo "== filter FORWARD (7 dong dau)"
+  iptables -L FORWARD -n -v --line-numbers 2>/dev/null | sed -n '3,9p' | sed 's/^/   /'
+  echo "== nft forward_lan"
+  nft list chain inet fw4 forward_lan 2>/dev/null | sed 's/^/   /'
+  echo "== nft mangle_forward"
+  nft list chain inet fw4 mangle_forward 2>/dev/null | sed 's/^/   /'
+  echo "== tun devices"
+  for d in $(ls /sys/class/net 2>/dev/null | grep '^tun'); do
+    echo "   $d tx=$(cat /sys/class/net/$d/statistics/tx_packets 2>/dev/null) rx=$(cat /sys/class/net/$d/statistics/rx_packets 2>/dev/null)"
+  done
+}
+
+case "$MODE" in
+  status) cmd_status; exit 0 ;;
+  sync)   sync_set; exit 0 ;;
+  check|fix)
+    sync_set
+    ensure_rules
+    ensure_nft
+    ensure_routes
+    ;;
+  *) echo "dung: $0 [fix|check|sync|status]"; exit 1 ;;
+esac
+
+if [ "$MODE" = check ]; then
+  if [ -z "$REPORT" ]; then
+    echo "[OK] duong VPN dung chuan, khong can sua"
+    exit 0
+  fi
+  printf '%s' "$REPORT"
+  echo "[WARN] co $(printf '%s' "$REPORT" | grep -c .) diem lech - chay '$0 fix' de chua"
+  exit 1
+fi
+
+if [ "$CHANGED" -gt 0 ]; then
+  printf '%s' "$REPORT"
+  echo "[OK] gen_vpn_guard: da chua $CHANGED diem"
+else
+  echo "[OK] gen_vpn_guard: khong co gi phai chua"
+fi
+exit 0

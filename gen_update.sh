@@ -153,8 +153,17 @@ if [ -d "$PKG/xxtouch_jobs" ]; then
   log "(!) package cu van con xxtouch_jobs/ - se khong copy (Ver 2.19+ loai bo XXTouch)"
 fi
 chmod +x "$APP_DIR"/*.sh 2>/dev/null
+# tools/ (vpn_mgr.sh, gen_vpn_guard.sh, gen_vpn_guard_install.sh)
+if [ -d "$PKG/tools" ]; then
+  mkdir -p "$APP_DIR/tools"
+  cp -r "$PKG/tools/." "$APP_DIR/tools/" || err "copy tools failed"
+  chmod +x "$APP_DIR/tools"/*.sh 2>/dev/null
+fi
+[ -f "$PKG/gen_fw_fix.sh" ] && cp "$PKG/gen_fw_fix.sh" "$APP_DIR/gen_fw_fix.sh"
 # firewall sync (hide 8000/9000 + udp fast-reject) - idempotent, adaptive per-router
 [ -f "$APP_DIR/gen_fw_fix.sh" ] && sh "$APP_DIR/gen_fw_fix.sh" || true
+# gen_vpn_guard: chua duong br-lan -> tun* + self-heal (cron 1 phut + hook fix_fw)
+[ -f "$APP_DIR/tools/gen_vpn_guard_install.sh" ] && sh "$APP_DIR/tools/gen_vpn_guard_install.sh" "$APP_DIR/tools/gen_vpn_guard.sh" >/dev/null 2>&1 || true
 # keep canonical label with commit sha (same format as key-update)
 echo "$VT" > "$APP_DIR/VERSION.txt"
 cp "$APP_DIR/gen_update.sh" /root/gen_update.sh 2>/dev/null || true
