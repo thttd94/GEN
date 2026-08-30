@@ -16,3 +16,4 @@ rollback.sh text eol=lf
 setup_data_disk.sh text eol=lf
 full_system_backup.sh text eol=lf
 restore_version_online.sh text eol=lf
+apply_xxtouch_bypass.sh text eol=lf

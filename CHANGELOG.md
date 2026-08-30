@@ -36,6 +36,10 @@ Ban nay sua 3 BUG GOC RE gay ra su co ngay 30/08 (mat cau hinh 2, mat mang may `
 - Khong doi giao dien, khong doi API, khong doi dinh dang `map.txt` / `session*.json`. Router chua update van chay binh thuong.
 - Sau khi deploy da xac nhan: 4 preset deu parse OK, `session_state.json` OK, `map.txt` 114 dong md5 khong doi, ipset 114, `ip rule` 3xx = 114, `gen_vpn_guard.sh check` = `[OK] duong VPN dung chuan, khong can sua`.
 
+### Bo sung cho du bo cai (git = ban full)
+- Them `apply_xxtouch_bypass.sh` - file dang chay tren router nhung truoc day **chua co trong git** (chen rule `mangle GENROUTER` cho `192.14.0.1/20 -> 192.14.0.1/32 tcp -j RETURN` de may LAN vao duoc GUI router ma khong bi hut qua tproxy). Da khai bao `eol=lf` trong `.gitattributes`.
+- Da doi chieu **md5 tung file giua git va router**: 27/27 file nguon (`app.py`, `static/*`, `tools/*`, toan bo `.py` va `.sh` cai dat, cac file `.md`) **trung khop tuyet doi** -> git dung la ban full cua version dang chay.
+
 ## Ver 2.32
 - TOI UU TOC DO "GAN VPN HANG LOAT" (gan all ~114 may: **~5 phut -> ~2 giay**). Khong doi hanh vi, khong doi giao dien, `assign`/`unassign` cu giu nguyen de router chua update van chay binh thuong.
   - **Nguyen nhan do duoc tren router that** (Ver 2.31.1, `map.txt` 114 dong): `vpn_mgr.sh assign` 1 may ~2.6s, trong do `gen_vpn_guard.sh fix` chiem ~2.5s. Ban than viec gan gan nhu mien phi (`ipset add` + `ip rule add` ~0ms). Boc tach guard: `sync_set` ~0.33s, `ensure_rules` ~0s, `ensure_nft` ~0s, **`ensure_routes` ~1.0s**. `ensure_routes` lap tung dong `map.txt` va spawn ~6 process moi dong (3x`grep` meta + `ip link` + `ip route show` + `ip rule show` + `iptables -C`) = **~700 process moi lan goi guard**. Vi `assign_rules_on()` goi guard sau TUNG IP va UI lai POST tuan tu 1 request/may, tong chi phi thanh binh phuong.
