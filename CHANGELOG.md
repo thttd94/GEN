@@ -1,5 +1,41 @@
 # CHANGELOG
 
+## Ver 2.33
+Ban nay sua 3 BUG GOC RE gay ra su co ngay 30/08 (mat cau hinh 2, mat mang may `192.14.5.x`, va `map.txt` bi xoa trang 114 may). Ca 3 deu la loi CO SAN tu cac ban truoc, khong phai sinh ra tu Ver 2.32.
+
+### 1. Loi "cau hinh 2 mo khong duoc" - file JSON bi dinh rac (race condition khi ghi file)
+- **Hien tuong**: `presets/session2.json` va `session4.json` deu bi **dung 155 byte rac** o duoi phan JSON hop le (`tbound": "proxy_322", "source_ip_cidr": "192.14.4.72"...`) -> `json.loads` bao `Extra data` -> UI khong mo duoc cau hinh.
+- **Nguyen nhan**: `_ss_atomic_write()` dung ten file tam **CO DINH** `<file>.tmp_write`. App chay `ThreadingHTTPServer` nen 2 request ghi cung mot file se dung **CHUNG mot tmp**: luong A mo tmp ghi ban dai (172969B), luong B mo lai dung tmp do (mode `'w'` = truncate ve 0) ghi ban ngan hon (172814B), hai lan flush chen nhau -> tmp thanh "noi dung B + phan duoi con lai cua A", roi `os.replace` **cong bo ban rac do**. Dung bang so byte chenh lech quan sat duoc. Loi nay ton tai tu Ver 2.18 - chi la truoc day it khi 2 request ghi trung nhau nen chua no.
+- **Fix trong `app.py`**:
+  - Ten tmp duy nhat theo `pid + thread_id + so thu tu tang dan` (`_atomic_tmp_name()`) - hai luong khong con dung chung tmp.
+  - **Lock rieng theo tung duong dan file** (`_atomic_lock_for()`) - hai lan ghi cung mot file xep hang, khong chen nhau.
+  - **Doc lai tmp so tung byte** voi noi dung can ghi TRUOC khi `os.replace`; lech thi huy, khong cong bo -> khong bao gio publish file rac.
+  - `_ss_cleanup_stale_tmp()` don `*.tmp_write*` con sot luc khoi dong (BASE_DIR, presets, config, runtime).
+  - `_ss_rotate_backups()` / `_ss_seed_backups()` truoc day tu ghi `.tmp` co dinh (cung loi) -> nay dung `_ss_atomic_write()`.
+- **`load_json()` tu va file hong**: neu `json.loads` that bai, dung `raw_decode()` lay phan JSON hop le o dau, luu ban hong ra `<file>.broken.<timestamp>` de dieu tra, ghi lai ban sach roi log vao `session_state_guardian.log`. Nguoi dung khong con bi khoa khoi cau hinh vi mot file dinh rac.
+- **Do duoc**: 6 luong ghi xen ke 2 payload dai khac nhau + 3 luong doc lien tuc. Ban cu: **1433 lan doc thay `Extra data`**. Ban moi: **0 lan**, khong con tmp sot. Da chay ca tren may Windows va tren chinh router.
+
+### 2. Loi may `192.14.5.x` mat mang - `ip rule` mo coi khong ai don
+- **Hien tuong**: sau khi `map.txt` bi xoa trang, con lai **210 rule** `from <ip> lookup 3xx` tro vao tunnel da chet. May bi hut vao tun chet nhung KHONG con trong ipset nen cung khong duoc RETURN khoi pipeline tproxy -> mat mang hoan toan.
+- **Nguyen nhan 2a - `gen_vpn_guard.sh` chi biet THEM, khong biet BO**: `ensure_routes()` chi doi chieu `map.txt` roi them cai thieu. Rule con trong `ip rule` ma khong con trong `map.txt` thi khong co ai don -> guard van bao `[OK] duong VPN dung chuan` trong khi mang dang chet.
+- **Nguyen nhan 2b - `clean-stale` bi loi regex nen KHONG BAO GIO don duoc gi**: `cmd_clean_stale()` loc IP bang `grep -qE '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$'`. Trong ERE, `\\.` co nghia "mot dau backslash roi mot ky tu bat ky", tuc doi IP phai **chua dau backslash** -> khong IP nao khop -> moi dong deu `continue` -> lenh luon in `[OK] clean-stale xong` ma chang don gi. Day chinh la ly do 210 rule mo coi song sot duoc. Da kiem chung truc tiep tren router: `printf '192.14.5.1' | grep -qE '...'` khong khop; them rule test roi chay `clean-stale` -> rule van con.
+- **Fix**:
+  - `tools/gen_vpn_guard.sh`: them buoc **quet rule mo coi** vao `ensure_routes()`, nam trong **cung mot luot `awk`** da co san nen khong tang so process theo so may. `check` bao `[EXTRA] ip rule mo coi: from <ip> lookup <table>`, `fix` xoa dung tung rule.
+  - `ensure_routes()` khong con `return` som khi thieu `map.txt` - map trong/mat chinh la luc can quet rule mo coi nhat.
+  - `tools/vpn_mgr.sh`: doi `\\.` thanh `[.]` trong `cmd_clean_stale()`.
+- **Do duoc tren router**: them 3 rule mo coi -> guard **cu** bao `[OK] dung chuan` (khong phat hien); guard **moi** bao `[EXTRA]` x3 + `[WARN] 3 diem lech`, chay `fix` don sach con 0. `clean-stale`: truoc 1 rule -> sau 0 rule. **Khi moi thu dung, output `check` cu va moi giong nhau tung byte** (md5 `d12404a81b44ae67a18261162980f048`) -> khong doi hanh vi.
+
+### 3. Loi `map.txt` bi xoa trang 114 may khi apply cau hinh - khong co dau vet, khong the hoan tac
+- **Nguyen nhan**: `sync_vpn_state_on_apply()` tu dong bo gan moi IP co trong `map.txt` ma cau hinh dang apply khong khai bao VPN. Cau hinh 4 khai bao **0 may VPN**, nen apply cau hinh 4 da bo gan sach 114 may. Ve logic la dung thiet ke, nhung khong he luu ban sao nao truoc khi xoa.
+- **Fix trong `app.py`**:
+  - Them `_backup_vpn_map()`: **snapshot `map.txt` vao `persist/map_backups/map.<YYYYMMDD_HHMMSS>.txt` truoc khi bo gan hang loat**, giu 10 ban gan nhat, ghi log vao `session_state_guardian.log`. Duong dan ban backup duoc tra ve trong ket qua apply (`map_backup`).
+  - `sync_vpn_state_on_apply()` chuyen tu vong lap `unassign`/`assign` tung IP sang **`unassign-many` / `assign-many` theo nhom account** -> thao tac 100+ may xong trong ~1s thay vi vai phut (dung dung ha tang toc do da lam o Ver 2.32).
+- **Do duoc**: `_backup_vpn_map()` tao ban sao 114 dong, md5 **trung khop tuyet doi** voi `map.txt` (`3a9828fd6cb16a6056c11d10394c07c8`).
+
+### Ghi chu
+- Khong doi giao dien, khong doi API, khong doi dinh dang `map.txt` / `session*.json`. Router chua update van chay binh thuong.
+- Sau khi deploy da xac nhan: 4 preset deu parse OK, `session_state.json` OK, `map.txt` 114 dong md5 khong doi, ipset 114, `ip rule` 3xx = 114, `gen_vpn_guard.sh check` = `[OK] duong VPN dung chuan, khong can sua`.
+
 ## Ver 2.32
 - TOI UU TOC DO "GAN VPN HANG LOAT" (gan all ~114 may: **~5 phut -> ~2 giay**). Khong doi hanh vi, khong doi giao dien, `assign`/`unassign` cu giu nguyen de router chua update van chay binh thuong.
   - **Nguyen nhan do duoc tren router that** (Ver 2.31.1, `map.txt` 114 dong): `vpn_mgr.sh assign` 1 may ~2.6s, trong do `gen_vpn_guard.sh fix` chiem ~2.5s. Ban than viec gan gan nhu mien phi (`ipset add` + `ip rule add` ~0ms). Boc tach guard: `sync_set` ~0.33s, `ensure_rules` ~0s, `ensure_nft` ~0s, **`ensure_routes` ~1.0s**. `ensure_routes` lap tung dong `map.txt` va spawn ~6 process moi dong (3x`grep` meta + `ip link` + `ip route show` + `ip rule show` + `iptables -C`) = **~700 process moi lan goi guard**. Vi `assign_rules_on()` goi guard sau TUNG IP va UI lai POST tuan tu 1 request/may, tong chi phi thanh binh phuong.

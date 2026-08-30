@@ -579,7 +579,39 @@ def get_available_sessions(include_hidden=True):
     return items
 
 def load_json(path: Path):
-    return json.loads(path.read_text(encoding='utf-8'))
+    """Doc JSON, tu va neu file bi dinh rac o duoi (di san cua loi ghi dua tmp).
+
+    Ver 2.33: truoc day mot so file preset bi dinh duoi rac (phan con lai cua
+    mot lan ghi TRUOC dai hon) khien json.loads nem 'Extra data' va toan bo
+    cau hinh khong mo duoc. Nay neu phan dau file la JSON hop le thi cat rac,
+    luu ban hong lai de dieu tra roi ghi lai ban sach — nguoi dung khong con
+    bi khoa khoi cau hinh.
+    """
+    path = Path(path)
+    txt = path.read_text(encoding='utf-8')
+    try:
+        return json.loads(txt)
+    except Exception as first_err:
+        try:
+            obj, end = json.JSONDecoder().raw_decode(txt)
+        except Exception:
+            raise first_err
+        tail = txt[end:]
+        if tail.strip() == '':
+            raise first_err
+        _ss_log(f'JSON-HEAL {path.name}: cat {len(tail)} byte rac o cuoi (loi goc: {first_err})')
+        try:
+            broken = path.with_name(f'{path.name}.broken.{time.strftime("%Y%m%d_%H%M%S")}')
+            if not broken.exists():
+                broken.write_text(txt, encoding='utf-8')
+        except Exception as e:
+            _ss_log(f'JSON-HEAL {path.name}: khong luu duoc ban hong: {e}')
+        try:
+            _ss_atomic_write(path, txt[:end].rstrip() + '\n')
+            _ss_log(f'JSON-HEAL {path.name}: da ghi lai ban sach ({end} bytes)')
+        except Exception as e:
+            _ss_log(f'JSON-HEAL {path.name}: khong ghi lai duoc ban sach: {e}')
+        return obj
 SS_BACKUP_COUNT = 5
 SS_EXT_DIR = Path('/data/vpn_backup')
 SS_HEAL_LOG = BASE_DIR / 'logs' / 'session_state_guardian.log'
@@ -628,23 +660,86 @@ def _ss_snapshot_good(path: Path):
         pass
     return None
 
-def _ss_atomic_write(path: Path, text: str):
-    """Ghi nguyen tu: tmp -> flush+fsync -> rename. Khong bao gio co partial file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + '.tmp_write')
-    with open(tmp, 'w', encoding='utf-8') as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(str(tmp), str(path))
-    try:
-        dfd = os.open(str(path.parent), os.O_RDONLY)
+_ATOMIC_PATH_LOCKS = {}
+_ATOMIC_PATH_LOCKS_GUARD = threading.Lock()
+_ATOMIC_SEQ = {'n': 0}
+
+def _atomic_lock_for(path: Path):
+    """Lay lock rieng cho tung duong dan file (serialize ghi cung 1 file)."""
+    key = str(path)
+    with _ATOMIC_PATH_LOCKS_GUARD:
+        lk = _ATOMIC_PATH_LOCKS.get(key)
+        if lk is None:
+            lk = threading.Lock()
+            _ATOMIC_PATH_LOCKS[key] = lk
+        return lk
+
+def _atomic_tmp_name(path: Path) -> Path:
+    """Ten tmp DUY NHAT cho moi lan ghi: pid + thread + so thu tu."""
+    with _ATOMIC_PATH_LOCKS_GUARD:
+        _ATOMIC_SEQ['n'] += 1
+        seq = _ATOMIC_SEQ['n']
+    return path.with_name(f'{path.name}.tmp_write.{os.getpid()}.{threading.get_ident()}.{seq}')
+
+def _ss_cleanup_stale_tmp():
+    """Don file .tmp_write* con sot (do lan ghi truoc bi cat giua duong)."""
+    seen = 0
+    for d in {BASE_DIR, PRESET_DIR, SS_EXT_DIR, CONFIG_DIR, RUNTIME_DIR}:
         try:
-            os.fsync(dfd)
-        finally:
-            os.close(dfd)
-    except Exception:
-        pass
+            for p in Path(d).glob('*.tmp_write*'):
+                try:
+                    p.unlink()
+                    seen += 1
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    if seen:
+        _ss_log(f'CLEANUP: da xoa {seen} file .tmp_write* con sot')
+
+def _ss_atomic_write(path: Path, text: str):
+    """Ghi nguyen tu: tmp DUY NHAT -> flush+fsync -> doc lai kiem tra -> rename.
+
+    Ver 2.33 (fix goc re vu session2/session4.json hong 'Extra data'):
+    truoc day ten tmp la CO DINH ('<file>.tmp_write'). App chay tren
+    ThreadingHTTPServer nen hai request ghi cung mot file se dung CHUNG mot
+    tmp: luong A mo tmp ghi 172969 byte, luong B mo lai chinh tmp do (mode 'w'
+    truncate ve 0) ghi 172814 byte, hai lan flush chen nhau => tmp thanh
+    'noi dung B + duoi con lai cua A' roi os.replace cong bo ban rac do.
+    Dung dung 155 byte rac quan sat duoc chinh la duoi cua lan ghi dai hon.
+
+    Nay: (1) tmp mang pid+thread+seq nen khong bao gio dung chung;
+    (2) lock theo tung duong dan de hai lan ghi cung file xep hang;
+    (3) doc lai tmp so voi text truoc khi rename — sai la huy, khong cong bo.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _atomic_lock_for(path):
+        tmp = _atomic_tmp_name(path)
+        try:
+            with open(tmp, 'w', encoding='utf-8') as f:
+                f.write(text)
+                f.flush()
+                os.fsync(f.fileno())
+            back = tmp.read_text(encoding='utf-8')
+            if back != text:
+                raise IOError(f'tmp sai lech sau khi ghi ({len(back)} vs {len(text)} bytes) — huy, khong cong bo')
+            os.replace(str(tmp), str(path))
+        except Exception:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except Exception:
+                pass
+            raise
+        try:
+            dfd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
+        except Exception:
+            pass
 
 def _ss_rotate_backups():
     """Day bak.x -> bak.x+1 roi luu ban hien tai vao bak.1 (chi neu ban hien tai tot)."""
@@ -660,9 +755,7 @@ def _ss_rotate_backups():
     cur_txt = _ss_snapshot_good(SESSION_STATE_FILE)
     if cur_txt is not None:
         try:
-            tmp = b1.with_suffix('.tmp')
-            tmp.write_text(cur_txt, encoding='utf-8')
-            os.replace(str(tmp), str(b1))
+            _ss_atomic_write(b1, cur_txt)
         except Exception as e:
             _ss_log(f'rotate: luu bak.1 that bai: {e}')
 
@@ -674,9 +767,7 @@ def _ss_seed_backups():
             return
         b1 = SESSION_STATE_FILE.parent / (SESSION_STATE_FILE.name + '.bak.1')
         if not b1.exists():
-            tmp = b1.with_suffix('.tmp')
-            tmp.write_text(txt, encoding='utf-8')
-            os.replace(str(tmp), str(b1))
+            _ss_atomic_write(b1, txt)
         ext = SS_EXT_DIR / SESSION_STATE_FILE.name
         if _ss_snapshot_good(ext) != txt:
             _ss_atomic_write(ext, txt)
@@ -1796,13 +1887,44 @@ def _session_vpn_desires(session_id, runtime_data):
             desires[tag] = acc
     return (desires, adopt)
 
+def _backup_vpn_map(reason: str):
+    """Luu ban sao map.txt truoc khi thay doi hang loat (Ver 2.33).
+
+    Vu 30/08: apply mot cau hinh khai bao 0 may VPN da tu dong bo gan het 114
+    may va khong con ban sao nao ngoai file backup tay. Nay moi lan sap bo gan
+    hang loat deu luu snapshot vao persist/, giu 10 ban gan nhat.
+    """
+    try:
+        src = Path(VPN_MAP_PATH)
+        if not src.exists() or src.stat().st_size == 0:
+            return None
+        d = WD_PERSIST_DIR / 'map_backups'
+        d.mkdir(parents=True, exist_ok=True)
+        dst = d / f'map.{time.strftime("%Y%m%d_%H%M%S")}.txt'
+        _ss_atomic_write(dst, src.read_text(encoding='utf-8', errors='replace'))
+        olds = sorted(d.glob('map.*.txt'))
+        for p in olds[:-10]:
+            try:
+                p.unlink()
+            except Exception:
+                pass
+        _ss_log(f'MAP-BACKUP ({reason}): {dst.name}')
+        return dst
+    except Exception as e:
+        _ss_log(f'MAP-BACKUP that bai ({reason}): {e}')
+        return None
+
 def sync_vpn_state_on_apply(session_id, runtime_data, results):
     """Apply cau hinh nao thi trang thai VPN phai theo dung cau hinh do:
     - may cfg KHONG khai bao VPN ma van con map/rule VPN -> tu bo gan
     - may cfg khai bao VPN -> giu/gan dung account (chi gan khi tunnel UP)
-    - don rule rac tro den table cua tunnel da chet (vd tun mat bat thuong)"""
+    - don rule rac tro den table cua tunnel da chet (vd tun mat bat thuong)
+
+    Ver 2.33: luu snapshot map.txt truoc khi bo gan hang loat, va dung
+    `unassign-many`/`assign-many` nen thao tac 100+ may xong trong ~1s thay vi
+    vai phut."""
     cmd = 'dong bo VPN theo cau hinh'
-    summary = {'declared': 0, 'unassigned': [], 'assigned': [], 'skipped': [], 'clean_stale_ok': None}
+    summary = {'declared': 0, 'unassigned': [], 'assigned': [], 'skipped': [], 'clean_stale_ok': None, 'map_backup': None}
     try:
         desires_by_tag, adopt = _session_vpn_desires(session_id, runtime_data)
         if adopt:
@@ -1831,21 +1953,29 @@ def sync_vpn_state_on_apply(session_id, runtime_data, results):
         except Exception:
             status = {}
         if saved_text:
-            for ip in sorted(current):
-                if ip in desired_ips:
-                    continue
-                r = vpn_run(['unassign', ip], timeout=60)
-                summary['unassigned'].append({'ip': ip, 'ok': bool(r.get('ok'))})
+            stale_ips = [ip for ip in sorted(current) if ip not in desired_ips]
+            if stale_ips:
+                bak = _backup_vpn_map(f'apply session {session_id}: sap bo gan {len(stale_ips)}/{len(current)} may')
+                if bak:
+                    summary['map_backup'] = str(bak)
+                r = vpn_run(['unassign-many'] + stale_ips, timeout=max(120, 3 * len(stale_ips)))
+                ok = bool(r.get('ok'))
+                summary['unassigned'] = [{'ip': ip, 'ok': ok} for ip in stale_ips]
+            todo = {}
             for ip, acc in sorted(desired_ips.items()):
-                cur_acc = current.get(ip, '')
-                if cur_acc == acc:
+                if current.get(ip, '') == acc:
                     continue
                 acc_info = status.get(acc) or {}
                 if not acc_info.get('running'):
                     summary['skipped'].append({'ip': ip, 'account': acc, 'reason': 'tunnel khong chay'})
                     continue
-                r = vpn_run(['assign', acc, ip], timeout=120)
-                summary['assigned'].append({'ip': ip, 'account': acc, 'ok': bool(r.get('ok')), 'output': (r.get('output') or '')[:120]})
+                todo.setdefault(acc, []).append(ip)
+            for acc, ips in sorted(todo.items()):
+                r = vpn_run(['assign-many', acc] + ips, timeout=max(120, 3 * len(ips)))
+                ok = bool(r.get('ok'))
+                out = (r.get('output') or '')[:120]
+                for ip in ips:
+                    summary['assigned'].append({'ip': ip, 'account': acc, 'ok': ok, 'output': out})
         rc = vpn_run(['clean-stale'], timeout=120)
         summary['clean_stale_ok'] = bool(rc.get('ok'))
         results.append({'cmd': cmd, 'ok': True, **summary})
@@ -3076,6 +3206,7 @@ def startup_migrate_proxy_dns():
     return total
 
 if __name__ == '__main__':
+    _ss_cleanup_stale_tmp()
     ensure_sessions_exist()
     startup_migrate_proxy_dns()
     ensure_vpn_mgr()

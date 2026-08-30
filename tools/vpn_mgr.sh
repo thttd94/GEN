@@ -372,7 +372,12 @@ cmd_clean_stale() {
     fromip=$(printf '%s\n' "$line" | awk '{for(i=1;i<=NF;i++) if($i=="from"){print $(i+1);exit}}')
     tbl=$(printf '%s\n' "$line" | awk '{for(i=1;i<=NF;i++) if($i=="lookup"){print $(i+1);exit}}')
     [ -n "$prio" ] && [ -n "$fromip" ] && [ -n "$tbl" ] || continue
-    printf '%s' "$fromip" | grep -qE '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$' || continue
+    # Ver 2.33: sua regex kiem IP. Ban cu dung '\\.' - trong ERE nghia la
+    # "mot dau backslash roi mot ky tu bat ky", tuc doi IP phai CHUA backslash
+    # nen KHONG IP NAO khop => moi dong deu continue => clean-stale luon bao OK
+    # ma khong don gi. Do la ly do 210 rule mo coi ton tai duoc sau khi map.txt
+    # bi xoa. Dung '[.]' de khop dau cham that.
+    printf '%s' "$fromip" | grep -qE '^[0-9]{1,3}([.][0-9]{1,3}){3}$' || continue
     case "$tbl" in 3[0-9][0-9]) ;; *) continue ;; esac
     name=$(awk -v I="$fromip" '$1==I{print $2; exit}' "$MAPF")
     if [ -z "$name" ]; then

@@ -247,9 +247,11 @@ ensure_nft() {
 # tong chi phi la ~5 process, khong phu thuoc so may.
 # Logic quyet dinh giu Y NGUYEN nhu ban cu.
 ensure_routes() {
-  [ -f "$MAPF" ] || return 0
   acct=/data/vpn/accounts
   _t="/tmp/.vpnguard_er.$$"
+  # Ver 2.33: KHONG return som khi thieu map.txt - map trong/mat chinh la luc
+  # can quet rule mo coi nhat. Dung file rong lam dau vao.
+  [ -f "$MAPF" ] || : > "$MAPF" 2>/dev/null || true
 
   # ---- snapshot: 4 lenh, khong phu thuoc so may ----
   ip rule show 2>/dev/null                 > "$_t.rules"
@@ -347,7 +349,43 @@ ensure_routes() {
     esac
   done < "$_t.todo"
 
-  rm -f "$_t.rules" "$_t.nat" "$_t.devs" "$_t.routes" "$_t.meta" "$_t.todo"
+  # ---- Ver 2.33: don ip rule MO COI (IP khong con trong map.txt) ----
+  # Vu 30/08: sau khi map.txt bi xoa trang, 210 rule 'from <ip> lookup 3xx' van
+  # con lai. May bi hut vao tun da chet nhung KHONG con trong ipset nen cung
+  # khong duoc RETURN khoi pipeline tproxy => mat mang hoan toan. Guard truoc
+  # day chi biet THEM rule thieu, khong biet BO rule thua, nen khong tu chua.
+  awk -v MAPF="$MAPF" '
+    BEGIN {
+      while ((getline l < MAPF) > 0) {
+        if (l ~ /^[ 	]*#/) continue
+        ip = l; sub(/[ 	].*$/, "", ip)
+        if (ip != "") INMAP[ip] = 1
+      }
+      close(MAPF)
+    }
+    {
+      if (!match($0, /lookup 3[0-9][0-9]/)) next
+      t = substr($0, RSTART + 7, 3)
+      p = $1; sub(/:$/, "", p)
+      ip = ""
+      for (i = 1; i <= NF; i++) if ($i == "from") { ip = $(i+1); break }
+      if (ip == "" || ip !~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) next
+      if (ip in INMAP) next
+      print p "|" ip "|" t
+    }
+  ' "$_t.rules" > "$_t.orphan" 2>/dev/null
+
+  while IFS='|' read -r p ip t; do
+    [ -n "${ip:-}" ] || continue
+    if [ "$MODE" = check ]; then
+      log "[EXTRA] ip rule mo coi: from $ip lookup $t (khong trong map)"
+    else
+      ip rule del priority "$p" from "$ip" lookup "$t" 2>/dev/null \
+        && note "[FIX] bo ip rule mo coi from $ip -> table $t"
+    fi
+  done < "$_t.orphan"
+
+  rm -f "$_t.rules" "$_t.nat" "$_t.devs" "$_t.routes" "$_t.meta" "$_t.todo" "$_t.orphan"
   return 0
 }
 
