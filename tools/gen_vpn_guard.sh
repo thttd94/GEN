@@ -236,43 +236,119 @@ ensure_nft() {
 }
 
 # ---------- 4) route/rule cua tung tunnel ----------
+# TOI UU (Ver 2.32): ban cu spawn ~6 process cho MOI dong map.txt
+# (grep meta x3 + ip link + ip route show + ip rule show + iptables -C).
+# Voi 114 may = ~700 process moi lan goi guard -> ~1s, va vpn_mgr.sh goi
+# guard sau TUNG IP nen gan all bi chi phi binh phuong (gan all ~5 phut).
+#
+# Ban nay: snapshot 1 lan (ip rule / nat / net devices / meta cua tat ca
+# account) roi dung DUNG 1 LUOT awk de tinh ra danh sach viec CAN LAM.
+# Shell chi chay dung so lenh thuc su can -> khi moi thu da dung thi
+# tong chi phi la ~5 process, khong phu thuoc so may.
+# Logic quyet dinh giu Y NGUYEN nhu ban cu.
 ensure_routes() {
   [ -f "$MAPF" ] || return 0
   acct=/data/vpn/accounts
-  while read -r ip acc rest; do
-    [ -n "${ip:-}" ] && [ -n "${acc:-}" ] || continue
-    is_ipv4 "$ip" || continue
-    [ -d "$acct/$acc" ] || continue
-    dev=$(grep -o '^dev=.*'   "$acct/$acc/meta" 2>/dev/null | head -n1 | cut -d= -f2-)
-    tbl=$(grep -o '^table=.*' "$acct/$acc/meta" 2>/dev/null | head -n1 | cut -d= -f2-)
-    pri=$(grep -o '^prio=.*'  "$acct/$acc/meta" 2>/dev/null | head -n1 | cut -d= -f2-)
-    [ -n "${dev:-}" ] && [ -n "${tbl:-}" ] && [ -n "${pri:-}" ] || continue
-    ip link show "$dev" >/dev/null 2>&1 || { log "[DOWN] tunnel $acc ($dev) khong ton tai - bo qua $ip"; continue; }
-    if ! ip route show table "$tbl" 2>/dev/null | grep -q '^default'; then
-      if [ "$MODE" = check ]; then
-        log "[MISS] table $tbl thieu default dev $dev"
-      else
-        ip route replace default dev "$dev" table "$tbl" 2>/dev/null \
-          && note "[FIX] table $tbl <- default dev $dev"
-      fi
-    fi
-    if ! ip rule show 2>/dev/null | grep -q "from $ip lookup $tbl"; then
-      if [ "$MODE" = check ]; then
-        log "[MISS] thieu ip rule from $ip lookup $tbl"
-      else
-        ip rule add from "$ip" table "$tbl" priority "$pri" 2>/dev/null \
-          && note "[FIX] ip rule from $ip -> table $tbl"
-      fi
-    fi
-    if ! iptables -t nat -C POSTROUTING -o "$dev" -j MASQUERADE 2>/dev/null; then
-      if [ "$MODE" = check ]; then
-        log "[MISS] thieu MASQUERADE -o $dev"
-      else
-        iptables -t nat -A POSTROUTING -o "$dev" -j MASQUERADE 2>/dev/null \
-          && note "[FIX] MASQUERADE -o $dev"
-      fi
-    fi
-  done < "$MAPF"
+  _t="/tmp/.vpnguard_er.$$"
+
+  # ---- snapshot: 4 lenh, khong phu thuoc so may ----
+  ip rule show 2>/dev/null                 > "$_t.rules"
+  iptables -t nat -S POSTROUTING 2>/dev/null > "$_t.nat"
+  ls /sys/class/net 2>/dev/null            > "$_t.devs"
+  ip route show table all 2>/dev/null      > "$_t.routes"
+  # meta cua moi account, dinh dang: <ten> <key>=<val>
+  for _d in "$acct"/*/meta; do
+    [ -f "$_d" ] || continue
+    _n=${_d%/meta}; _n=${_n##*/}
+    sed -n "s/^/$_n /p" "$_d" 2>/dev/null
+  done > "$_t.meta"
+
+  # ---- 1 luot awk: sinh danh sach viec can lam ----
+  # Moi dong ket qua: <loai>|<tham so...>
+  awk -v METAF="$_t.meta" -v RULEF="$_t.rules" -v NATF="$_t.nat" \
+      -v DEVF="$_t.devs" -v RTF="$_t.routes" '
+    BEGIN {
+      while ((getline l < METAF) > 0) {
+        n = l; sub(/ .*$/, "", n)
+        kv = l; sub(/^[^ ]+ /, "", kv)
+        k = kv; sub(/=.*$/, "", k)
+        v = kv; sub(/^[^=]*=/, "", v)
+        if (k == "dev")   DEV[n] = v
+        if (k == "table") TBL[n] = v
+        if (k == "prio")  PRI[n] = v
+      }
+      close(METAF)
+      while ((getline l < RULEF) > 0) {
+        if (match(l, /from [0-9.]+ lookup [0-9a-zA-Z_]+/))
+          HAVERULE[substr(l, RSTART, RLENGTH)] = 1
+      }
+      close(RULEF)
+      while ((getline l < NATF) > 0)  NAT = NAT "\n" l
+      close(NATF)
+      while ((getline l < DEVF) > 0)  HAVEDEV[l] = 1
+      close(DEVF)
+      while ((getline l < RTF) > 0) {
+        # "default dev tunN table 3NN" hoac "default dev tunN" (table main)
+        if (l !~ /^default/) continue
+        t = "main"
+        if (match(l, /table [0-9a-zA-Z_]+/)) t = substr(l, RSTART + 6, RLENGTH - 6)
+        HAVEDEF[t] = 1
+      }
+      close(RTF)
+    }
+    /^[ 	]*#/ { next }
+    {
+      ip = $1; acc = $2
+      if (ip == "" || acc == "") next
+      if (ip !~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) next
+      if (!(acc in DEV) || !(acc in TBL) || !(acc in PRI)) next
+      d = DEV[acc]; t = TBL[acc]; p = PRI[acc]
+      if (d == "" || t == "" || p == "") next
+      if (!(d in HAVEDEV)) { print "DOWN|" acc "|" d "|" ip; next }
+
+      if (!(t in HAVEDEF) && !("def" t in DONE)) {
+        print "DEF|" t "|" d; DONE["def" t] = 1
+      }
+      found = (("from " ip " lookup " t) in HAVERULE)
+      if (!found && !("rule" ip "_" t in DONE)) {
+        print "RULE|" ip "|" t "|" p; DONE["rule" ip "_" t] = 1
+      }
+      if (!index(NAT, "-o " d " -j MASQUERADE") && !("masq" d in DONE)) {
+        print "MASQ|" d; DONE["masq" d] = 1
+      }
+    }
+  ' "$MAPF" > "$_t.todo" 2>/dev/null
+
+  # ---- thuc thi (hoac bao cao khi MODE=check) ----
+  while IFS='|' read -r kind a b cc; do
+    case "$kind" in
+      DOWN) log "[DOWN] tunnel $a ($b) khong ton tai - bo qua $cc" ;;
+      DEF)
+        if [ "$MODE" = check ]; then
+          log "[MISS] table $a thieu default dev $b"
+        else
+          ip route replace default dev "$b" table "$a" 2>/dev/null \
+            && note "[FIX] table $a <- default dev $b"
+        fi ;;
+      RULE)
+        if [ "$MODE" = check ]; then
+          log "[MISS] thieu ip rule from $a lookup $b"
+        else
+          ip rule add from "$a" table "$b" priority "$cc" 2>/dev/null \
+            && note "[FIX] ip rule from $a -> table $b"
+        fi ;;
+      MASQ)
+        if [ "$MODE" = check ]; then
+          log "[MISS] thieu MASQUERADE -o $a"
+        else
+          iptables -t nat -A POSTROUTING -o "$a" -j MASQUERADE 2>/dev/null \
+            && note "[FIX] MASQUERADE -o $a"
+        fi ;;
+    esac
+  done < "$_t.todo"
+
+  rm -f "$_t.rules" "$_t.nat" "$_t.devs" "$_t.routes" "$_t.meta" "$_t.todo"
+  return 0
 }
 
 # ---------- status ----------

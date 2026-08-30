@@ -837,11 +837,39 @@
       const acc = accSel.slice(4);
       const targets = (parsed === 'all') ? vis : parsed.map(n => vis[n - 1]).filter(Boolean);
       if (!targets.length) return setStatus('Không map được máy nào');
+
+      // Cap nhat bang truoc cho UI phan hoi ngay
+      for (const r of targets) { r.proxyType = 'vpn'; r.proxy = accSel; }
+      persistDraft(currentSession);
+      render();
+
+      const ips = targets.map(r => String(r.ip || '').trim()).filter(Boolean);
+      setStatus(`GÁN VPN ${acc}: đang gán ${ips.length} máy...`);
+
+      // Duong NHANH: 1 request bulk (router >= Ver 2.32).
+      // Router cu chua co action nay -> tu dong lui ve vong lap le.
+      try {
+        const res = await fetchJSON('/api/vpn/action', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'assign-bulk', name: acc, ips })
+        });
+        if (res && res.ok) {
+          setStatus(`GÁN VPN ${acc}: OK ${res.count || ips.length}/${ips.length} máy`);
+          return;
+        }
+        const errTxt = String((res && (res.error || res.output)) || '');
+        if (!/action khong ho tro|khong ho tro: assign-bulk|die_use|dung: /i.test(errTxt)) {
+          setStatus(`GÁN VPN ${acc} lỗi: ${errTxt || 'không rõ'}`);
+          return;
+        }
+        setStatus('Router chưa có bản gán nhanh — dùng cách cũ (chậm hơn)...');
+      } catch (e) {
+        setStatus('Thử gán nhanh không được — dùng cách cũ...');
+      }
+
+      // Fallback: gan tung may (tuong thich router chua update)
       let okN = 0, failN = 0;
       for (const r of targets) {
-        const pAcc = effVpnAccount(r);
-        r.proxyType = 'vpn';
-        r.proxy = accSel;
         try {
           const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'assign', name: acc, ip: r.ip }) });
           if (res.ok) okN++; else { failN++; setStatus(`Lỗi gán ${r.ip}: ${res.output || res.error || ''}`); }
@@ -867,6 +895,70 @@
           setStatus(res.ok ? (`IP ${r.ip} đã thoát VPN`) : (`Lỗi bỏ VPN ${r.ip}: ${res.output || res.error || ''}`));
         }
       } catch (e) { setStatus('Lỗi VPN: ' + e.message); }
+    }
+
+    // Ban BULK cua applyVpnChange: dung cho cac thao tac "toàn bộ cột" / "all".
+    // Gom cac IP cung dich thanh 1 request; router cu (chua co *-bulk) thi
+    // tu dong lui ve goi le tung IP nen hanh vi khong doi.
+    // pairs: [{ r, prevAcc }]
+    async function applyVpnChangeBulk(pairs) {
+      const toUnassign = [];
+      const byAcc = new Map();
+      for (const p of (pairs || [])) {
+        const ip = String(p?.r?.ip || '').trim();
+        if (!ip) continue;
+        const acc = effVpnAccount(p.r);
+        if (acc) {
+          if (!byAcc.has(acc)) byAcc.set(acc, []);
+          byAcc.get(acc).push(ip);
+        } else if (p.prevAcc) {
+          toUnassign.push(ip);
+        }
+      }
+      if (!toUnassign.length && !byAcc.size) return;
+
+      const isUnsupported = (res) => {
+        const t = String((res && (res.error || res.output)) || '');
+        return /action khong ho tro|khong ho tro: (assign|unassign)-bulk|dung: /i.test(t);
+      };
+      let fellBack = false;
+
+      if (toUnassign.length) {
+        try {
+          const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'unassign-bulk', ips: toUnassign }) });
+          if (!res || !res.ok) {
+            if (!isUnsupported(res)) setStatus(`Lỗi bỏ VPN: ${(res && (res.output || res.error)) || ''}`);
+            else fellBack = true;
+          } else {
+            setStatus(`Đã thoát VPN ${res.count || toUnassign.length} máy`);
+          }
+        } catch (e) { fellBack = true; }
+        if (fellBack) {
+          for (const ip of toUnassign) {
+            try { await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'unassign', ip }) }); } catch (e) {}
+          }
+          setStatus(`Đã thoát VPN ${toUnassign.length} máy`);
+        }
+      }
+
+      for (const [acc, ips] of byAcc) {
+        let fb = false;
+        try {
+          const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'assign-bulk', name: acc, ips }) });
+          if (!res || !res.ok) {
+            if (!isUnsupported(res)) setStatus(`Lỗi gán VPN ${acc}: ${(res && (res.output || res.error)) || ''}`);
+            else fb = true;
+          } else {
+            setStatus(`VPN ${acc}: OK ${res.count || ips.length} máy`);
+          }
+        } catch (e) { fb = true; }
+        if (fb) {
+          for (const ip of ips) {
+            try { await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'assign', name: acc, ip }) }); } catch (e) {}
+          }
+          setStatus(`VPN ${acc}: OK ${ips.length} máy`);
+        }
+      }
     }
 
     function updateField(el) {
@@ -1030,12 +1122,14 @@
 
     function applyColumnProxyType() {
       const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
+      const pend = [];
       getVisibleRows().forEach(r => {
         const pAcc = effVpnAccount(r);
         r.proxyType = proxyType;
         if (proxyType !== 'vpn' && String(r.proxy || '').startsWith('vpn:')) r.proxy = '';
-        applyVpnChange(r, pAcc);
+        pend.push({ r, prevAcc: pAcc });
       });
+      applyVpnChangeBulk(pend);
       persistDraft(currentSession);
       render();
       const el = document.getElementById('columnProxyType');
@@ -1047,12 +1141,14 @@
       const value = document.getElementById('bulkProxy').value.trim();
       let proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
       if (proxyType === 'vpn') proxyType = 'socks5'; // GÁN 1 ALL là gán proxy: luôn thoát VPN
+      const pend = [];
       getVisibleRows().forEach(r => {
         const pAcc = effVpnAccount(r);
         r.proxyType = proxyType;
         r.proxy = (proxyType === 'vpn') ? '' : value;
-        applyVpnChange(r, pAcc);
+        pend.push({ r, prevAcc: pAcc });
       });
+      applyVpnChangeBulk(pend);
       persistDraft(currentSession);
       render();
       const col = document.getElementById('columnProxyType');
@@ -1061,12 +1157,14 @@
     }
 
     function clearAllProxy() {
+      const pend = [];
       getVisibleRows().forEach(r => {
         const pAcc = effVpnAccount(r);
         r.proxy = '';
         r.proxyType = 'socks5';
-        applyVpnChange(r, pAcc);
+        pend.push({ r, prevAcc: pAcc });
       });
+      applyVpnChangeBulk(pend);
       persistDraft(currentSession);
       render();
       const bulk = document.getElementById('bulkProxyType');
@@ -1096,6 +1194,7 @@
       if (!text) return setStatus('Chưa nhập danh sách gán hàng loạt');
       const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
       let changed = 0;
+      const pend = [];
       for (const line of lines) {
         const item = parseBulkLine(line);
         if (!item) continue;
@@ -1105,9 +1204,10 @@
         const pAcc = effVpnAccount(row);
         row.proxyType = 'socks5'; // gán proxy theo số máy = thoát VPN cho máy đó
         row.proxy = item.proxy.trim();
-        applyVpnChange(row, pAcc);
+        pend.push({ r: row, prevAcc: pAcc });
         changed++;
       }
+      applyVpnChangeBulk(pend);
       persistDraft(currentSession);
       render();
       setStatus(`Đã gán hàng loạt ${changed} dòng theo số máy -> proxy tag cho ` + sessionNameOf(currentSession));

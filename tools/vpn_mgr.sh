@@ -19,6 +19,8 @@
 #   vpn_mgr.sh import-old                  : don cac ovpn cu trong configs/
 #   vpn_mgr.sh up|down <ten>               : bat/tat 1 tunnel
 #   vpn_mgr.sh assign <ten> <IP>           : gan client vao 1 VPN
+#   vpn_mgr.sh assign-many <ten> <IP...>   : gan NHIEU client 1 luot (nhanh)
+#   vpn_mgr.sh unassign-many <IP...>       : bo gan NHIEU client 1 luot
 #   vpn_mgr.sh clean-stale                 : don rule/map rac khi tunnel chet hoac IP khong con trong map
 #   vpn_mgr.sh unassign <IP>               : bo gan client
 #   vpn_mgr.sh test <ten>                  : xem exit-IP qua tunnel
@@ -52,6 +54,22 @@ meta_set() { # meta_set <ten> <key> <val>
   mv "$ACCT/$1/meta.new" "$ACCT/$1/meta"
 }
 exists() { [ -d "$ACCT/$1" ]; }
+
+# Kiem tra IPv4 that su: 4 octet, moi octet 0-255, khong co ky tu la.
+# (glob '[0-9]*.[0-9]*.[0-9]*.[0-9]*' cu chap nhan ca 999.1.1.1)
+is_ipv4() {
+  case "${1:-}" in
+    *[!0-9.]*|''|.*|*.|*..*) return 1 ;;
+  esac
+  IFS_OLD=$IFS; IFS=.; set -- $1; IFS=$IFS_OLD
+  [ $# -eq 4 ] || return 1
+  for o in "$@"; do
+    [ -n "$o" ] || return 1
+    [ "${#o}" -le 3 ] || return 1
+    [ "$o" -ge 0 ] 2>/dev/null && [ "$o" -le 255 ] 2>/dev/null || return 1
+  done
+  return 0
+}
 next_idx() {
   m=0
   for f in "$ACCT"/*/meta; do
@@ -232,7 +250,12 @@ ensure_route() { # <dev> <tbl> - dam bao table co default route (openvpn reset t
 VPN_GUARD=/etc/gen_vpn_guard.sh
 VPN_SET=genrouter_vpn
 
-guard_run() { [ -x "$VPN_GUARD" ] && "$VPN_GUARD" fix >/dev/null 2>&1; return 0; }
+guard_run() {
+  # VPN_NO_GUARD=1 -> bo qua guard (dung cho assign-many/unassign-many:
+  # guard chi chay DUNG 1 LAN o cuoi thay vi sau tung IP)
+  [ "${VPN_NO_GUARD:-0}" = "1" ] && return 0
+  [ -x "$VPN_GUARD" ] && "$VPN_GUARD" fix >/dev/null 2>&1; return 0
+}
 guard_set_ok() { ipset list -n "$VPN_SET" >/dev/null 2>&1; }
 
 assign_rules_on() { # <IP> <tbl> <pri> [dev]
@@ -414,6 +437,94 @@ case "$1" in
     assign_rules_on "$ip" "$tbl" "$pri" "$dev"
     grep -q "^$ip $name\$" "$MAPF" || echo "$ip $name" >> "$MAPF"
     ok "$ip di qua VPN '$name'" ;;
+  assign-many)
+    # assign-many <ten> <IP1> <IP2> ...
+    # Nhanh hon N lan 'assign' vi:
+    #   - guard chi chay DUNG 1 LAN o cuoi (VPN_NO_GUARD=1)
+    #   - map.txt duoc ghi 1 lan bang awk thay vi grep/mv moi IP
+    #   - ip rule show doc 1 lan
+    name="$2"; shift 2
+    [ -n "$name" ] && [ -n "$1" ] || die_use
+    exists "$name" || err "khong co tai khoan '$name'"
+    dev=$(meta_get "$name" dev)
+    ip link show "$dev" >/dev/null 2>&1 || err "tunnel '$name' chua bat - chay: vpn_mgr.sh up $name"
+    tbl=$(meta_get "$name" table); pri=$(meta_get "$name" prio)
+    ensure_route "$dev" "$tbl"
+
+    VPN_NO_GUARD=1
+    export VPN_NO_GUARD
+    RULES="/tmp/vpn_am_rules.$$"
+    NEWMAP="/tmp/vpn_am_map.$$"
+    IPLIST="/tmp/vpn_am_ips.$$"
+    ip rule show 2>/dev/null > "$RULES"
+    : > "$IPLIST"
+    okn=0; badn=0
+
+    for ip in "$@"; do
+      if ! is_ipv4 "$ip"; then
+        echo "[SKIP] IP khong hop le: $ip"; badn=$((badn+1)); continue
+      fi
+      # bo trung lap trong chinh danh sach dau vao
+      if grep -qxF "$ip" "$IPLIST" 2>/dev/null; then
+        continue
+      fi
+      # go duong VPN cu neu dang thuoc tunnel khac
+      old=$(awk -v I="$ip" '$1==I{print $2; exit}' "$MAPF")
+      if [ -n "$old" ] && [ "$old" != "$name" ]; then
+        otbl=$(meta_get "$old" table); opri=$(meta_get "$old" prio)
+        [ -n "$otbl" ] && assign_rules_off "$ip" "$otbl" "$opri"
+      fi
+      # ipset + ip rule (khong goi guard)
+      if guard_set_ok; then
+        ipset add "$VPN_SET" "$ip" -exist 2>/dev/null
+      else
+        iptables -t mangle -C PREROUTING -s "$ip" -j RETURN 2>/dev/null || \
+          iptables -t mangle -I PREROUTING 1 -s "$ip" -j RETURN
+      fi
+      grep -q "from $ip lookup $tbl" "$RULES" 2>/dev/null || \
+        ip rule add from "$ip" table "$tbl" priority "$pri" 2>/dev/null
+      echo "$ip" >> "$IPLIST"
+      okn=$((okn+1))
+    done
+
+    # ghi map.txt 1 lan: bo cac dong cua IP trong danh sach, roi them lai
+    awk -v LF="$IPLIST" 'BEGIN{while((getline l < LF)>0) d[l]=1} !($1 in d)' "$MAPF" > "$NEWMAP" 2>/dev/null
+    while read -r ip; do
+      [ -n "$ip" ] && echo "$ip $name" >> "$NEWMAP"
+    done < "$IPLIST"
+    mv "$NEWMAP" "$MAPF"
+    rm -f "$RULES" "$IPLIST"
+
+    # guard DUNG 1 LAN cho ca loat
+    unset VPN_NO_GUARD
+    guard_run
+    ok "gan $okn may vao VPN '$name'$([ "$badn" -gt 0 ] && echo " ($badn IP bo qua)")" ;;
+  unassign-many)
+    # unassign-many <IP1> <IP2> ...
+    shift
+    [ -n "$1" ] || die_use
+    VPN_NO_GUARD=1
+    export VPN_NO_GUARD
+    IPLIST="/tmp/vpn_um_ips.$$"
+    NEWMAP="/tmp/vpn_um_map.$$"
+    : > "$IPLIST"
+    okn=0
+    for ip in "$@"; do
+      is_ipv4 "$ip" || continue
+      grep -qxF "$ip" "$IPLIST" 2>/dev/null && continue
+      nm=$(awk -v I="$ip" '$1==I{print $2; exit}' "$MAPF")
+      [ -n "$nm" ] || continue
+      tbl=$(meta_get "$nm" table); pri=$(meta_get "$nm" prio)
+      assign_rules_off "$ip" "$tbl" "$pri"
+      echo "$ip" >> "$IPLIST"
+      okn=$((okn+1))
+    done
+    awk -v LF="$IPLIST" 'BEGIN{while((getline l < LF)>0) d[l]=1} !($1 in d)' "$MAPF" > "$NEWMAP" 2>/dev/null
+    mv "$NEWMAP" "$MAPF"
+    rm -f "$IPLIST"
+    unset VPN_NO_GUARD
+    guard_run
+    ok "da bo gan $okn may" ;;
   unassign)
     ip="$2"; [ -n "$ip" ] || die_use
     name=$(awk -v I="$ip" '$1==I{print $2; exit}' "$MAPF")

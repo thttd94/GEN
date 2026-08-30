@@ -1593,6 +1593,54 @@ def _record_vpn_declaration(ipaddr, account):
     except Exception:
         pass
 
+def _record_vpn_declaration_bulk(pairs):
+    """Ban BULK cua _record_vpn_declaration: ghi nhieu IP trong 1 luot.
+    Ban le goi 1 IP = doc/ghi session state + session file 6 lan; gan 114 may
+    thi thanh ~700 lan I/O -> rat cham. Ban nay doc 1 lan, ghi 1 lan.
+    pairs: list [(ip, account)] ; account rong = bo gan.
+    Hanh vi tren tung IP giu Y NGUYEN nhu ban le."""
+    try:
+        if not pairs:
+            return
+        sid = ''
+        try:
+            sid = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '').strip()
+        except Exception:
+            sid = ''
+        sid = sid if sid in SESSION_FILES else '1'
+        if not SESSION_FILES[sid].exists():
+            return
+        ip2tag = {}
+        saved_text = get_saved_ip_identity_text(sid)
+        if saved_text:
+            for it in parse_ip_identity_text(saved_text):
+                _ip = str(it.get('ip', '')).strip()
+                if _ip:
+                    ip2tag[_ip] = normalize_tag(it.get('tag', ''))
+        state = load_session_state()
+        sess = state.setdefault(str(sid), {})
+        data = load_json(SESSION_FILES[sid])
+        obs = data.setdefault('outbounds', [])
+        idx = {str(o.get('tag')): i for i, o in enumerate(obs) if o.get('tag')}
+        touched = 0
+        for ipaddr, account in pairs:
+            tag = ip2tag.get(str(ipaddr).strip(), '')
+            if not tag:
+                continue
+            item = sess_item(sess, tag)
+            acc = str(account or '').strip()
+            if acc:
+                item['vpn_account'] = acc
+            else:
+                item.pop('vpn_account', None)
+            set_outbound_proxy(obs, idx, tag, 'vpn:' + acc if acc else '', 'vpn' if acc else 'socks5')
+            touched += 1
+        if touched:
+            save_session_state(state)
+            save_json(SESSION_FILES[sid], data)
+    except Exception:
+        pass
+
 def build_ip_identity_text(data, session='1'):
     rows = build_ip_identity_rows_from_data(data)
     rows.sort(key=lambda x: machine_num(x.get('machine', '')))
@@ -2907,7 +2955,7 @@ class Handler(BaseHTTPRequestHandler):
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()
                 ipaddr = str(payload.get('ip', '')).strip()
-                if action not in ('unassign', 'refresh-exitips') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
+                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
                     return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
                 if action == 'up':
                     return self._send_json(vpn_run(['up', name]))
@@ -2930,6 +2978,44 @@ class Handler(BaseHTTPRequestHandler):
                     r = vpn_run(['unassign', ipaddr])
                     if r.get('ok'):
                         _record_vpn_declaration(ipaddr, '')
+                    return self._send_json(r)
+                if action == 'assign-bulk':
+                    # Gan NHIEU may 1 request: tranh N request HTTP + N lan guard.
+                    raw = payload.get('ips') or []
+                    if not isinstance(raw, list):
+                        return self._send_json({'ok': False, 'error': 'ips phai la mang'})
+                    ips, bad = ([], [])
+                    for x in raw:
+                        s = str(x).strip()
+                        if re.match('^\\d{1,3}(\\.\\d{1,3}){3}$', s):
+                            if s not in ips:
+                                ips.append(s)
+                        elif s:
+                            bad.append(s)
+                    if not ips:
+                        return self._send_json({'ok': False, 'error': 'khong co IP hop le', 'invalid': bad})
+                    r = vpn_run(['assign-many', name] + ips, timeout=max(120, 3 * len(ips)))
+                    if r.get('ok'):
+                        _record_vpn_declaration_bulk([(s, name) for s in ips])
+                    r['count'] = len(ips)
+                    if bad:
+                        r['invalid'] = bad
+                    return self._send_json(r)
+                if action == 'unassign-bulk':
+                    raw = payload.get('ips') or []
+                    if not isinstance(raw, list):
+                        return self._send_json({'ok': False, 'error': 'ips phai la mang'})
+                    ips = []
+                    for x in raw:
+                        s = str(x).strip()
+                        if re.match('^\\d{1,3}(\\.\\d{1,3}){3}$', s) and s not in ips:
+                            ips.append(s)
+                    if not ips:
+                        return self._send_json({'ok': False, 'error': 'khong co IP hop le'})
+                    r = vpn_run(['unassign-many'] + ips, timeout=max(120, 3 * len(ips)))
+                    if r.get('ok'):
+                        _record_vpn_declaration_bulk([(s, '') for s in ips])
+                    r['count'] = len(ips)
                     return self._send_json(r)
                 if action == 'add-express':
                     host = str(payload.get('host', '')).strip()
