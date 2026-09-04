@@ -1,0 +1,231 @@
+#!/bin/bash
+#
+# genrouter_tproxy.sh
+#   - TPROXY redirect & mark (1234) chỉ với các IP/MAC bạn liệt kê
+#   - Policy-routing kill-switch: block mọi traffic mới LAN→WAN 
+#     trừ packet marked=1234
+#
+# Usage:
+#   ./genrouter_tproxy.sh --start
+#   ./genrouter_tproxy.sh --stop
+
+### ===== CẤU HÌNH ĐẦU =====
+TPROXY_PORT=9888
+FW_MARK=1234
+
+# Các client cho phép proxy (theo IP hoặc MAC)
+
+JSON_CONF=/etc/genrouter/config/gencore.json
+
+#
+# 1) Lấy CLIENT_IPS từ file JSON
+#
+CLIENT_IPS=$(
+  # [FIX07 loc CIDR 2026-09-03] Chi nhan dia chi HOST (/32 hoac khong prefix).
+  # Ly do: gencore.json co rule deny-by-default source_ip_cidr=192.14.0.0/20;
+  # neu lay nguyen thi sinh TPROXY cho ca /20 -> moi TCP tu LAN (ke ca toi
+  # 192.14.0.1:886/9001) bi day vao gencore roi bi reject => mat quan tri.
+  awk -F'"source_ip_cidr":"' '{
+    for(i=2;i<=NF;i++){ split($i,a,"\""); print a[1] }
+  }' "$JSON_CONF" \
+  | awk -F/ '($2=="" || $2==32){print $1}' \
+  | sort -u \
+  | xargs
+)
+echo "==> CLIENT_IPS: $CLIENT_IPS"
+#
+# 2) Dùng UCI để tìm MAC tương ứng, fallback sang ubus nếu cần
+#
+CLIENT_MACS=""
+DHCP_CFG="$(uci show dhcp)"
+LEASES_JSON="$(ubus call luci-rpc getDHCPLeases 2>/dev/null)"
+
+for ip in $CLIENT_IPS; do
+  # 2.1) static lookup trong UCI dhcp.@host
+  idx=$(printf '%s\n' "$DHCP_CFG" \
+        | grep -E "dhcp\.@host\[[0-9]+\]\.ip='$ip'" \
+        | sed -n 's/.*@host\[\([0-9]\+\)\].*/\1/p')
+
+  if [ -n "$idx" ]; then
+    # tìm mac trong static hosts
+    mac=$(printf '%s\n' "$DHCP_CFG" \
+          | grep "dhcp.@host\[$idx\].mac=" \
+          | cut -d"'" -f2)
+  else
+    # 2) fallback: dynamic lease file
+    mac=$(awk -v ip="$ip" '$3==ip { print $2; exit }' /tmp/dhcp.leases)
+  fi
+
+  if [ -n "$mac" ]; then
+    CLIENT_MACS="$CLIENT_MACS $mac"
+  else
+    echo "⚠️ Warning: no MAC found for IP $ip"
+  fi
+done
+
+# Trim whitespace
+CLIENT_MACS=$(echo $CLIENT_MACS)
+echo "==> CLIENT_MACS: $CLIENT_MACS"
+# Tên chain iptables mangle
+CHAIN_NAME="GENROUTER"
+
+# Bảng route cho proxy / block
+PROXY_TABLE=200
+BLOCK_TABLE=201
+# [FIX 2026-09-03] dai LAN thuc te (192.14.0.1/20 -> 192.14.0.0/20)
+LAN_NET_CIDR=$(ip -4 -o addr show dev "${LAN_IF:-br-lan}" 2>/dev/null | awk '{print $4}' | head -1 | \
+  awk -F/ '{split($1,o,"."); m=$2; if(m==""){m=24}; if(m>=24){print o[1]"."o[2]"."o[3]".0/"m} \
+  else if(m>=16){b=int(o[3]/(2^(24-m)))*(2^(24-m)); print o[1]"."o[2]"."b".0/"m} \
+  else {print o[1]"."o[2]".0.0/"m}}')
+[ -n "$LAN_NET_CIDR" ] || LAN_NET_CIDR=192.14.0.0/20
+
+
+# Interface LAN/WAN tự detect
+LAN_IF="br-lan"
+WAN_IF=$(uci -q get network.wan.device)
+[ -z "$WAN_IF" ] && WAN_IF=$(ip route get 8.8.8.8 2>/dev/null \
+                  | awk '/ dev /{print $5;exit}')
+
+# Gateway WAN
+WAN_GW=$(ip route get 8.8.8.8 2>/dev/null \
+           | awk '/ via /{print $3;exit}')
+#### 3) ĐĂNG KÝ BẢNG ROUTE
+# [FIX 2026-09-03] Ban vendor dang ky SAI: "100 proxy" + "200 block" trong khi
+# PROXY_TABLE=200 va BLOCK_TABLE=201 => ten 'block' tro sang table 200 (table
+# proxy), nen `ip route show table block` tra ve noi dung table 200 va che mat
+# viec table 201 dang RONG (kill-switch chet im lang).
+# Nay dang ky dung theo bien so, va don sach dong trung truoc khi them.
+sed -i -e '/^100 proxy$/d' -e '/^200 block$/d' /etc/iproute2/rt_tables
+grep -qE "^${PROXY_TABLE}[[:space:]]+proxy$" /etc/iproute2/rt_tables || \
+  printf '%s\tproxy\n' "$PROXY_TABLE" >> /etc/iproute2/rt_tables
+grep -qE "^${BLOCK_TABLE}[[:space:]]+block$" /etc/iproute2/rt_tables || \
+  printf '%s\tblock\n' "$BLOCK_TABLE" >> /etc/iproute2/rt_tables
+### ===== Hàm khởi động =====
+start_tproxy(){
+  echo "[+] Starting TPROXY + kill-switch …"
+  
+  # --- 1) Policy-routing kill-switch ---
+  # xóa rule cũ nếu có
+  ip rule del fwmark $FW_MARK lookup $PROXY_TABLE 2>/dev/null
+  ip rule del iif $LAN_IF lookup $BLOCK_TABLE 2>/dev/null
+  
+  # flush tables
+  ip route flush table $PROXY_TABLE 2>/dev/null
+  ip route flush table $BLOCK_TABLE 2>/dev/null
+  
+  # rule: marked packets → proxy table
+  ip rule add fwmark $FW_MARK lookup $PROXY_TABLE priority 100
+  
+  # rule: mọi packet khác từ LAN → block table
+  ip rule add iif $LAN_IF lookup $BLOCK_TABLE priority 1000
+  
+  # routes:
+  ip route add local default dev lo               table $PROXY_TABLE
+  # [FIX 2026-09-03] Ban vendor: "unreachable 0.0.0.0/0 dev lo" -> ip tra
+  # "Gateway, device and multipath can not be used together" (rc=2) nen
+  # table 201 LUON RONG => LAN roi xuong table main => ra WAN truc tiep.
+  # Dung cu phap hop le, va giu duong noi bo (intra-LAN/link-local/multicast).
+  ip route replace $LAN_NET_CIDR dev $LAN_IF        table $BLOCK_TABLE 2>/dev/null
+  ip route replace 169.254.0.0/16 dev $LAN_IF       table $BLOCK_TABLE 2>/dev/null
+  ip route replace 224.0.0.0/4    dev $LAN_IF       table $BLOCK_TABLE 2>/dev/null
+  ip route replace unreachable default              table $BLOCK_TABLE
+  
+  # --- 2) TPROXY mangle chain ---
+  # nạp module
+  modprobe xt_TPROXY     >/dev/null 2>&1
+  modprobe nf_tproxy_ipv4>/dev/null 2>&1
+  
+  # xóa chain cũ
+  iptables -t mangle -D PREROUTING -i "$LAN_IF" -j $CHAIN_NAME 2>/dev/null
+  iptables -t mangle -F $CHAIN_NAME    2>/dev/null
+  iptables -t mangle -X $CHAIN_NAME    2>/dev/null
+  
+  # tạo lại
+  iptables -t mangle -N $CHAIN_NAME
+  
+  # skip local & RFC1918 & DNS
+  for net in 127.0.0.0/8 169.254.0.0/16 10.0.0.0/8 \
+             172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 \
+             224.0.0.0/4 240.0.0.0/4; do
+    iptables -t mangle -A $CHAIN_NAME -d $net -j RETURN
+  done
+  iptables -t mangle -A $CHAIN_NAME -s "$WAN_IF" -j RETURN
+  iptables -t mangle -A $CHAIN_NAME -p tcp --dport 53 -j RETURN
+  # [FIX07 RETURN intra-LAN 2026-09-03] Luu luong LAN -> chinh router PHAI
+  # RETURN, khong duoc TPROXY, neu khong mat SSH 886 / GUI 9001 / 19123.
+  # Dat NGAY DAU chain de moi rule TPROXY sau do khong the giu.
+  LAN_IP_ADDR=$(ip -4 -o addr show dev "${LAN_IF:-br-lan}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
+  [ -n "$LAN_IP_ADDR" ] || LAN_IP_ADDR=192.14.0.1
+  iptables -t mangle -I $CHAIN_NAME 1 -s $LAN_NET_CIDR -d $LAN_IP_ADDR/32 -j RETURN
+
+  iptables -t mangle -A $CHAIN_NAME -p udp --dport 53 -j RETURN
+  
+  # đánh dấu & redirect CLIENT_IPS
+  for ip in $CLIENT_IPS; do
+    iptables -t mangle -A $CHAIN_NAME -s $ip -p tcp \
+      -j TPROXY --on-port $TPROXY_PORT --tproxy-mark $FW_MARK/$FW_MARK
+  done
+  
+  # đánh dấu & redirect CLIENT_MACS
+  for mac in $CLIENT_MACS; do
+    iptables -t mangle -A $CHAIN_NAME -m mac --mac-source $mac -p tcp \
+      -j TPROXY --on-port $TPROXY_PORT --tproxy-mark $FW_MARK/$FW_MARK
+  done
+  
+  # hook chain
+  iptables -t mangle -I PREROUTING -i "$LAN_IF" -j $CHAIN_NAME
+  
+  echo "[+] Done."
+  
+  # hiển thị để kiểm tra
+  echo
+  echo "=== IP rules ==="
+  ip rule show | sed -n '1,5p'
+  echo
+  echo "=== proxy table (200) ==="
+  ip route show table $PROXY_TABLE
+  echo
+  echo "=== block table (201) ==="
+  ip route show table $BLOCK_TABLE
+  echo
+  echo "=== mangle chain $CHAIN_NAME ==="
+  iptables -t mangle -vnL $CHAIN_NAME
+
+# [FIX 2026-09-03] start_tproxy FLUSH chain GENROUTER nen mat rule bao ve
+# (ipset genrouter_vpn RETURN) va co the lam le kill-switch. Goi guard NGAY,
+# khong cho cron 60 s.
+[ -x /etc/genrouter_killswitch.sh ] && /etc/genrouter_killswitch.sh >/dev/null 2>&1
+[ -x /etc/gen_vpn_guard.sh ] && /etc/gen_vpn_guard.sh fix >/dev/null 2>&1
+
+}
+
+### ===== Hàm dừng =====
+stop_tproxy(){
+  echo "[-] Stopping TPROXY + kill-switch …"
+  # remove ip rules
+  ip rule del fwmark $FW_MARK lookup $PROXY_TABLE 2>/dev/null
+  ip rule del iif $LAN_IF lookup $BLOCK_TABLE 2>/dev/null
+  
+  # flush tables
+  ip route flush table $PROXY_TABLE 2>/dev/null
+  ip route flush table $BLOCK_TABLE 2>/dev/null
+  
+  # clean iptables
+  iptables -t mangle -D PREROUTING -i "$LAN_IF" -j $CHAIN_NAME 2>/dev/null
+  iptables -t mangle -F $CHAIN_NAME    2>/dev/null
+  iptables -t mangle -X $CHAIN_NAME    2>/dev/null
+  
+  echo "[-] Done."
+}
+
+case "$1" in
+    -s|--start)
+        start_tproxy
+        ;;
+    -k|--kill|--stop)
+        stop_tproxy
+        ;;
+    *)
+        echo "Usage: $0 -s (start) | -k (stop)"
+        ;;
+esac

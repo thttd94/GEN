@@ -16,3 +16,13 @@ gen_backup/
 update_codes.json
 tmp_router/
 *.tgz
+# [V3 2026-09-04] bo sung: file sinh-ra / du lieu khach
+logs/
+persist/
+session_state.json*
+active_session.json
+.version_cache.json
+update/
+*.bak.*
+*.new
+*.tmp_write*

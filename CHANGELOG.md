@@ -1,5 +1,70 @@
 # CHANGELOG
 
+## Ver 2.40 (2026-09-04) - guard chi so `proxy_username_uniq`
+
+**Lo hong duoc bit:** `config_doc_stats()` chi DEM SO LUONG. Neu vendor `/etc/genrouter/server:9000`
+regenerate `gencore.json` voi 322 outbound nhung **cung 1 username** thi moi chi so cu van dung
+(`proxy_outbounds=322`, `dns_proxy_doh=322`, `dns_loop_breaker=1`, `source_ip_cidr=322`,
+`route_rules=326`) => `degraded=[]` => guard va `config_self_heal` **khong biet gi** => fix 322
+session rieng bay mat IM LANG. Y het kich ban da xay ra voi loop-breaker truoc Ver 2.34.
+
+- Them chi so `proxy_username_uniq` = so username KHAC NHAU va KHONG RONG cua outbound `proxy_*`.
+- Them vao ca `config_doc_stats()` **va** `CONFIG_GUARD_KEYS` (nay 6 khoa) => duoc canh o CA 2 duong:
+  post-vendor guard va `config_self_heal` dinh ky 60 s.
+- **Khong bao dong gia o mode VPN**: `presets/session1.json` co 322 outbound `{"type":"direct"}`
+  khong co `username` => want = 0.
+- Dry-run 7/7 PASS truoc khi ghi, gom: VPN uniq=0, PROXY uniq=322, vendor gop ve 1 username thi
+  `degraded=['proxy_username_uniq']`, pha 161/322 thi uniq=162 (bat ca pha MOT PHAN), va round-trip
+  GUI `build_ip_identity_text` -> `apply_ip_identity_config` giu nguyen 322/322 tag.
+
+## Ver 2.39 (2026-09-04) - 322 session Lumi RIENG cho 322 may
+
+**Nut co chai that su cua mode proxy:** ca 322 outbound dung CHUNG 1 session string
+`lumi-...._session-<da-che>` => ca 322 may ra Internet bang **cung 1 exit IP** => tran cung.
+
+- Moi client IP nhan mot session string rieng: thay 4 ky tu cuoi cua phan `session-` bang 4 ky tu
+  base36 lay tu `md5("gr|" + ip_client)`. Deterministic (giu sticky IP) va **do dai username khong doi**.
+- Ap cho `/etc/genrouter/config/proxy.json` + `gencore.json` (3 ban: runtime, config, `presets/session3.json`).
+- Cach patch: sua tren **RAW TEXT bang regex object-level**, KHONG `json.dumps` lai, de giu 100% format
+  compact. Bang chung: kich thuoc byte **khong doi** (128.565 va 60.751). Bat buoc, vi vendor `tproxy`
+  quet chuoi `"source_ip_cidr"` bang awk - file pretty se lam `CLIENT_IPS` rong => mat het rule TPROXY.
+
+**Do duoc (cung host `speedtest.singapore.linode.com`, cua so co dinh T=3 s, 2 vong xen ke):**
+
+| stream | chung 1 session | 322 session rieng | ty le |
+|---|---|---|---|
+| 1 | 38,65 Mbps | 103,39 Mbps | 2,68x |
+| 4 | 56,33 Mbps | 296,53 Mbps | 5,26x |
+| 10 | 57,55 Mbps | 567,38 Mbps | 9,86x |
+| 20 | 57,59 Mbps | 921,49 Mbps | **16,00x** |
+
+Chung 1 session **bao hoa phang ~57,5 Mbps** o ca 4/10/20 stream (them stream khong them toc do),
+trong khi 322 session rieng scale gan tuyen tinh. Truoc khi sua, do voi tai that cua 322 may:
+**9,14 Mbps**; sau khi sua: **842 Mbps** (10 stream).
+
+Da bac bo cac gia thuyet khac bang so do: CPU i3-3220, `mssfix`/phan manh, buffer socket 208 KB,
+tran 1 tunnel OpenVPN (chi ung voi mode VPN), va **tang so outbound la vo ich**
+(1 proxy 1 stream 4,66 / 1 proxy 8 stream 28,33 / 8 proxy 21,69 / 16 proxy 32,20 Mbps).
+Upstream Lumi **khong** gioi han so session: 64 session dong thoi -> 63 exit IP khac nhau, 0 loi.
+
+## Ver 2.35-2.38 (2026-09-02 .. 2026-09-03)
+
+- **FORMAT-HEAL / `save_gencore_json()`**: doi toan bo cho ghi file gencore tu `save_json()` sang
+  `save_gencore_json()` ghi COMPACT (khong dau cach sau `:`). Ly do: vendor `tproxy` doc
+  `source_ip_cidr` bang awk theo chuoi, file pretty-print lam `CLIENT_IPS` rong.
+- **deny-by-default** + vendor tproxy fix: `CLIENT_IPS` chi `/32`, tra lai `RETURN` intra-LAN
+  (LAN -> router 886/9001/19123 bi RST khi `tproxy -s` rebuild chain), `rt_tables` dang ky theo SO
+  chu khong theo ten (vendor ghi sai `100 proxy` / `200 block` lam `ip route show table block`
+  tra ve noi dung table 200 => che mat viec table 201 RONG = kill-switch chet im lang),
+  va `unreachable default` cho table 201 dung cu phap hop le.
+- `config_self_heal()` + apply lock: nguon su that la preset cua session dang active, so bang
+  `CONFIG_GUARD_KEYS`, tu phuc hoi khi vendor ghi de.
+
+## Ver 2.34 (2026-09-04) - guard loop-breaker DNS
+
+Vendor ghi de bao nhieu lan cung khong mat rule `as.lumiproxy.io -> dnsmasq`. Bang chung bat that:
+`dns_proxy_doh:0<-322 dns_loop_breaker:0<-1 dns_proxy_legacy:322<-0` luc 05:02:41 khi apply session 3.
+
 ## Ver 2.33
 Ban nay sua 3 BUG GOC RE gay ra su co ngay 30/08 (mat cau hinh 2, mat mang may `192.14.5.x`, va `map.txt` bi xoa trang 114 may). Ca 3 deu la loi CO SAN tu cac ban truoc, khong phai sinh ra tu Ver 2.32.
 

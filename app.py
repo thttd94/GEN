@@ -460,7 +460,7 @@ def ensure_sessions_exist():
     PRESET_DIR.mkdir(parents=True, exist_ok=True)
     base_file = SESSION_FILES['1']
     if not base_file.exists():
-        save_json(base_file, load_json(RUNTIME_SOURCE_FILE))
+        save_gencore_json(base_file, load_json(RUNTIME_SOURCE_FILE))
     create_default_second = not SESSION_STATE_FILE.exists()
     for session_id, path in SESSION_FILES.items():
         if session_id == '1':
@@ -468,7 +468,7 @@ def ensure_sessions_exist():
         if create_default_second and (not path.exists()) and (session_id == '2'):
             data = load_json(base_file)
             clear_session_proxies(data)
-            save_json(path, data)
+            save_gencore_json(path, data)
         if not get_saved_ip_identity_text(session_id) and path.exists():
             data = load_json(path)
             rows = build_ip_identity_rows_from_data(data)
@@ -484,7 +484,7 @@ def create_session(session_id, source_session='1'):
     source_file = SESSION_FILES.get(source_session, SESSION_FILES['1'])
     if not source_file.exists():
         source_file = SESSION_FILES['1']
-    save_json(SESSION_FILES[session_id], load_json(source_file))
+    save_gencore_json(SESSION_FILES[session_id], load_json(source_file))
     state = load_session_state()
     source_state = state.get(source_session, {}) if isinstance(state.get(source_session), dict) else {}
     state[session_id] = json.loads(json.dumps(source_state))
@@ -805,8 +805,226 @@ def _ss_try_heal(reason: str):
     _ss_log(f'SELF-HEAL ({reason}): khong con backup nao dung duoc — can can thiep tay')
     return None
 
+CATCH_ALL_DNS_RULE_KEYS = {'outbound', 'server', 'action', 'disable_cache', 'client_subnet'}
+
 def save_json(path: Path, data):
     _ss_atomic_write(Path(path), json.dumps(data, ensure_ascii=False, indent=2) + '\n')
+
+def save_gencore_json(path, data):
+    """Ghi file dinh dang gencore o che do COMPACT (khong dau cach sau ':').
+
+    BAT BUOC. Script vendor /etc/genrouter/core/tproxy lay danh sach client
+    bang:  awk -F'"source_ip_cidr":"'  (KHONG co dau cach). Neu file ghi
+    pretty (indent=2) thi awk khop 0 lan -> CLIENT_IPS rong -> 0 rule TPROXY
+    -> toan bo LAN mat mang, MA `tproxy -s` van tra rc=0 (loi im lang).
+    Da do thuc te 2026-09-02: file pretty => awk tim thay 0 IP.
+    Xem memory/2026-09-02.md muc 26.2, 27.2, 31.
+    """
+    _ss_atomic_write(Path(path), json.dumps(data, ensure_ascii=False, separators=(',', ':')) + '\n')
+
+
+DNS_LOOP_BREAKER_SERVER = 'dnsmasq'
+
+
+# ---------------------------------------------------------------------------
+# L1 DENY-BY-DEFAULT (them 2026-09-03)
+# Nguyen tac nghiep vu: thiet bi KHONG di qua proxy/VPN thi KHONG duoc ra
+# internet -- ke ca DNS. Truoc ban nay, may la (khong co trong 322 mapping)
+# van resolve duoc vi dns.final='dnsmasq' -> dnsmasq -> 8.8.8.8 UDP/53 ra WAN
+# (da do that: conntrack 192.168.8.3->8.8.8.8:53, va 192.14.1.10 query 3 lan
+# du khong co rule nao). Do la ro ten mien + SNI ra ngoai.
+#
+# VI SAO PHAI NAM CUOI: dns.rules va route.rules la FIRST-MATCH-WINS. Rule
+# deny theo source_ip_cidr = ca /20 nen no PHU luon 322 rule proxy_*. Neu no
+# dung truoc thi 322 may mat DNS ngay. Ver 2.36 da tung mac dung loi nay voi
+# rule {'action':'route','outbound':'block'} (tich tu 8 cai, 7 cai troi len
+# index 3..9 => chan sach 322 may). Vi vay: DUY NHAT + CUOI CUNG, va moi lan
+# rebuild deu loc cai cu roi append lai.
+# ---------------------------------------------------------------------------
+
+def _detect_lan_deny_cidr(fallback='192.14.0.0/20'):
+    """Lay dai LAN tu br-lan (192.14.0.1/20 -> 192.14.0.0/20)."""
+    try:
+        import ipaddress
+        out = subprocess.run(['ip', '-4', '-o', 'addr', 'show', 'dev', 'br-lan'],
+                             capture_output=True, timeout=5).stdout.decode('utf-8', 'replace')
+        for token in out.split():
+            if token.count('.') == 3 and '/' in token:
+                return str(ipaddress.ip_interface(token).network)
+    except Exception:
+        pass
+    return fallback
+
+
+LAN_DENY_CIDR = _detect_lan_deny_cidr()
+DNS_DENY_RULE_KEYS = {'action', 'method', 'source_ip_cidr', 'no_drop'}
+ROUTE_DENY_RULE_KEYS = {'action', 'method', 'no_drop'}
+
+
+def dns_deny_rule():
+    return {'action': 'reject', 'source_ip_cidr': LAN_DENY_CIDR}
+
+
+def is_dns_deny_rule(rule):
+    """Rule DNS deny-by-default do chinh app sinh ra (khong co dieu kien khac)."""
+    if not isinstance(rule, dict):
+        return False
+    if str(rule.get('action', '')).strip() != 'reject':
+        return False
+    return set(rule.keys()) <= DNS_DENY_RULE_KEYS
+
+
+def ensure_dns_deny_last(data):
+    """Bao dam dns.rules co DUNG 1 rule deny va no o VI TRI CUOI. 1 = da doi."""
+    dns = (data or {}).setdefault('dns', {})
+    rules = dns.get('rules')
+    if not isinstance(rules, list):
+        rules = []
+    kept = [rule for rule in rules if not is_dns_deny_rule(rule)]
+    new_rules = kept + [dns_deny_rule()]
+    if new_rules == rules:
+        return 0
+    dns['rules'] = new_rules
+    return 1
+
+
+def is_route_deny_rule(rule):
+    """Chot deny cua route: ca dang cu 'outbound block' va dang moi 'reject'."""
+    if not isinstance(rule, dict):
+        return False
+    action = str(rule.get('action', '')).strip()
+    if action == 'route' and str(rule.get('outbound', '')).strip() == 'block':
+        return set(rule.keys()) <= {'action', 'outbound'}
+    if action == 'reject':
+        return set(rule.keys()) <= ROUTE_DENY_RULE_KEYS
+    return False
+
+
+def ensure_route_deny_last(data):
+    """Chot route deny = {'action':'reject','method':'drop'}, DUY NHAT + CUOI.
+
+    Doi tu {'action':'route','outbound':'block'} sang 'reject' vi outbounds
+    KHONG co tag 'block' (sing-box 1.11 bo type block) => rule cu la orphan,
+    tung spam 'outbound not found: block' 3.8 lan/giay.
+    """
+    route = (data or {}).setdefault('route', {})
+    rules = route.get('rules')
+    if not isinstance(rules, list):
+        rules = []
+    kept = [rule for rule in rules if not is_route_deny_rule(rule)]
+    new_rules = kept + [{'action': 'reject', 'method': 'drop'}]
+    if new_rules == rules:
+        return 0
+    route['rules'] = new_rules
+    return 1
+
+
+
+def collect_proxy_dns_hosts(data):
+    """Ten mien (KHONG phai IP) ma cac outbound proxy_* dung lam server.
+
+    Chi ten mien moi can resolve; neu outbound tro bang IP thi khong co
+    vong lap nao ca. Doc tu chinh outbounds nen tu dong dung du nha cung
+    cap co doi endpoint (as.lumiproxy.io -> ...).
+    """
+    hosts = []
+    seen = set()
+    for item in ((data or {}).get('outbounds') or []):
+        if not isinstance(item, dict):
+            continue
+        if not str(item.get('tag', '')).strip().startswith('proxy_'):
+            continue
+        host = str(item.get('server', '') or '').strip()
+        if not host or host in seen:
+            continue
+        if re.match(r'^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$', host) or ':' in host:
+            continue
+        seen.add(host)
+        hosts.append(host)
+    return sorted(hosts)
+
+
+def is_dns_loop_breaker(rule):
+    """Rule pha vong lap do chinh app sinh ra."""
+    if not isinstance(rule, dict):
+        return False
+    if str(rule.get('server', '')).strip() != DNS_LOOP_BREAKER_SERVER:
+        return False
+    if not rule.get('domain'):
+        return False
+    return not rule.get('source_ip_cidr')
+
+
+def ensure_dns_loop_breaker(data):
+    """Chen rule pha VONG LAP DNS len dau dns.rules. Tra ve 1 neu co doi.
+
+    TAI SAO BAT BUOC (da do thuc te 2026-09-03, 19984 dong loi):
+      outbound proxy_N co server = "as.lumiproxy.io" (TEN MIEN).
+      dns server proxy_N = https://8.8.8.8/dns-query voi detour = proxy_N.
+      Muon dung detour proxy_N, sing-box phai resolve ten mien do truoc.
+      Query resolve MANG THEO source_ip cua client => khop lai dung rule
+      source_ip_cidr => server proxy_N => detour proxy_N => VONG LAP.
+      sing-box bao: "DNS query loopback in transport[proxy_N]", conntrack
+      ra proxy tut ve 0, toan bo LAN mat mang.
+    Rule nay tro ten mien cua proxy ve dnsmasq (KHONG co detour) nen cat
+    duoc vong lap, va vi chi khop dung ten mien do nen KHONG che 322 rule
+    DoH theo source_ip_cidr phia sau.
+    Xem memory/2026-09-03.md muc 3 + 4.
+    """
+    dns = (data or {}).setdefault('dns', {})
+    rules = dns.get('rules')
+    if not isinstance(rules, list):
+        rules = []
+    kept = [rule for rule in rules if not is_dns_loop_breaker(rule)]
+    hosts = collect_proxy_dns_hosts(data)
+    # Khong tao rule tro toi server khong ton tai -- dung sai lam cua
+    # 'outbound: block' (tag khong co trong outbounds => sing-box spam
+    # 'outbound not found: block' 3.8 lan/giay).
+    tags = {str(item.get('tag', '')).strip()
+            for item in (dns.get('servers') or []) if isinstance(item, dict)}
+    if not hosts or DNS_LOOP_BREAKER_SERVER not in tags:
+        if len(kept) != len(rules):
+            dns['rules'] = kept
+            return 1
+        return 0
+    wanted = {'action': 'route', 'server': DNS_LOOP_BREAKER_SERVER, 'domain': list(hosts)}
+    new_rules = [wanted] + kept
+    if new_rules == rules:
+        return 0
+    dns['rules'] = new_rules
+    return 1
+
+
+def is_catch_all_dns_rule(rule):
+    """Rule DNS bat-het kieu {"outbound":"any","server":"google"}.
+
+    Trong sing-box, dns rule co outbound="any" va KHONG co dieu kien nao khac
+    la match-all. Vi dns rule la first-match-wins, rule nay dung o vi tri 0 se
+    an het 322 rule DoH theo source_ip_cidr phia sau => moi query di ra
+    server "google" = 8.8.8.8 port 53 = bi proxy Lumi tra SOCKS rep=2 => lag.
+    Da do: 8.8.8.8:53 rep=2, :853 rep=2, :443 rep=0 + DoH 443 chay OK 5/5.
+    """
+    if not isinstance(rule, dict):
+        return False
+    if str(rule.get('outbound', '')).strip() != 'any':
+        return False
+    return set(rule.keys()) <= CATCH_ALL_DNS_RULE_KEYS
+
+
+def strip_catch_all_dns_rules(data):
+    """Bo moi dns rule bat-het. Tra ve so rule da bo."""
+    try:
+        dns = (data or {}).get('dns') or {}
+        rules = dns.get('rules')
+    except Exception:
+        return 0
+    if not isinstance(rules, list):
+        return 0
+    kept = [r for r in rules if not is_catch_all_dns_rule(r)]
+    removed = len(rules) - len(kept)
+    if removed:
+        dns['rules'] = kept
+    return removed
 
 def load_admanager_config():
     cfg = {'routers': {}, 'apps': {'tiktok': {'label': 'TikTok', 'matchPrefixes': ['com.ss.iphone.ugc.Ame', 'com.zhiliaoapp.musically']}, 'tiktok_lite': {'label': 'TikTok Lite', 'matchPrefixes': ['com.ss.iphone.ugc.AmeLite', 'com.zhiliaoapp.musically.lite', 'com.ss.iphone.ugc.tiktoklite']}}, 'backupCommands': {'TikTok': 'echo BACKUP_TIKTOK', 'TikTok Lite': 'echo BACKUP_TIKTOK_LITE'}, 'defaultOutput': '', 'uiState': {'router': '', 'port': '46952', 'machineMode': 'all', 'machineRange': '1-10', 'machineList': '1,2,3', 'dateMode': 'one', 'dateStart': '', 'dateEnd': '', 'appFilter': 'All', 'fullScan': False, 'doBackupBeforePull': False, 'deleteAfterPull': False, 'outputRoot': ''}}
@@ -1545,11 +1763,28 @@ def migrate_proxy_dns_file(path: Path):
     except Exception:
         return 0
     changed = migrate_proxy_dns_servers(data)
-    if changed:
+    changed += strip_catch_all_dns_rules(data)
+    changed += ensure_dns_loop_breaker(data)
+    changed += ensure_dns_deny_last(data)
+    changed += ensure_route_deny_last(data)
+    # Ver 2.35: tu chua ca DINH DANG. File pretty lam awk cua vendor tproxy
+    # khop 0 IP -> xoa sach rule TPROXY. Phat hien pretty thi ghi lai compact
+    # ngay, du noi dung khong doi.
+    need_compact = False
+    try:
+        need_compact = b'"source_ip_cidr": "' in Path(path).read_bytes()
+    except Exception:
+        need_compact = False
+    if changed or need_compact:
         try:
-            save_json(path, data)
+            save_gencore_json(path, data)
         except Exception:
             return 0
+        if need_compact and not changed:
+            try:
+                _wd_log(f'FORMAT-HEAL: ghi lai {Path(path).name} dang compact (vendor tproxy awk can)')
+            except Exception:
+                pass
     return changed
 
 def apply_rows_to_data(data, rows_by_tag, session='1'):
@@ -1620,9 +1855,11 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     old_route_rules = list(route.get('rules', []) or [])
     old_outbounds = list(outbounds or [])
     old_outbound_map = {str(item.get('tag', '')).strip(): item for item in old_outbounds if str(item.get('tag', '')).strip().startswith('proxy_')}
-    dns_rules = [rule for rule in old_dns_rules if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('server', '')).strip().startswith('proxy_'))]
-    if not dns_rules:
-        dns_rules = [{'outbound': 'any', 'server': 'google'}]
+    dns_rules = [rule for rule in old_dns_rules if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('server', '')).strip().startswith('proxy_')) and not is_catch_all_dns_rule(rule)]
+    # Ver 2.35: KHONG tao lai rule bat-het nua. Rule bat-het dung o vi tri 0
+    # se an het 322 rule DoH theo source_ip_cidr (dns rule = first-match-wins),
+    # dua moi query ve server 'google' 8.8.8.8:53 -- port bi proxy chan (rep=2).
+    # Query khong khop rule nao vẫn co dns.final = dnsmasq (127.0.0.1:5353, do 47ms OK).
     dns_servers = [server for server in old_dns_servers if not str(server.get('tag', '')).strip().startswith('proxy_')]
     route_rules = [rule for rule in old_route_rules if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip().startswith('proxy_'))]
     if not route_rules:
@@ -1634,14 +1871,28 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     route_rules = [rule for rule in route_rules if not (str(rule.get('action', '')).strip() == 'route' and str(rule.get('outbound', '')).strip() in ('direct', 'proxy'))]
     for tag, ip in ordered_items:
         route_rules.append({'action': 'route', 'outbound': tag, 'source_ip_cidr': ip})
-    route_rules.append({'action': 'route', 'outbound': 'block'})
+    # Ver 2.36: chot deny-by-default PHAI DUY NHAT va nam CUOI cung.
+    # Rule nay khong co dieu kien nen sing-box coi la MATCH-ALL; neu no
+    # dung TRUOC 322 rule source_ip_cidr thi toan bo may khach mat mang.
+    # Truoc 2.36 app append them 1 cai moi lan rebuild ma khong loc cai cu
+    # => tich tu 8 cai, 7 cai troi len index [3..9] => chan sach 322 may.
+    # KHONG duoc bo han: route.final = None va outbounds[0] = 'direct',
+    # bo het thi traffic la ra WAN truc tiep => LO IP THAT cua khach.
+    route_rules = [rule for rule in route_rules if not is_route_deny_rule(rule)]
+    route_rules.append({'action': 'reject', 'method': 'drop'})
     rebuilt_outbounds = list(non_proxy_outbounds)
     for tag, _ip in ordered_items:
         rebuilt_outbounds.append(old_outbound_map.get(tag, {'tag': tag, 'type': 'block'}))
+    # deny-by-default cho DNS: DUY NHAT + CUOI (sau 322 rule source_ip_cidr)
+    dns_rules = [rule for rule in dns_rules if not is_dns_deny_rule(rule)]
+    dns_rules.append(dns_deny_rule())
     dns['rules'] = dns_rules
     dns['servers'] = dns_servers
     route['rules'] = route_rules
     data['outbounds'] = rebuilt_outbounds
+    # Ver 2.36: BAT BUOC goi sau khi da gan outbounds (ham doc outbounds).
+    # Thieu dong nay = moi lan Apply se xoa rule pha vong lap => mat mang.
+    ensure_dns_loop_breaker(data)
     return data
 
 def _record_vpn_declaration(ipaddr, account):
@@ -1680,7 +1931,7 @@ def _record_vpn_declaration(ipaddr, account):
             obs = data.setdefault('outbounds', [])
             idx = {str(o.get('tag')): i for i, o in enumerate(obs) if o.get('tag')}
             set_outbound_proxy(obs, idx, tag, 'vpn:' + acc if acc else '', 'vpn' if acc else 'socks5')
-            save_json(SESSION_FILES[sid], data)
+            save_gencore_json(SESSION_FILES[sid], data)
     except Exception:
         pass
 
@@ -1728,7 +1979,7 @@ def _record_vpn_declaration_bulk(pairs):
             touched += 1
         if touched:
             save_session_state(state)
-            save_json(SESSION_FILES[sid], data)
+            save_gencore_json(SESSION_FILES[sid], data)
     except Exception:
         pass
 
@@ -1812,6 +2063,15 @@ def apply_ip_identity_config(data, text, session='1'):
     return data
 
 def build_old_gui_update_proxy_payload_from_rows(rows):
+    """Dung payload cho binary vendor 9000 (/api/update_proxy).
+
+    Ver 2.34: truoc day may di VPN (proxyType='vpn', proxy='vpn:<account>')
+    cung bi nem vao parse_proxy(). parse_proxy doi dung 4 phan
+    host:port:user:pass nen nem ValueError, roi bi 'except: ALLOW' che di
+    khong mot dong log. Ket qua: preset VPN thuan sinh payload 322/322 ALLOW
+    va vendor coi day la lenh 'reset proxy config'. Nay nhan dien VPN TRUOC,
+    va moi loi parse that su deu duoc ghi log de khong con che loi nghiep vu.
+    """
     payload = {}
     for row in rows or []:
         ip = str((row or {}).get('ip', '')).strip()
@@ -1822,6 +2082,9 @@ def build_old_gui_update_proxy_payload_from_rows(rows):
         if not proxy:
             payload[ip] = 'ALLOW'
             continue
+        if proxy_type == 'vpn' or proxy.startswith('vpn:'):
+            payload[ip] = 'ALLOW'
+            continue
         try:
             server, port, username, password = parse_proxy(proxy)
             item = {'type': 'http' if proxy_type == 'http' else 'socks5', 'server': server, 'port': int(port)}
@@ -1829,7 +2092,11 @@ def build_old_gui_update_proxy_payload_from_rows(rows):
                 item['username'] = username
                 item['password'] = password
             payload[ip] = item
-        except Exception:
+        except Exception as parse_error:
+            try:
+                _ss_log(f'PAYLOAD-PARSE-FAIL ip={ip} type={proxy_type} proxy={proxy[:48]!r}: {parse_error} -> ALLOW')
+            except Exception:
+                pass
             payload[ip] = 'ALLOW'
     return payload
 
@@ -1982,12 +2249,182 @@ def sync_vpn_state_on_apply(session_id, runtime_data, results):
     except Exception as e:
         results.append({'cmd': cmd, 'ok': False, 'error': str(e), **summary})
 
+def config_doc_stats(doc):
+    """Dem cac chi so bat bien cua mot doc gencore (dung de phat hien config bi sut)."""
+    stats = {'proxy_outbounds': 0, 'source_ip_cidr': 0, 'route_rules': 0, 'dns_servers': 0,
+             'dns_proxy_doh': 0, 'dns_proxy_legacy': 0,
+             'dns_loop_breaker': 0, 'proxy_dns_hosts': 0, 'proxy_username_uniq': 0}
+    try:
+        outbounds = (doc or {}).get('outbounds') or []
+        route_rules = ((doc or {}).get('route') or {}).get('rules') or []
+        dns_servers = ((doc or {}).get('dns') or {}).get('servers') or []
+        dns_rules = ((doc or {}).get('dns') or {}).get('rules') or []
+    except Exception:
+        return stats
+    stats['proxy_outbounds'] = sum(1 for x in outbounds if str((x or {}).get('tag', '')).startswith('proxy_'))
+    stats['route_rules'] = len(route_rules)
+    stats['source_ip_cidr'] = sum(1 for r in route_rules if str((r or {}).get('source_ip_cidr', '')).strip())
+    stats['dns_servers'] = len(dns_servers)
+    for s in dns_servers:
+        if not str((s or {}).get('tag', '')).startswith('proxy_'):
+            continue
+        if str((s or {}).get('address', '')).strip().startswith('https://'):
+            stats['dns_proxy_doh'] += 1
+        else:
+            stats['dns_proxy_legacy'] += 1
+    # Ver 2.39: canh luon RULE PHA VONG LAP DNS (as.lumiproxy.io -> dnsmasq).
+    # Truoc day CONFIG_GUARD_KEYS khong co chi so nay nen khi vendor
+    # /etc/genrouter/server:9000 regenerate gencore.json, rule bi xoa MA GUARDIAN
+    # KHONG BIET -> 322 may quay lai canh vong lap DNS (da xay ra 2026-09-03,
+    # 19984 dong 'DNS query loopback in transport[proxy_N]').
+    # Dung phep so sanh TUONG DOI got[k] < want[k] nen:
+    #   mode VPN  (outbound proxy_* khong co ten mien): want=0 -> khong bao dong gia.
+    #   mode proxy (co as.lumiproxy.io)               : want=1 -> vendor xoa la phat hien ngay.
+    try:
+        stats['proxy_dns_hosts'] = len(collect_proxy_dns_hosts(doc))
+        stats['dns_loop_breaker'] = sum(1 for r in dns_rules if is_dns_loop_breaker(r))
+    except Exception:
+        pass
+    # Ver 2.40: canh SO SESSION STRING RIENG cua cac outbound proxy_*.
+    # Vi sao can: cac chi so tren chi DEM SO LUONG. Neu vendor 9000 regenerate
+    # 322 outbound nhung dat CUNG 1 username (dung tinh trang truoc 2026-09-04)
+    # thi proxy_outbounds=322, dns_proxy_doh=322, dns_loop_breaker=1 => degraded=[]
+    # => guard KHONG BIET, va 322 may quay lai chen chung 1 exit IP Lumi.
+    # Do that: 10 stream 842 Mbps (322 session rieng) tut ve 319 Mbps (chung 1 session),
+    # 20 stream 864 -> 48 Mbps. Vi Lumi sticky theo session string nen dung chung
+    # = dung chung 1 IP residential = dung chung 1 tran bang thong.
+    # Dem username KHAC NHAU va KHONG RONG. Phep so sanh cua guard la got[k] < want[k]:
+    #   mode VPN  (session1: outbound proxy_* la {'type': 'direct'}, khong username) -> want=0
+    #             => khong bao gio bao dong gia.
+    #   mode proxy (session3 da tach 322 session)                                    -> want=322
+    #             => vendor ghi ve 1 username la phat hien ngay.
+    try:
+        stats['proxy_username_uniq'] = len({
+            str((x or {}).get('username') or '').strip()
+            for x in outbounds
+            if str((x or {}).get('tag', '')).startswith('proxy_')
+            and str((x or {}).get('username') or '').strip()
+        })
+    except Exception:
+        pass
+    return stats
+
+CONFIG_GUARD_KEYS = ('proxy_outbounds', 'source_ip_cidr', 'route_rules', 'dns_proxy_doh', 'dns_loop_breaker', 'proxy_username_uniq')
+
+def config_guard_restore(expected_doc, results=None, reason='post-vendor'):
+    """So config tren disk voi ban dung trong RAM, sut thi ghi lai ngay + log vet.
+
+    Vi sao can: chu so huu THAT cua /etc/genrouter/config/gencore.json la binary
+    vendor /etc/genrouter/server (port 9000) — grep toan router cho thay chi
+    minh no doc/ghi config/proxy.json. Khi bi POST /api/update_proxy no
+    regenerate gencore.json bang template rieng cua no:
+      - DNS cua proxy_* bi doi tu 'https://8.8.8.8/dns-query' (443) ve
+        'tcp://8.8.8.8' (port 53);
+      - mat bot route rule; truong hop payload toan ALLOW thi ve han template
+        mac dinh chi con outbound {direct} va 0 source_ip_cidr.
+    Lumi chan port 53 (SOCKS5 tra rep=2 'not allowed by ruleset' — da do that)
+    nen ngay khi DNS ve port 53 la client khong resolve duoc => 'khong vao
+    duoc web'. Con neu source_ip_cidr ve 0 thi /etc/genrouter/core/tproxy
+    (awk theo chuoi "source_ip_cidr") sinh CLIENT_IPS rong => chain GENROUTER
+    khong con rule TPROXY nao.
+    Tra ve True neu da phai ghi lai.
+    """
+    want = config_doc_stats(expected_doc)
+    try:
+        on_disk = load_json(RUNTIME_SOURCE_FILE)
+    except Exception as read_error:
+        try:
+            _ss_log(f'CONFIG-GUARD ({reason}): khong doc duoc {RUNTIME_SOURCE_FILE}: {read_error} — ghi lai ban trong RAM')
+        except Exception:
+            pass
+        try:
+            save_gencore_json(RUNTIME_SOURCE_FILE, expected_doc)
+        except Exception:
+            pass
+        return True
+    got = config_doc_stats(on_disk)
+    degraded = [k for k in CONFIG_GUARD_KEYS if got.get(k, 0) < want.get(k, 0)]
+    if got.get('dns_proxy_legacy', 0) > want.get('dns_proxy_legacy', 0):
+        degraded.append('dns_proxy_legacy')
+    if not degraded:
+        return False
+    detail = ' '.join(f'{k}:{got.get(k, 0)}<-{want.get(k, 0)}' for k in degraded)
+    try:
+        save_gencore_json(RUNTIME_SOURCE_FILE, expected_doc)
+    except Exception as write_error:
+        try:
+            _ss_log(f'CONFIG-COLLAPSE-BLOCKED ({reason}) THAT BAI khi ghi lai: {write_error} | {detail}')
+        except Exception:
+            pass
+        if isinstance(results, list):
+            results.append({'cmd': 'config guard: chan config bi sut', 'ok': False, 'reason': reason, 'degraded': degraded, 'error': str(write_error)})
+        return False
+    try:
+        _ss_log(f'CONFIG-COLLAPSE-BLOCKED ({reason}): {detail} — da ghi lai {RUNTIME_SOURCE_FILE} tu ban trong RAM')
+    except Exception:
+        pass
+    if isinstance(results, list):
+        results.append({'cmd': 'config guard: chan config bi sut', 'ok': True, 'reason': reason, 'degraded': degraded, 'on_disk': got, 'expected': want, 'restored': str(RUNTIME_SOURCE_FILE)})
+    return True
+
+APPLY_LOCK_FILE = BASE_DIR / 'persist' / '.apply_lock'
+APPLY_LOCK_TTL = 180
+
+def _apply_lock_active():
+    """Co dang co mot lan apply chay khong? (co TTL de khong khoa vinh vien)
+
+    Ver 2.34 — co che tai phat #5: moi lan apply, genrunner KILL gencore co chu
+    y. Watchdog khong phan biet 'chet do apply' vs 'chet do su co' nen tu dung
+    lai gencore ngay giua cua so apply => hai ben cung ghi/doc
+    /etc/genrouter/config/gencore.json mot luc (race tren dung file dang sap).
+    Da quan sat that trong log: 01/09 18:51:40 va 02/09 08:30:50 (gio router).
+    Co nay cho watchdog + self-heal biet duong tranh ra.
+    TTL bat buoc: neu app crash giua apply thi cai co phai tu het han, neu
+    khong thi watchdog/self-heal bi vo hieu hoa vinh vien.
+    """
+    try:
+        info = json.loads(APPLY_LOCK_FILE.read_text(encoding='utf-8'))
+    except Exception:
+        return False
+    try:
+        ts = float(info.get('ts', 0))
+    except Exception:
+        return False
+    return time.time() - ts < APPLY_LOCK_TTL
+
+def _apply_lock_acquire(session=''):
+    try:
+        APPLY_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        APPLY_LOCK_FILE.write_text(json.dumps({'pid': os.getpid(), 'ts': time.time(), 'session': str(session)}), encoding='utf-8')
+        return True
+    except Exception:
+        return False
+
+def _apply_lock_release():
+    try:
+        APPLY_LOCK_FILE.unlink()
+        return True
+    except Exception:
+        return False
+
+def _wd_apply_in_progress():
+    """Ten rieng cho watchdog doc — cung mot co, de doc log/grep de hieu."""
+    return _apply_lock_active()
+
 def run_apply(session: str, rows_override=None):
+    """Ver 2.34: bao boc apply bang co khoa, try/finally de khong bao gio ket co."""
+    _apply_lock_acquire(session)
+    try:
+        return _run_apply_inner(session, rows_override=rows_override)
+    finally:
+        _apply_lock_release()
+
+def _run_apply_inner(session: str, rows_override=None):
     preset_source = SESSION_FILES[session]
     results = []
     preset_data = load_json(preset_source)
     if str(preset_source) != str(RUNTIME_SOURCE_FILE):
-        save_json(RUNTIME_SOURCE_FILE, preset_data)
+        save_gencore_json(RUNTIME_SOURCE_FILE, preset_data)
         results.append({'cmd': 'copy selected preset to gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE)})
     else:
         results.append({'cmd': 'copy selected preset to gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE), 'skipped': True})
@@ -1998,25 +2435,44 @@ def run_apply(session: str, rows_override=None):
             if tag:
                 rows_by_tag[tag] = row or {}
         runtime_data = apply_rows_to_data(load_json(RUNTIME_SOURCE_FILE), rows_by_tag, session=session)
-        save_json(preset_source, runtime_data)
-        save_json(RUNTIME_SOURCE_FILE, runtime_data)
+        save_gencore_json(preset_source, runtime_data)
+        save_gencore_json(RUNTIME_SOURCE_FILE, runtime_data)
         results.append({'cmd': 'save posted proxy assignments to preset and gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE), 'count': len(rows_by_tag)})
     else:
         runtime_data = load_json(RUNTIME_SOURCE_FILE)
     dns_migrated = migrate_proxy_dns_servers(runtime_data)
     if dns_migrated:
-        save_json(RUNTIME_SOURCE_FILE, runtime_data)
+        save_gencore_json(RUNTIME_SOURCE_FILE, runtime_data)
         results.append({'cmd': 'migrate proxy DNS servers to DoH 443', 'ok': True, 'target': str(RUNTIME_SOURCE_FILE), 'count': dns_migrated})
     rows = extract_rows(runtime_data, session=session)
     payload = build_old_gui_update_proxy_payload_from_rows(rows)
-    try:
-        resp = call_old_gui('/api/update_proxy', method='POST', data=payload)
-        results.append({'cmd': 'POST old GUI /api/update_proxy', 'ok': True, 'source': str(RUNTIME_SOURCE_FILE), 'count': len(payload), 'response': resp.get('data') if isinstance(resp, dict) else resp})
-    except Exception as e:
-        results.append({'cmd': 'POST old GUI /api/update_proxy', 'ok': False, 'source': str(RUNTIME_SOURCE_FILE), 'count': len(payload), 'error': str(e)})
+    real_proxy_count = sum(1 for v in payload.values() if isinstance(v, dict))
+    if payload and real_proxy_count == 0:
+        # Ver 2.34: payload toan ALLOW (preset VPN thuan) chinh la thu kich hoat
+        # duong 'reset proxy config' cua binary vendor 9000, lam gencore.json bi
+        # regenerate ve template mac dinh. Khong co proxy that thi khong co gi de
+        # bao vendor ca — bo qua POST. call_old_gui() vo hieu voi /api/update_proxy
+        # cung tra ve 'local-compat success', nen bo qua khong lam lech logic nao.
+        try:
+            _ss_log(f'UPDATE-PROXY-SKIPPED session={session}: {len(payload)} entry deu ALLOW (khong co proxy that) — khong POST cho vendor 9000')
+        except Exception:
+            pass
+        results.append({'cmd': 'POST old GUI /api/update_proxy', 'ok': True, 'skipped': True, 'source': str(RUNTIME_SOURCE_FILE), 'count': len(payload), 'reason': 'payload toan ALLOW; POST se lam vendor 9000 reset gencore.json'})
+    else:
+        try:
+            resp = call_old_gui('/api/update_proxy', method='POST', data=payload)
+            results.append({'cmd': 'POST old GUI /api/update_proxy', 'ok': True, 'source': str(RUNTIME_SOURCE_FILE), 'count': len(payload), 'proxies': real_proxy_count, 'response': resp.get('data') if isinstance(resp, dict) else resp})
+        except Exception as e:
+            results.append({'cmd': 'POST old GUI /api/update_proxy', 'ok': False, 'source': str(RUNTIME_SOURCE_FILE), 'count': len(payload), 'proxies': real_proxy_count, 'error': str(e)})
+        # Vendor vua co the da ghi de RUNTIME_SOURCE_FILE bang template cua no.
+        config_guard_restore(runtime_data, results, reason=f'sau POST update_proxy session {session}')
     if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
-        save_json(RUNTIME_FILE, load_json(RUNTIME_SOURCE_FILE))
-        results.append({'cmd': 'sync runtime file copy only', 'ok': True, 'source': str(RUNTIME_SOURCE_FILE), 'target': str(RUNTIME_FILE)})
+        # Ver 2.34: ghi runtime tu runtime_data trong RAM — nguon su that cua app.
+        # Truoc day la save_json(RUNTIME_FILE, load_json(RUNTIME_SOURCE_FILE)) tuc
+        # doc lai chinh file vendor vua ghi de, nen ban sap cua vendor duoc nhan
+        # ban thang sang runtime.
+        save_gencore_json(RUNTIME_FILE, runtime_data)
+        results.append({'cmd': 'sync runtime file copy only', 'ok': True, 'source': 'runtime_data (RAM)', 'target': str(RUNTIME_FILE)})
     else:
         results.append({'cmd': 'sync runtime file copy only', 'ok': True, 'source': str(RUNTIME_SOURCE_FILE), 'target': str(RUNTIME_FILE), 'skipped': True})
     sync_vpn_state_on_apply(session, runtime_data, results)
@@ -2646,7 +3102,7 @@ def _wd_log(msg):
         pass
 
 def _wd_thresholds():
-    thr = {'zombie_tw': 5000, 'ct_total': 40000, 'consecutive': 2, 'cooldown_sec': 600}
+    thr = {'zombie_tw': 5000, 'ct_total': 40000, 'consecutive': 2, 'cooldown_sec': 600, 'heal_cooldown_sec': 300}
     try:
         cfg = json.loads((WD_PERSIST_DIR / 'watchdog.json').read_text())
         for k in list(thr.keys()):
@@ -2756,8 +3212,139 @@ def wd_boot_recover(force=False):
         _wd_log(f'boot_recover error: {e}')
     return res
 
+HEAL_STATE = {'last_heal': 0.0, 'count': 0}
+TPROXY_BIN = GENRUNNER.parent / 'tproxy'
+
+def _heal_run_shell(cmd, timeout=90):
+    try:
+        p = subprocess.run(['sh', '-c', cmd], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout)
+        return {'ok': p.returncode == 0, 'rc': p.returncode, 'output': ((p.stdout or '') + (p.stderr or ''))[:400]}
+    except Exception as e:
+        return {'ok': False, 'rc': -1, 'output': str(e)}
+
+def _heal_read_stats(path):
+    """Tra (stats, ly_do_hong). File mat/rong/JSON hong deu la 'hong'."""
+    p = Path(path)
+    try:
+        if not p.exists():
+            return (None, 'mat file')
+        if p.stat().st_size == 0:
+            return (None, 'file rong 0 byte')
+        return (config_doc_stats(load_json(p)), '')
+    except Exception as e:
+        return (None, f'khong doc duoc: {e}')
+
+def config_self_heal(reason='watchdog'):
+    """TU PHAT HIEN + TU CHUA config gencore bi sut, dinh ky, khong can nguoi.
+
+    Vi sao can (cac co che tai phat da chung minh bang bang chung tren router):
+      #2 binary vendor 9000 regenerate config/gencore.json sau POST
+         /api/update_proxy -> mat DoH 443, mat route rule, xau nhat la ve han
+         template chi con outbound {direct} va 0 source_ip_cidr.
+      #3 /etc/rc.local co 'exit 0' o dong 18 => moi fix dat sau do la code chet.
+      #4 genrunner `rm -f` file runtime khi gencore start fail, va `cp` config
+         da sap sang runtime. /etc/shm/tproxy dap lai rt_tables moi lan chay.
+    Hau qua chung: source_ip_cidr = 0 => /etc/genrouter/core/tproxy (awk theo
+    chuoi 'source_ip_cidr') sinh CLIENT_IPS RONG => chain GENROUTER khong con
+    rule TPROXY nao => client Lumi 'khong vao duoc web'.
+    Da xac minh truc tiep trong /tmp/genrouter/log.txt: '==> CLIENT_IPS:' rong.
+
+    Nguon su that = preset cua session dang active. So sanh CA HAI file
+    (config/gencore.json + gencore.json runtime) voi preset; sut thi ghi lai.
+
+    An toan BAT BUOC: `tproxy -s` FLUSH chain GENROUTER, xoa luon rule
+    '--match-set genrouter_vpn src -j RETURN' => 322 may VPN bi TPROXY hijack
+    vao gencore (ro IP that). Cron gen_vpn_guard chi chay moi phut nen co cua
+    so nguy hiem <= 60 s. Vi vay phai goi /etc/gen_vpn_guard.sh fix NGAY SAU
+    tproxy -s, khong phó thác cho cron. Guard idempotent nen goi them vo hai.
+    """
+    res = {'healed': False, 'reason': '', 'degraded': []}
+    if _apply_lock_active():
+        res['reason'] = 'dang apply (apply lock bat) — hoan lai de tranh race'
+        return res
+    try:
+        active = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '1')).strip() or '1'
+    except Exception:
+        active = '1'
+    preset = SESSION_FILES.get(active)
+    if not preset or not Path(preset).exists():
+        res['reason'] = f'khong thay preset session {active}'
+        return res
+    try:
+        expected = load_json(preset)
+    except Exception as e:
+        res['reason'] = f'preset session {active} khong doc duoc: {e}'
+        return res
+    want = config_doc_stats(expected)
+    if want.get('proxy_outbounds', 0) == 0 and want.get('source_ip_cidr', 0) == 0:
+        # Preset cung rong => khong co ban dung nao de dua vao. Ghi de luc nay
+        # chi lam hong them. Bao cao ra ngoai, de nguoi quyet dinh.
+        res['reason'] = f'preset session {active} cung rong (proxy_outbounds=0, source_ip_cidr=0) — khong ghi de'
+        return res
+    degraded = []
+    for label, path in (('config', RUNTIME_SOURCE_FILE), ('runtime', RUNTIME_FILE)):
+        stats, broken = _heal_read_stats(path)
+        if stats is None:
+            degraded.append(f'{label}:{broken}')
+            continue
+        miss = [k for k in CONFIG_GUARD_KEYS if stats.get(k, 0) < want.get(k, 0)]
+        if stats.get('dns_proxy_legacy', 0) > want.get('dns_proxy_legacy', 0):
+            miss.append('dns_proxy_legacy')
+        if miss:
+            degraded.append(f"{label}:" + ' '.join(f'{k}:{stats.get(k, 0)}<-{want.get(k, 0)}' for k in miss))
+    res['degraded'] = degraded
+    if not degraded:
+        res['reason'] = 'ca hai file con nguyen — khong lam gi'
+        return res
+    thr = _wd_thresholds()
+    cooldown = int(thr.get('heal_cooldown_sec', 300) or 300)
+    now = time.time()
+    if now - float(HEAL_STATE.get('last_heal', 0.0)) < cooldown:
+        res['reason'] = f'cooldown {cooldown}s con hieu luc — hoan lai (van dang sut: {"; ".join(degraded)})'
+        _wd_log(f'HEAL-SKIP cooldown ({reason}): {"; ".join(degraded)}')
+        return res
+    HEAL_STATE['last_heal'] = now
+    HEAL_STATE['count'] = HEAL_STATE.get('count', 0) + 1
+    doc = expected
+    try:
+        if migrate_proxy_dns_servers(doc):
+            save_gencore_json(preset, doc)
+    except Exception as e:
+        _wd_log(f'HEAL warn: migrate DNS loi: {e}')
+    steps = []
+    for path in (RUNTIME_SOURCE_FILE, RUNTIME_FILE):
+        try:
+            save_gencore_json(path, doc)
+            steps.append(f'ghi {Path(path).name} OK')
+        except Exception as e:
+            steps.append(f'ghi {Path(path).name} FAIL: {e}')
+            _wd_log(f'HEAL FAIL ghi {path}: {e}')
+    r_tp = _heal_run_shell(f'{TPROXY_BIN} -s')
+    steps.append(f"tproxy -s rc={r_tp.get('rc')}")
+    # NGAY SAU tproxy -s: tra lai rule bao ve VPN. Khong doi cron 60 s.
+    r_gd = _heal_run_shell(f'{VPN_GUARD} fix')
+    steps.append(f"gen_vpn_guard fix rc={r_gd.get('rc')}")
+    try:
+        if _gencore_pid():
+            gencore_restart_detached('config_heal')
+            steps.append('gencore restart')
+        else:
+            gencore_start_detached('config_heal')
+            steps.append('gencore start')
+    except Exception as e:
+        steps.append(f'gencore FAIL: {e}')
+    res['healed'] = True
+    res['steps'] = steps
+    res['reason'] = 'da chua'
+    _wd_log(f'HEAL ({reason}) session={active}: SUT [{"; ".join(degraded)}] -> ' + '; '.join(steps))
+    try:
+        _ss_log(f'CONFIG-SELF-HEAL ({reason}) session={active}: ' + '; '.join(degraded))
+    except Exception:
+        pass
+    return res
+
 def gencore_watchdog_loop():
-    _wd_log('WATCHDOG start (Ver 2.17)')
+    _wd_log('WATCHDOG start (Ver 2.34: + config self-heal, + apply lock)')
     time.sleep(25)
     try:
         wd_boot_recover()
@@ -2773,6 +3360,14 @@ def gencore_watchdog_loop():
             tw, total = cnt
             pid = _gencore_pid()
             now = time.time()
+            if _wd_apply_in_progress():
+                # Dang apply: genrunner kill gencore co chu y roi tu dung lai.
+                # Chen vao day la dua tren dung file config dang duoc ghi.
+                continue
+            try:
+                config_self_heal(reason='watchdog')
+            except Exception as e:
+                _wd_log(f'heal error: {e}')
             if not pid:
                 if not Path('/usr/bin/gencore').exists():
                     continue
@@ -2984,7 +3579,7 @@ class Handler(BaseHTTPRequestHandler):
                     rows = payload.get('rows', [])
                     rows_by_tag = {str(row['tag']).strip(): row for row in rows if row.get('tag')}
                     data = load_json(SESSION_FILES[session_id])
-                    save_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag, session=session_id))
+                    save_gencore_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag, session=session_id))
                     name = payload.get('name')
                     if name is not None:
                         name = set_session_display_name(session_id, name)
@@ -3006,7 +3601,7 @@ class Handler(BaseHTTPRequestHandler):
                         pass
                     return self._send_json({'ok': True, 'applied': session_id, 'results': results})
             if path == '/api/pm/clone/1-to-2':
-                save_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
+                save_gencore_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
                 state = load_session_state()
                 if isinstance(state, dict) and isinstance(state.get('1'), dict):
                     state['2'] = json.loads(json.dumps(state.get('1', {})))
@@ -3042,7 +3637,7 @@ class Handler(BaseHTTPRequestHandler):
                 session_id = path.rsplit('/', 1)[-1]
                 if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                     data = load_json(SESSION_FILES[session_id])
-                    save_json(SESSION_FILES[session_id], remap_ip_by_tag(data))
+                    save_gencore_json(SESSION_FILES[session_id], remap_ip_by_tag(data))
                     return self._send_json({'ok': True, 'session': session_id})
             if path.startswith('/api/pm/ip-mac-config/'):
                 session_id = path.rsplit('/', 1)[-1]
@@ -3057,7 +3652,7 @@ class Handler(BaseHTTPRequestHandler):
                             continue
                         data = load_json(session_file)
                         data = apply_ip_identity_config(data, normalized_text, session=sid)
-                        save_json(session_file, data)
+                        save_gencore_json(session_file, data)
                         if payload.get('apply_runtime') and sid == session_id:
                             apply_results = run_apply(sid)
                     if sync_router:

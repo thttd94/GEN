@@ -1,1 +1,1 @@
-Ver 2.33
+Ver 2.40 (322 session Lumi rieng cho 322 may + guard proxy_username_uniq: vendor ghi de 322 outbound ve cung 1 username la bi phat hien ngay)

@@ -1,0 +1,37 @@
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
+
+/etc/genrouter_fix_fw.sh
+# [golden-image-firstboot] may moi: /data thieu fs -> tu mkfs + gieo lai du lieu VPN
+(
+sleep 12
+if ! grep -q ' /data ' /proc/mounts; then
+  mount /dev/sda4 /data 2>/dev/null || { mkfs.ext4 -F /dev/sda4 >/dev/null 2>&1; mount /dev/sda4 /data; }
+fi
+mkdir -p /data/vpn
+if [ -f /root/data_seed.tar.gz ] && [ ! -f /data/.seed_done ]; then
+  tar xzf /root/data_seed.tar.gz -C /
+  touch /data/.seed_done
+fi
+) &
+
+# [killswitch] khong qua proxy/VPN => khong ra WAN
+(sleep 25; /etc/genrouter_killswitch.sh) &
+exit 0
+
+# ---------------------------------------------------------------------------
+# [V5 20260904_113856] Da don 74 dong DEAD-CODE (cu la dong 21-94, sau `exit 0` o dong 20).
+# Ly do (do bang so, khong suy dien):
+#   - `exit 0` dong 20 lam toan bo phan sau KHONG BAO GIO CHAY (da test bang sh).
+#   - Phan do DU THUA: /etc/genrouter/core/tproxy tu dang ky rt_tables 200 proxy /
+#     201 block (dong 98-102), flush + dung table 200/201 (113-131), va tu them
+#     `ip rule fwmark 1234 lookup 200 priority 100` + `iif br-lan lookup 201
+#     priority 1000` (117/120). Runtime khop chinh xac vendor, khong thieu gi.
+#   - Phan do CO HAI neu chay: cuoi doan no xoa moi rule fwmark 0x4d2 roi add lai
+#     **priority 50** (vendor dung 100) => bom hen gio neu ai do xoa `exit 0`.
+#   - `table 100` ma no init KHONG TON TAI trong runtime => vo nghia.
+# Nguyen van 74 dong da luu tai:
+#   /data/genrouter_backups/v5_rclocal_20260904_113856/_etc_rc.local  (ban day du truoc khi don)
+#   /etc/rc.local.deadcode.txt         (ban trich rieng phan da bo)
+# Rollback: sh /data/genrouter_backups/v5_rclocal_20260904_113856/rollback.sh
+# ---------------------------------------------------------------------------
