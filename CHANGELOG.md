@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## Ver 2.41-b (2026-09-04) - BAO MAT: bo mat khau cai dat khoi source
+
+**Van de:** `install.sh` gan cung `INSTALL_PASSWORD="..."` dang chu ro, trong khi repo nay la
+**PUBLIC**. Mat khau do da nam trong git history tu lau => phai coi nhu **da lo vinh vien**;
+doi gia tri moi khong xoa duoc vet trong cac commit cu.
+
+**Fix:**
+
+- Khong con bat ky mat khau dang chu ro nao trong `install.sh`. Chi luu **SHA-256 cua salt+pass**
+  (`INSTALL_PASSWORD_SALT` + `INSTALL_PASSWORD_SHA256`), ca hai deu ghi de duoc bang bien moi truong
+  nen moi router tu dat mat khau rieng ma khong phai sua file.
+- **Chan cung hash cua mat khau cu da lo** (`INSTALL_PASSWORD_LEAKED_SHA256`): du ai co tinh dat lai
+  mat khau do thi van bi tu choi, kem thong bao huong dan doi mat khau.
+- Them 2 duong chay khong tuong tac: `INSTALL_PASSWORD=...` (bien moi truong) va
+  `INSTALL_SKIP_PASSWORD=1` (bo qua co chu y, in canh bao).
+- Ham `_hash_pass()` dung `sha256sum` neu co, khong thi fallback sang `python3` - chay duoc tren
+  OpenWrt toi gian.
+
+**Da test tren router that** (chi test doan kiem mat khau, khong chay install): 7/7 case dung -
+mat khau moi PASS, mat khau cu bi chan FAIL, mat khau sai FAIL, mat khau rong FAIL, bypass PASS,
+hash tu dat khop PASS, hash tu dat lech FAIL. Kem: khong con chuoi mat khau cu trong file, khong con
+gan `INSTALL_PASSWORD=` chu ro, `sh -n install.sh` pass.
+
+**Luu y con lai:** mat khau cu van doc duoc trong git history cua cac commit truoc. Vi vay no da bi
+chan cung trong code thay vi chi don gian doi gia tri.
+
+**Huong dan doi mat khau:** xem `README_INSTALL.md` muc "Mat khau cai dat".
+
 ## Ver 2.41 (2026-09-04) - FIX GOC: DNS local phai co `detour: "direct"`
 
 **Su co that:** 322 may khach mat phan giai ten HOAN TOAN. Bat goi tren `br-lan`: **73 query / 0

@@ -4,18 +4,63 @@ set -eu
 APP_DIR="/opt/proxy-manager-v1"
 SERVICE_NAME="proxy-manager-v1"
 PORT="18123"
-# Đổi pass này trước khi đưa lên GitHub
-INSTALL_PASSWORD="123123@qq"
 
-INPUT_PASS="$(python3 - <<'PY'
+# ---------------------------------------------------------------------------
+# Mat khau cai dat - Ver 2.41: KHONG con luu dang chu ro trong repo.
+#
+# VI SAO: repo nay PUBLIC. Mat khau cu (dat trong install.sh tu ban dau) da nam
+# trong git history tu lau => phai coi nhu DA LO. Doi mat khau khong du, vi nguoi
+# ta van doc duoc trong commit cu; nen o day chi luu SHA-256, va chan thang hash
+# cua mat khau cu do.
+#
+# CACH DOI MAT KHAU (khong can sua file nay):
+#   INSTALL_PASSWORD_SHA256="$(printf '%s' 'genrouter-install-v241<matkhaumoi>' | sha256sum | awk '{print $1}')" sh install.sh
+# CACH CHAY KHONG CAN NHAP TAY (CI / script):
+#   INSTALL_PASSWORD='<matkhau>' sh install.sh
+# CACH BO QUA HOAN TOAN (khi da o trong mang tin cay):
+#   INSTALL_SKIP_PASSWORD=1 sh install.sh
+# ---------------------------------------------------------------------------
+INSTALL_PASSWORD_SALT="${INSTALL_PASSWORD_SALT:-genrouter-install-v241}"
+INSTALL_PASSWORD_SHA256="${INSTALL_PASSWORD_SHA256:-766e02e383489ff92139960e5234d59d5b5aad3d4cc9992bace9749148125a91}"
+# hash cua mat khau da lo, luon bi tu choi du co ai co tinh dat lai
+INSTALL_PASSWORD_LEAKED_SHA256="5c2f0dbb47d419e2daae234516f6aeba0627d2d6446705921b6ce03a89c03fef"
+
+_hash_pass() {
+  # $1 = mat khau tho -> in ra sha256 cua salt+pass
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "${INSTALL_PASSWORD_SALT}$1" | sha256sum | awk '{print $1}'
+  else
+    INSTALL_PASSWORD_SALT="$INSTALL_PASSWORD_SALT" _P="$1" python3 - <<'PY'
+import hashlib, os
+print(hashlib.sha256((os.environ['INSTALL_PASSWORD_SALT'] + os.environ['_P']).encode()).hexdigest())
+PY
+  fi
+}
+
+if [ "${INSTALL_SKIP_PASSWORD:-0}" = "1" ]; then
+  echo "[WARN] Bo qua kiem tra mat khau (INSTALL_SKIP_PASSWORD=1)"
+else
+  if [ -n "${INSTALL_PASSWORD:-}" ]; then
+    INPUT_PASS="$INSTALL_PASSWORD"
+  else
+    INPUT_PASS="$(python3 - <<'PY'
 import getpass
 print(getpass.getpass('Enter install password: '), end='')
 PY
 )"
+  fi
 
-if [ "$INPUT_PASS" != "$INSTALL_PASSWORD" ]; then
-  echo "[ERR] Wrong password"
-  exit 1
+  INPUT_HASH="$(_hash_pass "$INPUT_PASS")"
+  if [ "$INPUT_HASH" = "$INSTALL_PASSWORD_LEAKED_SHA256" ]; then
+    echo "[ERR] Mat khau nay da bi lo trong git history cong khai - khong dung lai duoc."
+    echo "      Dat mat khau moi: xem huong dan o dau file install.sh"
+    exit 1
+  fi
+  if [ "$INPUT_HASH" != "$INSTALL_PASSWORD_SHA256" ]; then
+    echo "[ERR] Wrong password"
+    exit 1
+  fi
+  unset INPUT_PASS INPUT_HASH
 fi
 
 LAN_IP="$(uci -q get network.lan.ipaddr 2>/dev/null || echo 192.168.1.1)"
