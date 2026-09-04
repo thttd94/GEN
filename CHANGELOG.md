@@ -1,5 +1,61 @@
 # CHANGELOG
 
+## Ver 2.41 (2026-09-04) - FIX GOC: DNS local phai co `detour: "direct"`
+
+**Su co that:** 322 may khach mat phan giai ten HOAN TOAN. Bat goi tren `br-lan`: **73 query / 0
+reply**; `conntrack` client -> `192.14.0.1:53` **42/42 [UNREPLIED]**, moi luong retry 232-255 lan.
+GUI 9001, `gencore`, 644 rule TPROXY, tunnel VPN deu binh thuong => nhin ben ngoai tuong nhu khong loi.
+
+**Chuoi nhan qua (da chung minh, khong phai suy doan):**
+
+```
+dns.servers[dnsmasq] = {"address":"127.0.0.1:5353","tag":"dnsmasq"}  <-- THIEU "detour"
+  -> goi UDP ma CHINH sing-box gui ra 127.0.0.1:5353 van di qua route engine
+  -> bi route.rules[2] = {"action":"hijack-dns","protocol":"dns"} bat lai
+  -> loi "DNS query loopback in transport[dnsmasq]"
+  -> loop-breaker {as.lumiproxy.io -> dnsmasq} khong resolve duoc
+  -> outbound proxy_N (server = as.lumiproxy.io) chet
+  -> 322 may: 0 reply DNS
+```
+
+Rule loop-breaker `{"action":"route","server":"dnsmasq","domain":["as.lumiproxy.io"]}` cua Ver 2.34
+**mot minh khong du** - da tai hien: W1 (giong production) TIMEOUT, W3 (`server` la IP) chay duoc.
+Thu tu rule cung **khong** phai nguyen nhan: `hijack-dns` nam o index 2, truoc ca 322 rule client.
+
+**Fix:** them **dung 1 truong** `"detour": "direct"` cho server DNS local.
+
+- `DNS_LOCAL_DETOUR = 'direct'`, `is_local_dns_address(addr)` (hieu ca tien to `udp:// tcp:// tls://
+  https:// h3:// quic://`, chi nhan `127.0.0.1 / localhost / ::1`), `ensure_dns_local_detour(data)`.
+- Ham moi **idempotent** va **fail-safe**: bo qua tag `proxy_*`, va tra ve 0 (khong lam gi) khi
+  config khong co outbound `direct` - nen mode VPN thuan khong bi sua sai.
+- Noi vao **4 call-site** de khong con duong nao ghi config ma bo sot:
+  `migrate_proxy_dns_file`, `rebuild_gencore_rules`, `apply` chinh, `config_heal`.
+- Them chi so `dns_local_detour` vao `config_doc_stats()` **va** `CONFIG_GUARD_KEYS` (nay **7 khoa**)
+  => khi vendor `:9000` regenerate config bang template rieng lam mat truong nay thi post-vendor guard
+  va `config_self_heal` (60 s) **tu phat hien + tu ghi lai**. Da test gia lap: `degraded=['dns_local_detour']`.
+  Config dung thi `degraded=[]` (khong bao dong gia); preset VPN `session1.json` cung dem duoc 1.
+
+**Do duoc truoc/sau (cung mot cach bat goi raw AF_PACKET tren `br-lan`, co self-test truoc khi tin so):**
+
+| Chi so | Truoc fix | Sau fix |
+|---|---|---|
+| DNS reply, may **co** rule | **0 / 48 = 0%** | 20 query / 22 reply, roi 6/6 = **~100%** |
+| DNS reply, may **khong** rule | 0 | 0 - deny-by-default, **dung thiet ke** |
+| conntrack client | 42/42 **UNREPLIED** | 45 luong roi 32 luong, **0 UNREPLIED** |
+| log `loopback in transport` | co | **0** |
+| E2E that qua SOCKS Lumi | khong resolve duoc | DoH `rc=0 ans=11` ~650 ms, tai **14,0-19,7 Mbps** |
+
+**Khong gian doan dich vu:** doi app-level thi **chi restart `/etc/init.d/proxy-manager-v1`**, giu
+nguyen `pidof gencore` (24400), TPROXY 644, tun 32, GUI 200, md5 4 file config khong doi.
+
+**Ghi chu van hanh:** 176 dong `dns: exchange failed ... context deadline exceeded` con lai trong
+`/tmp/gencore_run.log` thuc ra chi la **26 query id** (6,8 dong retry/query, ~1,4% query), tap trung
+vao record HTTPS/type-65 cua Apple push - do truc tiep DoH 12 proxy x 3 loai record deu `rc=0`, va
+quet 40/322 outbound (3 lan thu/cai) cho **40/40 OK ngay lan 1** => khong phai loi cau hinh router.
+
+**Rollback:** `sh /data/genrouter_backups/v6_dnsdetour_20260904_170638/rollback.sh` (fix DNS) va
+`sh /data/genrouter_backups/v7_guard_detour_20260904_201202/rollback.sh` (guard 2.41).
+
 ## Ver 2.40 (2026-09-04) - guard chi so `proxy_username_uniq`
 
 **Lo hong duoc bit:** `config_doc_stats()` chi DEM SO LUONG. Neu vendor `/etc/genrouter/server:9000`

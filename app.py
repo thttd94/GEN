@@ -995,6 +995,61 @@ def ensure_dns_loop_breaker(data):
     return 1
 
 
+DNS_LOCAL_DETOUR = 'direct'
+
+
+def is_local_dns_address(addr):
+    """DNS server tro ve chinh router (dnsmasq local) hay khong."""
+    text = str(addr or '').strip().lower()
+    for prefix in ('udp://', 'tcp://', 'tls://', 'https://', 'h3://', 'quic://'):
+        if text.startswith(prefix):
+            text = text[len(prefix):]
+            break
+    text = text.split('/')[0]
+    host = text.rsplit(':', 1)[0] if text.count(':') == 1 else text
+    return host.strip('[]') in ('127.0.0.1', 'localhost', '::1')
+
+
+def ensure_dns_local_detour(data):
+    """Bat buoc DNS server local (dnsmasq 127.0.0.1:5353) co detour='direct'.
+
+    TAI SAO BAT BUOC (do thuc te 2026-09-04: client 0/73 reply DNS):
+      Server DNS khong co 'detour' thi ket noi ra cua CHINH sing-box di qua
+      route engine. route.rules co {'action':'hijack-dns','protocol':'dns'}
+      o index 2, nen no bat luon goi UDP sing-box gui ra 127.0.0.1:5353 va
+      day tro lai DNS module => loi "DNS query loopback in transport[dnsmasq]".
+      Hau qua day chuyen: loop breaker khong resolve duoc as.lumiproxy.io =>
+      detour proxy_N khong dung duoc => 322 may mat phan giai ten hoan toan
+      (bat goi tren br-lan: 73 query, 0 reply; client retry 255 lan/luong).
+      detour='direct' cho goi di thang, bo qua route engine => het vong lap.
+    Da kiem thuc nghiem (d263 Z2 va Z5 tren instance rieng): 3/3 query OK.
+    Xem memory/2026-09-04.md muc DNS + out263b.txt.
+    Tra ve so entry da doi.
+    """
+    dns = (data or {}).setdefault('dns', {})
+    servers = dns.get('servers')
+    if not isinstance(servers, list):
+        return 0
+    has_direct = any(isinstance(item, dict)
+                     and str(item.get('tag', '')).strip() == DNS_LOCAL_DETOUR
+                     for item in ((data or {}).get('outbounds') or []))
+    if not has_direct:
+        return 0
+    changed = 0
+    for server in servers:
+        if not isinstance(server, dict):
+            continue
+        if str(server.get('tag', '')).strip().startswith('proxy_'):
+            continue
+        if not is_local_dns_address(server.get('address')):
+            continue
+        if str(server.get('detour', '')).strip() == DNS_LOCAL_DETOUR:
+            continue
+        server['detour'] = DNS_LOCAL_DETOUR
+        changed += 1
+    return changed
+
+
 def is_catch_all_dns_rule(rule):
     """Rule DNS bat-het kieu {"outbound":"any","server":"google"}.
 
@@ -1765,6 +1820,7 @@ def migrate_proxy_dns_file(path: Path):
     changed = migrate_proxy_dns_servers(data)
     changed += strip_catch_all_dns_rules(data)
     changed += ensure_dns_loop_breaker(data)
+    changed += ensure_dns_local_detour(data)
     changed += ensure_dns_deny_last(data)
     changed += ensure_route_deny_last(data)
     # Ver 2.35: tu chua ca DINH DANG. File pretty lam awk cua vendor tproxy
@@ -1893,6 +1949,9 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     # Ver 2.36: BAT BUOC goi sau khi da gan outbounds (ham doc outbounds).
     # Thieu dong nay = moi lan Apply se xoa rule pha vong lap => mat mang.
     ensure_dns_loop_breaker(data)
+    # Ver 2.39: server DNS local phai co detour='direct', neu khong
+    # hijack-dns bat lai goi cua chinh sing-box => loopback => mat DNS.
+    ensure_dns_local_detour(data)
     return data
 
 def _record_vpn_declaration(ipaddr, account):
@@ -2253,7 +2312,8 @@ def config_doc_stats(doc):
     """Dem cac chi so bat bien cua mot doc gencore (dung de phat hien config bi sut)."""
     stats = {'proxy_outbounds': 0, 'source_ip_cidr': 0, 'route_rules': 0, 'dns_servers': 0,
              'dns_proxy_doh': 0, 'dns_proxy_legacy': 0,
-             'dns_loop_breaker': 0, 'proxy_dns_hosts': 0, 'proxy_username_uniq': 0}
+             'dns_loop_breaker': 0, 'proxy_dns_hosts': 0, 'proxy_username_uniq': 0,
+             'dns_local_detour': 0}
     try:
         outbounds = (doc or {}).get('outbounds') or []
         route_rules = ((doc or {}).get('route') or {}).get('rules') or []
@@ -2307,9 +2367,29 @@ def config_doc_stats(doc):
         })
     except Exception:
         pass
+    # Ver 2.41: canh DETOUR cua DNS server LOCAL (dnsmasq 127.0.0.1:5353).
+    # Vi sao BAT BUOC: server DNS khong co detour thi goi ra cua CHINH sing-box
+    # di qua route engine, bi rule {'action':'hijack-dns','protocol':'dns'}
+    # (index 2) bat lai => "DNS query loopback in transport[dnsmasq]" => loop
+    # breaker khong resolve duoc as.lumiproxy.io => detour proxy_N chet =>
+    # TOAN BO may khach mat phan giai ten. Da do that 2026-09-04: br-lan
+    # 73 query / 0 reply, conntrack 42/42 UNREPLIED, client retry 255 lan/luong.
+    # Sau khi them detour='direct': may co rule 20 query / 22 reply, 0 UNREPLIED.
+    # Vendor 9000 regenerate config bang template rieng => se lam mat truong nay,
+    # nen phai co trong CONFIG_GUARD_KEYS de guard/watchdog tu chua.
+    # Phep so sanh la got[k] < want[k] nen mode VPN (want cung 1) khong bao dong gia.
+    try:
+        stats['dns_local_detour'] = sum(
+            1 for s in dns_servers
+            if isinstance(s, dict)
+            and not str(s.get('tag', '')).startswith('proxy_')
+            and is_local_dns_address(s.get('address'))
+            and str(s.get('detour', '')).strip() == DNS_LOCAL_DETOUR)
+    except Exception:
+        pass
     return stats
 
-CONFIG_GUARD_KEYS = ('proxy_outbounds', 'source_ip_cidr', 'route_rules', 'dns_proxy_doh', 'dns_loop_breaker', 'proxy_username_uniq')
+CONFIG_GUARD_KEYS = ('proxy_outbounds', 'source_ip_cidr', 'route_rules', 'dns_proxy_doh', 'dns_loop_breaker', 'proxy_username_uniq', 'dns_local_detour')
 
 def config_guard_restore(expected_doc, results=None, reason='post-vendor'):
     """So config tren disk voi ban dung trong RAM, sut thi ghi lai ngay + log vet.
@@ -2441,6 +2521,9 @@ def _run_apply_inner(session: str, rows_override=None):
     else:
         runtime_data = load_json(RUNTIME_SOURCE_FILE)
     dns_migrated = migrate_proxy_dns_servers(runtime_data)
+    # Ver 2.41: apply cung phai bao dam detour cua DNS local, neu khong
+    # config vua ghi se lai roi vao vong lap hijack-dns (mat DNS toan bo).
+    dns_migrated += ensure_dns_local_detour(runtime_data)
     if dns_migrated:
         save_gencore_json(RUNTIME_SOURCE_FILE, runtime_data)
         results.append({'cmd': 'migrate proxy DNS servers to DoH 443', 'ok': True, 'target': str(RUNTIME_SOURCE_FILE), 'count': dns_migrated})
@@ -3307,7 +3390,9 @@ def config_self_heal(reason='watchdog'):
     HEAL_STATE['count'] = HEAL_STATE.get('count', 0) + 1
     doc = expected
     try:
-        if migrate_proxy_dns_servers(doc):
+        heal_dns_changed = migrate_proxy_dns_servers(doc)
+        heal_dns_changed += ensure_dns_local_detour(doc)
+        if heal_dns_changed:
             save_gencore_json(preset, doc)
     except Exception as e:
         _wd_log(f'HEAL warn: migrate DNS loi: {e}')

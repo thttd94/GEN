@@ -1,1 +1,1 @@
-Ver 2.40 (322 session Lumi rieng cho 322 may + guard proxy_username_uniq: vendor ghi de 322 outbound ve cung 1 username la bi phat hien ngay)
+Ver 2.41 (fix goc DNS: detour='direct' cho DNS local + guard khoa dns_local_detour; truoc do hijack-dns bat goi cua chinh sing-box => loopback => 322 may 0 reply DNS)
