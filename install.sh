@@ -218,6 +218,17 @@ if [ -f "$APP_DIR/tools/gen_vpn_guard_install.sh" ]; then
   sh "$APP_DIR/tools/gen_vpn_guard_install.sh" "$APP_DIR/tools/gen_vpn_guard.sh" || true
 fi
 
+# ---- [Ver 2.44] etc/: kill-switch + tproxy da sua + cron watchdog ----
+# Truoc Ver 2.44, install.sh CHI trien khai app dir va tools/, nen router moi
+# pull source ve bi THIEU 3 thanh phan nam ngoai app dir:
+#   /etc/genrouter_killswitch.sh          (chan may khong qua proxy/VPN ra WAN)
+#   /etc/genrouter/core/tproxy + /etc/shm/tproxy  (ban da sua rt_tables 200/201)
+#   dong cron */5 goi tools/dataplane_guard.py    (watchdog data-plane VPN)
+# etc_install.sh idempotent va APPEND cron, khong ghi de crontab cua vendor.
+if [ -f "$APP_DIR/tools/etc_install.sh" ] && [ -d "$SCRIPT_DIR/etc" ]; then
+  sh "$APP_DIR/tools/etc_install.sh" "$SCRIPT_DIR/etc" || echo "[WARN] etc_install.sh that bai, tiep tuc"
+fi
+
 killall frpc >/dev/null 2>&1 || true
 killall frpc_boot_loop.sh >/dev/null 2>&1 || true
 killall start_frpc_loop.sh >/dev/null 2>&1 || true

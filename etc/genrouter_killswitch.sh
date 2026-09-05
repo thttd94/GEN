@@ -2,13 +2,52 @@
 # GENROUTER KILL-SWITCH GUARD  (tao 2026-09-03)
 # Nguyen tac: thiet bi KHONG qua proxy/VPN thi KHONG duoc ra WAN.
 # Idempotent. Goi tu rc.local (boot) + cron (moi phut).
-LAN_IF=br-lan
-LAN_NET=192.14.0.0/20
+#
+# [Ver 2.44 2026-09-05] BO HET HARDCODE. Truoc day file nay dong dinh
+# LAN_NET=192.14.0.0/20 va dia chi router 192.14.0.1, nen router khac subnet
+# pull source ve la kill-switch chan SAI dai mang (hoac khong chan gi).
+# Cac tham so duoi day suy ra tu chinh he thong dang chay:
+#   LAN_IF     <- uci network.lan.device  (fallback br-lan)
+#   LAN_IP     <- dia chi IPv4 that cua LAN_IF
+#   LAN_NET    <- route proto kernel cua LAN_IF (dung prefix that: /20, /24...)
+#   TPROXY_PORT/FW_MARK <- doc tu chinh script vendor /etc/genrouter/core/tproxy
+# Rule TPROXY catch-all duoc xoa bang CHINH spec lay tu `iptables -S`,
+# khong doan tham so, nen khong the lech port/mark.
+
+# ---------- suy tham so tu he thong (KHONG hardcode) ----------
+LAN_IF="$(uci -q get network.lan.device 2>/dev/null)"
+[ -n "$LAN_IF" ] || LAN_IF="$(uci -q get network.lan.ifname 2>/dev/null)"
+[ -n "$LAN_IF" ] || LAN_IF=br-lan
+
+LAN_CIDR="$(ip -o -4 addr show dev "$LAN_IF" 2>/dev/null | awk '{print $4; exit}')"
+LAN_IP="${LAN_CIDR%%/*}"
+LAN_PLEN="${LAN_CIDR##*/}"
+[ -n "$LAN_IP" ] || LAN_IP="$(uci -q get network.lan.ipaddr 2>/dev/null)"
+case "$LAN_PLEN" in ''|*[!0-9]*) LAN_PLEN=24 ;; esac
+
+# dai LAN: uu tien route 'proto kernel' cua chinh interface do (chinh xac tuyet doi),
+# neu khong co thi tinh bang awk tu IP + prefix.
+LAN_NET="$(ip -o -4 route show dev "$LAN_IF" 2>/dev/null \
+  | awk -v p="/$LAN_PLEN" '$1 ~ p"$" && /proto kernel/ {print $1; exit}')"
+[ -n "$LAN_NET" ] || LAN_NET="$(ip -o -4 route show dev "$LAN_IF" 2>/dev/null \
+  | awk -v p="/$LAN_PLEN" '$1 ~ p"$" {print $1; exit}')"
+[ -n "$LAN_NET" ] || LAN_NET="$(echo "$LAN_IP" | awk -F. -v m="$LAN_PLEN" \
+  '{if(m>=24){print $1"."$2"."$3".0/"m} \
+    else if(m>=16){b=int($3/(2^(24-m)))*(2^(24-m)); print $1"."$2"."b".0/"m} \
+    else if(m>=8){b=int($2/(2^(16-m)))*(2^(16-m)); print $1"."b".0.0/"m} \
+    else {print $1".0.0.0/"m}}')"
+
 BLOCK_TABLE=201
 PROXY_TABLE=200
 UDP_TABLE=202
 LOG=/tmp/killswitch.log
 _log(){ echo "$(date '+%F %T') $*" >> $LOG; }
+
+# thieu tham so co ban thi DUNG NGAY: chan sai con hai hon khong chan.
+if [ -z "$LAN_IF" ] || [ -z "$LAN_IP" ] || [ -z "$LAN_NET" ]; then
+  _log "ABORT khong suy duoc LAN (LAN_IF='$LAN_IF' LAN_IP='$LAN_IP' LAN_NET='$LAN_NET')"
+  exit 0
+fi
 
 # --- table 200: local delivery cho packet TPROXY-mark 0x4d2 ---
 ip route show table $PROXY_TABLE | grep -q '^local default' || {
@@ -44,6 +83,17 @@ fi
 # --- L1: chan DNS cua may CHUA MAP (cache cua sing-box khong the lach) ---
 # sing-box tra loi tu CACHE truoc khi xet dns.rules => rule reject khong du.
 # Chan tai INPUT theo ipset dong bo tu chinh config runtime.
+#
+# [Ver 2.44 2026-09-05] SUA LOI IM LANG: ban truoc dung `comm -23` / `comm -13`,
+# nhung BusyBox tren router KHONG CO `comm` (da kiem: comm, join, paste, diff,
+# timeout, base64, fold deu thieu). Cron chay voi `>/dev/null 2>&1` nen loi
+# "comm: not found" bi nuot => khoi dong bo nay CHUA BAO GIO chay ke tu 2026-09-03
+# (log /tmp/killswitch.log: 0 dong SYNC, 0 dong MK trong suot 17 dong log).
+# 322 entry hien co la do lan tao dau tien, khong phai do dong bo.
+# Hau qua neu khong sua: doi danh sach may (them/bot/doi IP) thi ipset dung yen
+# => may MOI bi chan DNS oan, may DA BO van duoc phep hoi DNS.
+# Thay `comm` bang `awk` (BusyBox co san) - cung ngu nghia tap hop, khong them
+# phu thuoc moi.
 RT_CFG=/etc/genrouter/gencore.json
 ipset list genrouter_mapped >/dev/null 2>&1 || {
   ipset create genrouter_mapped hash:ip maxelem 4096 2>/dev/null && _log "MK ipset genrouter_mapped"; }
@@ -51,9 +101,12 @@ if [ -f "$RT_CFG" ]; then
   awk -F'"source_ip_cidr":"' '{for(i=2;i<=NF;i++){split($i,a,"\"");print a[1]}}' "$RT_CFG" \
     | sed 's#/32##' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | sort -u > /tmp/ks_mapped.txt
   if [ -s /tmp/ks_mapped.txt ]; then
-    ipset list genrouter_mapped | sed -n '/Members/,$p' | tail -n +2 | sort -u > /tmp/ks_cur.txt
-    { comm -23 /tmp/ks_mapped.txt /tmp/ks_cur.txt | sed 's/^/add genrouter_mapped /'
-      comm -13 /tmp/ks_mapped.txt /tmp/ks_cur.txt | sed 's/^/del genrouter_mapped /'; } > /tmp/ks_batch.txt
+    ipset list genrouter_mapped | sed -n '/Members/,$p' | tail -n +2 \
+      | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | sort -u > /tmp/ks_cur.txt
+    # co trong config ma chua co trong set -> add ; co trong set ma khong con trong config -> del
+    { awk 'NR==FNR{s[$1];next} !($1 in s){print "add genrouter_mapped "$1}' /tmp/ks_cur.txt /tmp/ks_mapped.txt
+      awk 'NR==FNR{s[$1];next} !($1 in s){print "del genrouter_mapped "$1}' /tmp/ks_mapped.txt /tmp/ks_cur.txt
+    } > /tmp/ks_batch.txt
     if [ -s /tmp/ks_batch.txt ]; then
       ipset restore -! < /tmp/ks_batch.txt 2>/dev/null && _log "SYNC ipset genrouter_mapped ($(wc -l < /tmp/ks_batch.txt) thay doi)"
     fi
@@ -61,7 +114,7 @@ if [ -f "$RT_CFG" ]; then
   fi
   rm -f /tmp/ks_mapped.txt
 fi
-# Chi chan khi ipset CO du lieu: set rong = chan sach 322 may.
+# Chi chan khi ipset CO du lieu: set rong = chan sach moi may trong LAN.
 if [ "$(ipset list genrouter_mapped 2>/dev/null | grep -c '^[0-9]')" -gt 0 ]; then
   DNSU="-i $LAN_IF -p udp --dport 53 -m set ! --match-set genrouter_mapped src -j REJECT --reject-with icmp-port-unreachable"
   DNST="-i $LAN_IF -p tcp --dport 53 -m set ! --match-set genrouter_mapped src -j REJECT --reject-with tcp-reset"
@@ -69,23 +122,31 @@ if [ "$(ipset list genrouter_mapped 2>/dev/null | grep -c '^[0-9]')" -gt 0 ]; th
   iptables -C INPUT $DNST 2>/dev/null || { iptables -I INPUT 1 $DNST && _log "FIX INPUT chan DNS tcp may chua map"; }
 fi
 
-# [fix09] exit 0 da chuyen xuong cuoi file: khoi guard fix06 (bao ve 192.14.0.1 + xoa TPROXY catch-all /20) bi dead-code
+# [fix09] exit 0 da chuyen xuong cuoi file: khoi guard fix06 (bao ve IP router + xoa TPROXY catch-all LAN) bi dead-code
 
-# --- [fix06 2026-09-03] bao ve duong LAN -> router + chong TPROXY catch-all /20 ---
+# --- [fix06 2026-09-03] bao ve duong LAN -> router + chong TPROXY catch-all LAN ---
 # Vendor tproxy quet source_ip_cidr trong gencore.json de dung CLIENT_IPS, nen rule
-# deny-by-default {"action":"reject","source_ip_cidr":"192.14.0.0/20"} bi bien thanh
-# TPROXY cho ca /20; dong thoi `tproxy -s` rebuild chain lam MAT rule RETURN intra-LAN
-# => LAN mat duong vao 886/9001/19123 (RST). Guard tu don.
+# deny-by-default {"action":"reject","source_ip_cidr":"<LAN>/20"} bi bien thanh
+# TPROXY cho ca dai LAN; dong thoi `tproxy -s` rebuild chain lam MAT rule RETURN
+# intra-LAN => LAN mat duong vao 886/9001/19123 (RST). Guard tu don.
 _ks6_log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> /tmp/killswitch.log; }
-if ! iptables -t mangle -S GENROUTER 2>/dev/null | grep -q -- "-d 192.14.0.1/32 -j RETURN"; then
-  iptables -t mangle -I GENROUTER 1 -s 192.14.0.0/20 -d 192.14.0.1/32 -j RETURN 2>/dev/null \
-    && _ks6_log "FIX GENROUTER tra lai RETURN intra-LAN (LAN -> router)"
+if ! iptables -t mangle -S GENROUTER 2>/dev/null | grep -q -- "-d $LAN_IP/32 -j RETURN"; then
+  iptables -t mangle -I GENROUTER 1 -s "$LAN_NET" -d "$LAN_IP/32" -j RETURN 2>/dev/null \
+    && _ks6_log "FIX GENROUTER tra lai RETURN intra-LAN ($LAN_NET -> $LAN_IP)"
 fi
-while iptables -t mangle -S GENROUTER 2>/dev/null | grep -q -- "-s 192.14.0.0/20 -p tcp -j TPROXY"; do
-  iptables -t mangle -D GENROUTER -s 192.14.0.0/20 -p tcp -j TPROXY \
-    --on-port 9888 --on-ip 0.0.0.0 --tproxy-mark 0x4d2/0x4d2 2>/dev/null || break
-  _ks6_log "FIX GENROUTER xoa TPROXY catch-all 192.14.0.0/20"
-done
+# Xoa rule TPROXY catch-all bang CHINH spec cua no (khong doan port/mark).
+# `iptables -S` sinh spec dung de nap lai, nen dua thang vao -D la khop tuyet doi.
+iptables -t mangle -S GENROUTER 2>/dev/null \
+  | grep -- "-s $LAN_NET " | grep -- '-j TPROXY' \
+  | sed 's/^-A GENROUTER //' > /tmp/ks_catchall.txt
+if [ -s /tmp/ks_catchall.txt ]; then
+  while read -r spec; do
+    [ -n "$spec" ] || continue
+    iptables -t mangle -D GENROUTER $spec 2>/dev/null \
+      && _ks6_log "FIX GENROUTER xoa TPROXY catch-all $LAN_NET"
+  done < /tmp/ks_catchall.txt
+fi
+rm -f /tmp/ks_catchall.txt
 
 # [fix09] exit cuoi file
 exit 0

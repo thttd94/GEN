@@ -1,5 +1,82 @@
 # CHANGELOG
 
+## Ver 2.44 (2026-09-05) - "FULL FINAL" thuc su: pull source ve la co du he thong
+
+Ban 2.43 tro xuong co mot khoang trong lang le: `install.sh` **chi trien khai app dir**
+(`/opt/proxy-manager-v1`) va `tools/`. Ba thanh phan nam NGOAI app dir - dung ra la mot phan
+cua he thong - khong co script nao dat chung vao dung cho:
+
+| Thanh phan | Vai tro | Hau qua khi thieu |
+|---|---|---|
+| `/etc/genrouter_killswitch.sh` | may khong qua proxy/VPN thi khong ra WAN | mat kill-switch: may chua map van ra Internet bang IP that |
+| `/etc/genrouter/core/tproxy` + `/etc/shm/tproxy` | ban vendor DA SUA `rt_tables` 200/201 | table 201 rong => kill-switch chet im lang |
+| dong cron `*/5` goi `tools/dataplane_guard.py` | watchdog data-plane VPN | tunnel chet data-plane khong ai phat hien |
+
+=> router moi `pull` source ve **chay duoc nhung khong an toan**, va khong ai biet vi khong co
+thong bao loi nao. Ver 2.44 dong khoang trong nay.
+
+### 1. `tools/etc_install.sh` (moi)
+
+`install.sh` tu goi. Idempotent, 3 viec:
+
+- Cai `etc/genrouter_killswitch.sh` -> `/etc/` (chi ghi khi noi dung khac, backup `.bak.<timestamp>`).
+- Cron: **APPEND** dong con thieu, **khong ghi de** ca file vi 3 dong dau la cua VENDOR.
+  Da thu nghiem: xoa dong `*/5` roi chay lai -> them dung 1 dong, file **giong nguyen ban tuyet doi**.
+- `tproxy`: ghi **CA HAI** `/etc/shm/tproxy` va `/etc/genrouter/core/tproxy`, roi `touch -t 202505051200`.
+
+Diem thu ba khong hien nhien: `/etc/shm/ov.sh` chay **moi phut** va copy
+`/etc/shm/<file>` -> `/etc/genrouter/core/<file>` **khi mtime cua target khac `2025-05-05`**.
+Sua mot cho hoac khong giu mtime thi ban da sua **bi ghi de bang ban vendor trong vong 60 giay**,
+khong co log nao.
+
+`etc_install.sh` khong tu chay kill-switch (doi routing/iptables) va khong tu sua `rc.local`
+(duong boot): hai viec do can nguoi xac nhan.
+
+### 2. `etc/genrouter_killswitch.sh` - bo hardcode dai LAN
+
+Truoc: `LAN_NET=192.14.0.0/20` va dia chi router `192.14.0.1` dong dinh trong file
+=> **router khac subnet pull source ve la kill-switch chan sai dai mang** (hoac khong chan gi).
+
+Nay suy tu chinh he thong dang chay: `LAN_IF` <- `uci network.lan.device`;
+`LAN_IP`/`LAN_PLEN` <- dia chi IPv4 that cua interface; `LAN_NET` <- route `proto kernel`
+cua interface do (fallback tinh bang `awk` tu IP + prefix). Thieu tham so co ban thi **dung ngay**
+thay vi chan bua. Rule TPROXY catch-all duoc xoa bang **chinh spec lay tu `iptables -S`**
+(khong doan port/mark).
+
+Do dac:
+
+- **Hanh vi y nguyen** ban cu tren router that: snapshot `iptables`/`ip rule`/`ip route`/`ipset`
+  truoc va sau = **0 dong khac**, chay lan 2 cung 0 dong khac (idempotent).
+- **Thu nghiem nguoc 5 subnet gia** (chen stub `uci`/`ip`): `10.77.5.1/24`, `172.20.130.1/17`,
+  `192.168.44.1/22` tren interface ten khac, `10.9.35.1/20` khong co route (fallback), `10.0.0.1/8`
+  -> **5/5 suy dung ca IP va dai mang**. Cung tinh huong do, ban cu van tra ve `192.14.0.0/20`.
+
+### 3. `etc/genrouter_killswitch.sh` - sua LOI IM LANG: BusyBox khong co `comm`
+
+Khoi dong bo `ipset genrouter_mapped` (lop chan DNS cua may chua map) dung `comm -23`/`comm -13`.
+Router **khong co `comm`**. Cron chay voi `>/dev/null 2>&1` nen `comm: not found` bi nuot
+=> **khoi nay chua bao gio chay ke tu 2026-09-03**: `/tmp/killswitch.log` co **0 dong `SYNC`,
+0 dong `MK`** trong suot 17 dong log. 322 entry hien co la tu lan tao dau tien, khong phai dong bo.
+
+Hau qua neu khong sua: doi danh sach may (them/bot/doi IP) thi ipset dung yen => may **moi** bi
+chan DNS oan, may **da bo** van duoc phep hoi DNS.
+
+Chua bang `awk` (BusyBox co san), cung ngu nghia tap hop, khong them phu thuoc.
+Thu nghiem nguoc tren ipset gia: tap hien tai `{1,2,9}`, config `{1,2,3,4}` ->
+sinh dung `add 3`, `add 4`, `del 9`; `ipset restore` xong ra dung `{1,2,3,4}`; chay lan 2
+batch **rong** (idempotent). Chay ban da cai tren router: **stderr sach**.
+
+Da quet toan bo 35 script tren router de tim loai loi nay: `comm` con 2 cho (da sua),
+`curl` 7 cho nhung deu co nhanh `command -v` du phong. Cac lenh khac khong co tren router:
+`join`, `paste`, `diff`, `timeout`, `base64`, `fold`, `logrotate`, `unshare`, `xxd`, `realpath`,
+`column`, `shuf`, `tac`, `rev`, `nproc`, `stdbuf`, `getopt`, `envsubst`, `openssl`, `ss`.
+
+### 4. Doi chieu repo <-> router
+
+33 thanh phan (app, static, tools, etc): **33/33 khop md5**, 0 thieu, 0 lech.
+
+---
+
 ## Ver 2.43 (2026-09-05) - FIX GOC: ca dan may khach bi don vao DUNG 1 tunnel VPN + tools/vpn_spread.py
 
 **Su co that:** preset VPN gan **TOAN BO may khach vao dung 1 tai khoan VPN** (do duoc:
@@ -63,6 +140,8 @@ AES-NI hoac chuyen sang WireGuard (ma hoa trong kernel).
   van o vi tri 1, `gen_vpn_guard.sh check` = `[OK]`.
 - `table`/`prio` cua 33 tunnel **khong trung nhau** (301-337 / 91-127).
 - Roll lai bang `unassign-many`: **2,87 s**, `ip rule`/`ipset`/`map.txt` ve dung nguyen trang.
+
+---
 
 ## Ver 2.42 (2026-09-05) - FIX GOC: 13 tunnel VPN "song" ma khong ra Internet + watchdog data-plane
 
