@@ -380,6 +380,34 @@ def update_repo_from_remote(password: str):
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
+        # [Ver 2.47] etc/: kill-switch + tproxy da sua + cron watchdog.
+        # Truoc Ver 2.47 chi install.sh goi etc_install.sh, nen may update qua GUI/key
+        # bi THIEU /etc/genrouter_killswitch.sh, /etc/{shm,genrouter/core}/tproxy va
+        # cron */5 dataplane_guard.py => ban va tay khong lan ra ca dan may.
+        # Truyen tuong minh duong dan etc/ (khong dua vao auto-detect) va GHI LOG de
+        # nghiem thu duoc: im lang o buoc nay tung la ly do lo hong khong ai thay.
+        try:
+            _ei = BASE_DIR / 'tools' / 'etc_install.sh'
+            _etc_dir = BASE_DIR / 'etc'
+            _ei_log = BASE_DIR / 'logs' / 'etc_install.log'
+            _ei_log.parent.mkdir(parents=True, exist_ok=True)
+            _stamp = time.strftime('%Y-%m-%d %H:%M:%S')
+            if _ei.exists() and _etc_dir.is_dir():
+                _r = subprocess.run(['sh', str(_ei), str(_etc_dir)], timeout=120,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                _out = (_r.stdout or b'').decode('utf-8', 'replace')
+                with open(_ei_log, 'a', encoding='utf-8') as _fh:
+                    _fh.write(f'\n=== {_stamp} etc_install (update_repo_from_remote) rc={_r.returncode} ===\n{_out}')
+            else:
+                with open(_ei_log, 'a', encoding='utf-8') as _fh:
+                    _fh.write(f'\n=== {_stamp} etc_install BO QUA: '
+                              f'etc_install.sh={_ei.exists()} etc_dir={_etc_dir.is_dir()} ===\n')
+        except Exception as _e:
+            try:
+                with open(BASE_DIR / 'logs' / 'etc_install.log', 'a', encoding='utf-8') as _fh:
+                    _fh.write(f'\n=== {time.strftime("%Y-%m-%d %H:%M:%S")} etc_install LOI: {_e} ===\n')
+            except Exception:
+                pass
         shutil.rmtree(tmp_root, ignore_errors=True)
         after_label = read_current_version_label()
         changed = after_label != before_label
@@ -3169,8 +3197,9 @@ def vpn_refresh_exitips_async():
     return True
 WD_PERSIST_DIR = BASE_DIR / 'persist'
 WD_LOG_FILE = BASE_DIR / 'logs' / 'gencore_watchdog.log'
-WD_STATE = {'hits': 0, 'last_restart': 0.0, 'last_start': 0.0, 'snap': ''}
+WD_STATE = {'hits': 0, 'last_restart': 0.0, 'last_start': 0.0, 'snap': '', 'last_stale_restart': 0.0, 'last_leak_restart': 0.0}
 WD_ZOMBIE_PORT = '5888'
+WD_TPROXY_PORT = 9888
 
 def _wd_log(msg):
     try:
@@ -3185,7 +3214,20 @@ def _wd_log(msg):
         pass
 
 def _wd_thresholds():
-    thr = {'zombie_tw': 5000, 'ct_total': 40000, 'consecutive': 2, 'cooldown_sec': 600, 'heal_cooldown_sec': 300}
+    # Ver 2.47 — luu y ve persist/watchdog.json tren router (tao 2026-08-27):
+    # file do co san 4 khoa 'fd_max', 'log_stale_sec', 'traffic_min_bytes',
+    # 'traffic_stale_sec' MA KHONG CODE NAO DUNG (khoa chet cua ban cu). Vong
+    # lap duoi chi nhan khoa co san trong dict nay, nen chung tu dong bi bo qua.
+    # KHONG dat lai ten khoa moi thanh 'fd_max': fd_max=4000 con trong file do,
+    # ap vao se bao dong gia lien tuc (fd binh thuong khi 322 may tai da la
+    # 24.242 — do that 2026-09-05).
+    #
+    # stale_grace_sec = 1 (KHONG duoc lon hon): trong su co that, gencore start
+    # 19:30:58 va file config bi ghi lai 19:31:00 — chenh DUNG 2 GIAY. Grace 5 s
+    # se che mat chinh ca can bat (da chung minh o d519 ca B). Van can >0 vi
+    # start_epoch tinh tu btime (do phan giai 1 giay) nen co sai so lam tron ~1s.
+    thr = {'zombie_tw': 5000, 'ct_total': 40000, 'consecutive': 2, 'cooldown_sec': 600, 'heal_cooldown_sec': 300,
+           'fd_pct': 60, 'sock_port_max': 5000, 'stale_grace_sec': 1, 'stale_cooldown_sec': 300}
     try:
         cfg = json.loads((WD_PERSIST_DIR / 'watchdog.json').read_text())
         for k in list(thr.keys()):
@@ -3215,6 +3257,72 @@ def _wd_uptime_sec():
     except Exception:
         return 1000000000.0
 
+def _proc_start_epoch(pid):
+    """Thoi diem tien trinh BAT DAU (epoch giay). None neu khong doc duoc.
+
+    Doc field 22 (starttime, tinh theo tick tu luc boot) trong /proc/<pid>/stat
+    roi cong btime cua /proc/stat. Phai tach chuoi bang rsplit(') ') vi
+    comm (field 2) co the chua dau cach hoac dau ngoac.
+    Da kiem tren router that 2026-09-05 (out517 muc E): SC_CLK_TCK = 100.
+    """
+    try:
+        btime = 0
+        with open('/proc/stat', 'r') as fh:
+            for line in fh:
+                if line.startswith('btime '):
+                    btime = int(line.split()[1])
+                    break
+        if not btime:
+            return None
+        raw = open(f'/proc/{pid}/stat', 'r').read()
+        fields = raw.rsplit(') ', 1)[1].split()
+        hz = os.sysconf('SC_CLK_TCK') or 100
+        return btime + int(fields[19]) / float(hz)
+    except Exception:
+        return None
+
+def _proc_fd_count(pid):
+    try:
+        return len(os.listdir(f'/proc/{pid}/fd'))
+    except Exception:
+        return -1
+
+def _proc_nofile_soft(pid):
+    try:
+        with open(f'/proc/{pid}/limits', 'r') as fh:
+            for line in fh:
+                if 'open files' in line:
+                    parts = line.split()
+                    return int(parts[-3])
+    except Exception:
+        pass
+    return 0
+
+def _count_sockets_on_port(port):
+    """Dem dong /proc/net/tcp co local HOAC remote la <port>.
+
+    Vi sao khong dung `ss`: router khong co `ss` (xem memory 2026-09-05 muc Q4:
+    danh sach lenh thieu tren BusyBox). Vi sao khong dung `grep -c`: file nay
+    moi socket 1 dong nen grep -c dung, nhung phai loc dung cot va so sanh HEX.
+    """
+    try:
+        hexp = ':%04X' % int(port)
+    except Exception:
+        return -1
+    n = 0
+    try:
+        with open('/proc/net/tcp', 'r') as fh:
+            next(fh, None)
+            for line in fh:
+                f = line.split()
+                if len(f) < 3:
+                    continue
+                if f[1].endswith(hexp) or f[2].endswith(hexp):
+                    n += 1
+    except OSError:
+        return -1
+    return n
+
 def _gencore_pid():
     try:
         r = subprocess.run(['pidof', 'gencore'], capture_output=True, text=True, timeout=8)
@@ -3222,12 +3330,36 @@ def _gencore_pid():
     except Exception:
         return ''
 
+def _gencore_pid_first():
+    """pidof co the tra nhieu pid; /proc can dung 1 pid."""
+    pid = _gencore_pid()
+    return pid.split()[0] if pid else ''
+
+# Ver 2.47 — NOFILE cho gencore.
+# TAI SAO PHAI DAT O DAY: /etc/genrouter/core/genrunner co 'ulimit -n 100000' o
+# dong 2, nen gencore do genrunner start duoc 100000 fd. Nhung app.py start
+# gencore bang gencore_start_detached() -> KHONG dat ulimit -> ke thua han muc
+# cua procd (do that 2026-09-05: soft/hard = 4095/4096).
+# Do that cung ngay: fd cua gencore len 24242 roi 99136 khi 322 may cung tai.
+# => gencore do app.py start se het fd o 4096 va chet im lang, trong khi cung
+# tinh huong do neu genrunner start thi khong sao. Phai dat ulimit cho BANG
+# hoac CAO HON genrunner. Kernel cho phep (fs.nr_open = 1048576, chay bang root).
+GENCORE_NOFILE = 262144
+GENCORE_NOFILE_FALLBACKS = (100000, 65536, 16384)
+
+def _gencore_ulimit_prefix():
+    """Chuoi shell nang NOFILE, co bac thang du phong (ash: ulimit that bai -> in stderr)."""
+    parts = [f'ulimit -n {GENCORE_NOFILE} 2>/dev/null']
+    parts += [f'ulimit -n {v} 2>/dev/null' for v in GENCORE_NOFILE_FALLBACKS]
+    return ' || '.join(parts) + ' || true; '
+
 def gencore_start_detached(reason='manual'):
     if not Path('/usr/bin/gencore').exists():
         return
     try:
-        subprocess.Popen(['sh', '-c', '( /usr/bin/gencore run -c /etc/genrouter/gencore.json >/tmp/gencore_run.log 2>&1 </dev/null & )'], start_new_session=True)
-        _wd_log(f'START gencore reason={reason}')
+        cmd = _gencore_ulimit_prefix() + '( /usr/bin/gencore run -c /etc/genrouter/gencore.json >/tmp/gencore_run.log 2>&1 </dev/null & )'
+        subprocess.Popen(['sh', '-c', cmd], start_new_session=True)
+        _wd_log(f'START gencore reason={reason} nofile_target={GENCORE_NOFILE}')
     except Exception as e:
         _wd_log(f'START fail reason={reason}: {e}')
 
@@ -3297,6 +3429,7 @@ def wd_boot_recover(force=False):
 
 HEAL_STATE = {'last_heal': 0.0, 'count': 0}
 TPROXY_BIN = GENRUNNER.parent / 'tproxy'
+KILLSWITCH_BIN = '/etc/genrouter_killswitch.sh'
 
 def _heal_run_shell(cmd, timeout=90):
     try:
@@ -3428,8 +3561,363 @@ def config_self_heal(reason='watchdog'):
         pass
     return res
 
+GENCORE_LOADED_FILE = WD_PERSIST_DIR / 'gencore_loaded.json'
+
+def _file_md5(path):
+    try:
+        h = hashlib.md5()
+        with open(path, 'rb') as fh:
+            while True:
+                chunk = fh.read(262144)
+                if not chunk:
+                    break
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return ''
+
+def _gencore_loaded_load():
+    try:
+        d = json.loads(GENCORE_LOADED_FILE.read_text(encoding='utf-8'))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+def _gencore_loaded_save(pid, start_epoch, md5):
+    try:
+        GENCORE_LOADED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        GENCORE_LOADED_FILE.write_text(json.dumps({
+            'pid': str(pid), 'start_epoch': float(start_epoch or 0), 'md5': str(md5 or ''),
+            'ts': int(time.time())}, ensure_ascii=False), encoding='utf-8')
+    except Exception:
+        pass
+
+def _wd_check_config_stale(pid, thr):
+    """Ver 2.47 / chot V2-b: gencore dang chay CO NAP dung config tren dia khong?
+
+    VI SAO PHAI CO (su co 2026-09-05 19:31 -> 21:31, 322 may mat DNS 2 gio):
+      19:30:52 vendor /etc/genrouter/server:9000 regenerate config/gencore.json
+               bang template rieng (DNS proxy_* ve 'tcp://8.8.8.8' = port 53).
+      19:30:58 vendor restart gencore  -> gencore NAP BAN CU vao RAM.
+      19:31:00 app.py (config_guard_restore) ghi lai file dung tren dia
+               nhung KHONG restart gencore.
+      => tu do: DIA DUNG, RAM SAI. Moi khoa cu cua Ver 2.39-2.46
+         (CONFIG_GUARD_KEYS, config_self_heal, config_guard_restore) chi doc
+         FILE nen deu thay 'khong sut' => degraded=[] => khong ai lam gi.
+      Bang chung do that: quet 298,3 MB RAM cua pid 26093 thay 'tcp://8.8.8.8'
+      x112 va 'https://8.8.8.8/dns-query' x0, trong khi md5 file tren dia da la
+      ban DoH 443 dung. Lumi chan port 53 (SOCKS5 rep=2 'not allowed by
+      ruleset', dem duoc 33.646 lan trong log) => client khong resolve duoc ten.
+
+    CACH PHAT HIEN (khong can doc RAM, khong can vendor hop tac):
+      So THOI DIEM BAT DAU cua tien trinh gencore voi mtime cua file config.
+      mtime > start => file da doi SAU khi tien trinh nap => RAM khong con dung.
+      gencore (sing-box 1.11.6) KHONG tu reload config -- da chung minh bang
+      chinh su co tren: 2 gio lien RAM giu ban cu.
+
+    CHONG BAO DONG GIA: co truong hop file duoc ghi lai ma NOI DUNG Y NGUYEN
+      (migrate_proxy_dns_file ghi lai dang compact cho awk cua vendor doc duoc,
+       xem FORMAT-HEAL). Vi vay chi restart khi md5 KHAC md5 ma chinh pid nay
+      da duoc xac nhan dong bo truoc do (luu trong persist/gencore_loaded.json).
+    Tra ve True neu da restart.
+    """
+    if not pid:
+        return False
+    start = _proc_start_epoch(pid)
+    if start is None:
+        return False
+    try:
+        mtime = os.stat(RUNTIME_FILE).st_mtime
+    except OSError:
+        return False
+    md5_now = _file_md5(RUNTIME_FILE)
+    info = _gencore_loaded_load()
+    same_proc = str(info.get('pid') or '') == str(pid) and abs(float(info.get('start_epoch') or 0) - start) <= 2.0
+    if same_proc and info.get('md5') == md5_now:
+        # Da xac nhan chinh tien trinh nay dong bo voi chinh noi dung nay.
+        # Ke ca file bi ghi lai (FORMAT-HEAL ghi lai dang compact ma khong doi
+        # noi dung) thi RAM van dung => khong restart.
+        return False
+    grace = int(thr.get('stale_grace_sec', 1) or 1)
+    if mtime <= start + grace:
+        # Tien trinh khoi dong SAU lan ghi cuoi => RAM = dia. Ghi nhan lam moc.
+        _gencore_loaded_save(pid, start, md5_now)
+        return False
+    now = time.time()
+    cd = int(thr.get('stale_cooldown_sec', 300) or 300)
+    if now - float(WD_STATE.get('last_stale_restart', 0.0)) < cd:
+        _wd_log(f'STALE-CONFIG phat hien nhung cooldown {cd}s con hieu luc (pid={pid} '
+                f'start={time.strftime("%H:%M:%S", time.localtime(start))} '
+                f'mtime={time.strftime("%H:%M:%S", time.localtime(mtime))})')
+        return False
+    WD_STATE['last_stale_restart'] = now
+    WD_STATE['restarts'] = WD_STATE.get('restarts', 0) + 1
+    _wd_log(f'STALE-CONFIG: gencore pid={pid} start={time.strftime("%H:%M:%S", time.localtime(start))} '
+            f'nhung {Path(RUNTIME_FILE).name} mtime={time.strftime("%H:%M:%S", time.localtime(mtime))} '
+            f'(muon hon {mtime - start:.0f}s) md5_dia={md5_now[:12]} md5_da_xac_nhan={str(info.get("md5") or "-")[:12]} '
+            f'=> RAM giu config CU, restart gencore')
+    try:
+        _ss_log(f'STALE-CONFIG: restart gencore vi config moi hon tien trinh {mtime - start:.0f}s (md5 dia {md5_now[:12]})')
+    except Exception:
+        pass
+    _gencore_loaded_save('', 0, md5_now)
+    gencore_restart_detached('stale_config')
+    return True
+
+def _wd_check_fd_leak(pid, thr):
+    """Ver 2.47 / chot V5-b: canh FD va socket TPROXY cua gencore.
+
+    VI SAO PHAI CO: trong su co 2026-09-05, fd cua gencore leo 79.520 ->
+    99.136 -> 99.660 / 100.000 va sinh 115 loi EMFILE, socket cong 9888 len
+    41.899 (100% la self-connect 127.0.0.1 -> 127.0.0.1:9888 o CLOSE_WAIT).
+    Watchdog cu chi xet zombie_tw (TIME_WAIT cong 5888) va ct_total
+    (conntrack) nen CA HAI chi so do deu duoi nguong => khong ai bao gi.
+    Sau khi restart, fd tu 24.242 tut ve 168 => day la RO, khong phai tai that.
+
+    Nguong theo TY LE tren NOFILE thuc te cua tien trinh (doc /proc/<pid>/limits)
+    chu khong dong dinh con so, vi NOFILE khac nhau tuy ai start gencore:
+    genrunner dat 'ulimit -n 100000', con app.py truoc Ver 2.47 khong dat gi
+    nen ke thua 4096 cua procd.
+    Tra ve True neu da restart.
+    """
+    if not pid:
+        return False
+    fd = _proc_fd_count(pid)
+    if fd < 0:
+        return False
+    nofile = _proc_nofile_soft(pid) or 4096
+    sock = _count_sockets_on_port(WD_TPROXY_PORT)
+    pct = fd * 100.0 / max(1, nofile)
+    lim_pct = int(thr.get('fd_pct', 60) or 60)
+    lim_sock = int(thr.get('sock_port_max', 5000) or 5000)
+    hit_fd = pct >= lim_pct
+    hit_sock = 0 <= lim_sock <= sock
+    if not (hit_fd or hit_sock):
+        return False
+    now = time.time()
+    cd = int(thr.get('cooldown_sec', 600) or 600)
+    why = []
+    if hit_fd:
+        why.append(f'fd={fd}/{nofile} ({pct:.0f}% >= {lim_pct}%)')
+    if hit_sock:
+        why.append(f'sock:{WD_TPROXY_PORT}={sock} >= {lim_sock}')
+    if now - float(WD_STATE.get('last_leak_restart', 0.0)) < cd:
+        _wd_log(f'FD-LEAK phat hien nhung cooldown {cd}s con hieu luc: ' + ' | '.join(why))
+        return False
+    WD_STATE['last_leak_restart'] = now
+    WD_STATE['restarts'] = WD_STATE.get('restarts', 0) + 1
+    _wd_log(f'FD-LEAK: restart gencore pid={pid} — ' + ' | '.join(why))
+    try:
+        _ss_log('FD-LEAK: restart gencore — ' + ' | '.join(why))
+    except Exception:
+        pass
+    gencore_restart_detached('fd_leak')
+    return True
+
+WD_VPN_STATE = {'ts': 0, 'mode': '', 'ok': True, 'problems': [], 'numbers': {}, 'last_fix': 0.0}
+
+def _ipset_count(name):
+    """Dem member cua mot ipset. -1 = khong doc duoc / set khong ton tai.
+
+    Khong dung `ipset list <name> | grep -c` vi phan header cung co dong chua
+    so; phai cat tu sau dong 'Members:'.
+    """
+    try:
+        r = subprocess.run(['ipset', 'list', name], capture_output=True, text=True, timeout=20)
+        if r.returncode != 0:
+            return -1
+        seen = False
+        n = 0
+        for line in (r.stdout or '').splitlines():
+            if not seen:
+                if line.strip().startswith('Members'):
+                    seen = True
+                continue
+            if line.strip():
+                n += 1
+        return n
+    except Exception:
+        return -1
+
+def _ip_rule_vpn_count():
+    """So `ip rule` tro vao table 3xx (moi tunnel VPN duoc gan 1 table 301-337)."""
+    try:
+        r = subprocess.run(['ip', 'rule'], capture_output=True, text=True, timeout=20)
+        n = 0
+        for line in (r.stdout or '').splitlines():
+            m = re.search(r'lookup\s+(\d+)', line)
+            if m and 300 <= int(m.group(1)) <= 399:
+                n += 1
+        return n
+    except Exception:
+        return -1
+
+def _runtime_mode_counts():
+    """(mode, so_may_VPN, so_may_proxy) suy tu RUNTIME gencore.json — nguon su that
+    cua data-plane, KHONG phai session_state (cai do chi la y muon tren GUI)."""
+    try:
+        doc = load_json(RUNTIME_FILE)
+    except Exception:
+        return ('', -1, -1)
+    direct = socks = 0
+    for item in (doc or {}).get('outbounds', []) or []:
+        if not str((item or {}).get('tag', '')).startswith('proxy_'):
+            continue
+        t = str((item or {}).get('type', '')).strip().lower()
+        if t == 'direct':
+            direct += 1
+        elif t in ('socks', 'http'):
+            socks += 1
+    mode = 'vpn' if direct > socks else ('proxy' if socks else '')
+    return (mode, direct, socks)
+
+def _wd_check_vpn_integrity(thr):
+    """Ver 2.47 / chot V4-d: cau hinh khai VPN thi data-plane PHAI that su la VPN.
+
+    VI SAO PHAI CO (do that 2026-09-05 21:xx):
+      session_state['1'] khai 322/322 may -> proton-jp-171, GUI hien "che do VPN",
+      nhung RUNTIME gencore.json co 322 outbound proxy_* type=socks (Lumi),
+      /data/vpn/map.txt = 0 BYTE, ipset genrouter_vpn = 0, ip rule lookup 3xx = 0.
+      Tuc la khong mot may nao thuc su di VPN. Ha tang van tot (37 tunnel UP,
+      37 MASQUERADE, table 301-337 du route) nen moi khoa cu deu bao "xanh".
+      Khong co chi so nao doi chieu Y MUON voi THUC TE.
+
+    Cach doc dung: mode THAT = type cua outbound proxy_* trong RUNTIME file,
+    khong phai session_state. session_state la preset chua apply thi hop le khi
+    lech (vi du session 1 la VPN nhung dang active session 3 = proxy).
+
+    TU CHUA O DAY CO GIOI HAN CO Y: tuyet doi KHONG tu gan lai tunnel va
+    KHONG tu doi mode (anh Thai: "anh dao qua dao lai la viec cua anh").
+    Chi chay lai LOP BAO VE (gen_vpn_guard.sh fix + killswitch) de may khai VPN
+    ma chua co duong VPN thi bi CHAN, khong ro IP that. Con viec gan lai thi
+    bao do ra GUI de nguoi quyet dinh.
+    """
+    mode, n_vpn, n_proxy = _runtime_mode_counts()
+    if not mode:
+        return False
+    nmap = len(load_vpn_map())
+    v = _ipset_count('genrouter_vpn')
+    w = _ipset_count('genrouter_vpn_want')
+    rules = _ip_rule_vpn_count()
+    nums = {'mode': mode, 'cfg_vpn': n_vpn, 'cfg_proxy': n_proxy, 'map': nmap,
+            'ipset_vpn': v, 'ipset_want': w, 'ip_rule_3xx': rules}
+    problems = []
+    if mode == 'vpn':
+        if nmap == 0:
+            problems.append(f'cau hinh khai {n_vpn} may VPN nhung map.txt TRONG (0 may duoc gan tunnel)')
+        if 0 <= w < n_vpn:
+            problems.append(f'ipset genrouter_vpn_want={w} < {n_vpn} may khai VPN (lop chan ro IP that thieu)')
+        if nmap > 0 and 0 <= rules < nmap:
+            problems.append(f'ip rule table 3xx={rules} < {nmap} may trong map.txt (may thieu rule di ra WAN that)')
+        if nmap > 0 and 0 <= v < nmap:
+            problems.append(f'ipset genrouter_vpn={v} < {nmap} may trong map.txt')
+    else:
+        if v > 0 or nmap > 0 or rules > 0:
+            problems.append(f'dang mode proxy nhung con ton du VPN: map={nmap} ipset_vpn={v} ip_rule_3xx={rules}')
+    WD_VPN_STATE.update({'ts': int(time.time()), 'mode': mode, 'ok': not problems,
+                         'problems': list(problems), 'numbers': nums})
+    if not problems:
+        return False
+    now = time.time()
+    cd = int(thr.get('stale_cooldown_sec', 300) or 300)
+    if now - float(WD_VPN_STATE.get('last_fix', 0.0)) < cd:
+        return False
+    WD_VPN_STATE['last_fix'] = now
+    _wd_log('VPN-INTEGRITY: ' + ' | '.join(problems) + f' | so do: {json.dumps(nums, ensure_ascii=False)}')
+    try:
+        _ss_log('VPN-INTEGRITY: ' + ' | '.join(problems))
+    except Exception:
+        pass
+    # Chi chay lai lop BAO VE. Khong gan tunnel, khong doi mode.
+    steps = []
+    try:
+        r = _heal_run_shell(f'{VPN_GUARD} fix')
+        steps.append(f"gen_vpn_guard fix rc={r.get('rc')}")
+    except Exception as e:
+        steps.append(f'gen_vpn_guard FAIL: {e}')
+    try:
+        if Path(KILLSWITCH_BIN).exists():
+            r = _heal_run_shell(KILLSWITCH_BIN)
+            steps.append(f"killswitch rc={r.get('rc')}")
+    except Exception as e:
+        steps.append(f'killswitch FAIL: {e}')
+    _wd_log('VPN-INTEGRITY buoc bao ve: ' + '; '.join(steps))
+    return False
+
+def wd_health_json():
+    """Ver 2.47: mot cho duy nhat de GUI/nguoi doc biet HE THONG CO DANG DUNG khong.
+
+    Tra ve chi so THUC DO tai thoi diem goi (khong cache) cho 4 chot moi:
+      stale_config — config tren dia moi hon tien trinh gencore (RAM giu ban cu)
+      fd           — fd/NOFILE + socket cong TPROXY cua gencore
+      vpn          — y muon VPN vs data-plane that (map.txt/ipset/ip rule)
+      watchdog     — lan ghi log gan nhat, de biet watchdog co con song
+    """
+    out = {'ok': True, 'ts': int(time.time()), 'problems': []}
+    pid = _gencore_pid_first()
+    out['gencore_pid'] = pid
+    thr = _wd_thresholds()
+    # 1) stale config
+    start = _proc_start_epoch(pid) if pid else None
+    try:
+        mtime = os.stat(RUNTIME_FILE).st_mtime
+    except OSError:
+        mtime = 0
+    stale = bool(pid and start and mtime and mtime > start + int(thr.get('stale_grace_sec', 1) or 1))
+    out['config'] = {
+        'proc_start': int(start) if start else 0,
+        'file_mtime': int(mtime),
+        'lag_sec': int(mtime - start) if (start and mtime) else 0,
+        'md5_disk': _file_md5(RUNTIME_FILE)[:12],
+        'md5_loaded': str(_gencore_loaded_load().get('md5') or '')[:12],
+        'stale': stale}
+    if stale:
+        out['problems'].append('config tren dia moi hon tien trinh gencore => RAM co the giu ban cu')
+    # 2) fd / socket
+    fd = _proc_fd_count(pid) if pid else -1
+    nofile = _proc_nofile_soft(pid) if pid else 0
+    sock = _count_sockets_on_port(WD_TPROXY_PORT)
+    pct = round(fd * 100.0 / nofile, 1) if (fd >= 0 and nofile) else 0.0
+    out['fd'] = {'used': fd, 'nofile': nofile, 'pct': pct, 'limit_pct': int(thr.get('fd_pct', 60) or 60),
+                 'sock_tproxy': sock, 'sock_limit': int(thr.get('sock_port_max', 5000) or 5000),
+                 'nofile_target': GENCORE_NOFILE}
+    if pct >= int(thr.get('fd_pct', 60) or 60):
+        out['problems'].append(f'fd cua gencore {fd}/{nofile} ({pct}%)')
+    if 0 <= int(thr.get('sock_port_max', 5000) or 5000) <= sock:
+        out['problems'].append(f'socket cong {WD_TPROXY_PORT} = {sock}')
+    # 3) vpn integrity (do lai, khong tu chua o day)
+    mode, n_vpn, n_proxy = _runtime_mode_counts()
+    vpn = {'mode': mode, 'cfg_vpn': n_vpn, 'cfg_proxy': n_proxy,
+           'map': len(load_vpn_map()), 'ipset_vpn': _ipset_count('genrouter_vpn'),
+           'ipset_want': _ipset_count('genrouter_vpn_want'), 'ip_rule_3xx': _ip_rule_vpn_count()}
+    vprob = []
+    if mode == 'vpn':
+        if vpn['map'] == 0:
+            vprob.append(f"khai {n_vpn} may VPN nhung map.txt trong")
+        if 0 <= vpn['ipset_want'] < n_vpn:
+            vprob.append(f"ipset want {vpn['ipset_want']} < {n_vpn}")
+        if vpn['map'] > 0 and 0 <= vpn['ip_rule_3xx'] < vpn['map']:
+            vprob.append(f"ip rule 3xx {vpn['ip_rule_3xx']} < map {vpn['map']}")
+    elif mode == 'proxy':
+        if vpn['map'] > 0 or vpn['ipset_vpn'] > 0 or vpn['ip_rule_3xx'] > 0:
+            vprob.append('mode proxy nhung con ton du VPN')
+    vpn['problems'] = vprob
+    vpn['ok'] = not vprob
+    out['vpn'] = vpn
+    out['problems'] += vprob
+    # 4) watchdog con song?
+    try:
+        st = WD_LOG_FILE.stat()
+        age = int(time.time() - st.st_mtime)
+    except OSError:
+        age = -1
+    out['watchdog'] = {'log_age_sec': age, 'restarts': int(WD_STATE.get('restarts', 0) or 0),
+                       'heals': int(HEAL_STATE.get('count', 0) or 0)}
+    out['ok'] = not out['problems']
+    return out
+
 def gencore_watchdog_loop():
-    _wd_log('WATCHDOG start (Ver 2.34: + config self-heal, + apply lock)')
+    _wd_log('WATCHDOG start (Ver 2.47: + config self-heal, + apply lock, + STALE-CONFIG, + FD-LEAK)')
     time.sleep(25)
     try:
         wd_boot_recover()
@@ -3453,6 +3941,12 @@ def gencore_watchdog_loop():
                 config_self_heal(reason='watchdog')
             except Exception as e:
                 _wd_log(f'heal error: {e}')
+            # Ver 2.47 — chot V2-c: quet cac ban config ngu dong (gencore2.json...)
+            # de vendor khong con mau sai de tai nhiem. Cache theo mtime nen re.
+            try:
+                heal_dormant_configs(reason='watchdog')
+            except Exception as e:
+                _wd_log(f'dormant-heal error: {e}')
             if not pid:
                 if not Path('/usr/bin/gencore').exists():
                     continue
@@ -3461,6 +3955,26 @@ def gencore_watchdog_loop():
                     WD_STATE['restarts'] = WD_STATE.get('restarts', 0) + 1
                     gencore_start_detached('dead')
                 continue
+            # Ver 2.47 — chot V2-b: config tren dia moi hon tien trinh => RAM giu
+            # ban cu. Phai xet TRUOC cac nguong tai vi day la loi im lang nhat:
+            # moi chi so khac deu 'xanh' trong khi 322 may mat DNS.
+            pid1 = pid.split()[0] if pid else ''
+            try:
+                if _wd_check_config_stale(pid1, thr):
+                    continue
+            except Exception as e:
+                _wd_log(f'stale-config error: {e}')
+            # Ver 2.47 — chot V5-b: ro fd / socket TPROXY.
+            try:
+                if _wd_check_fd_leak(pid1, thr):
+                    continue
+            except Exception as e:
+                _wd_log(f'fd-leak error: {e}')
+            # Ver 2.47 — chot V4-d: y muon VPN vs data-plane that.
+            try:
+                _wd_check_vpn_integrity(thr)
+            except Exception as e:
+                _wd_log(f'vpn-integrity error: {e}')
             if tw >= thr['zombie_tw'] or total >= thr['ct_total']:
                 WD_STATE['hits'] = WD_STATE.get('hits', 0) + 1
                 _wd_log(f"STORM hit={WD_STATE['hits']} tw={tw} total={total} pid={pid}")
@@ -3601,7 +4115,9 @@ class Handler(BaseHTTPRequestHandler):
                 active_session = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '')
             except (OSError, ValueError):
                 pass
-            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
+            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session, 'health': wd_health_json()})
+        if path == '/api/pm/health':
+            return self._send_json(wd_health_json())
         if path == '/vpn':
             return self._send_file(STATIC_DIR / 'vpn.html')
         if path == '/api/vpn/status':
@@ -3857,6 +4373,67 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': False, 'error': f'HTTP {e.code}'}, 400)
         except Exception as e:
             return self._send_json({'error': str(e)}, 400)
+# Ver 2.47 — chot V2-c: cac file config "ngu dong" trong /etc/genrouter/config.
+# VI SAO: /etc/genrouter/config/gencore2.json (sinh 2026-08-26) con nguyen
+# 311 DNS server 'tcp://8.8.8.8' (port 53 — Lumi CHAN), dnsmasq KHONG co
+# 'detour', dns.rules chi co 1 rule catch-all {'outbound':'any','server':'google'},
+# route.rules[-1] la {'action':'route','outbound':'direct'} (khong phai
+# reject/drop). Tuc la mot ban sao day du cua DUNG cai cau hinh da gay su co
+# 2026-09-03 va 2026-09-05, nam san trong thu muc ma binary vendor
+# /etc/genrouter/server:9000 lam chu. Hien khong file/script/binary nao tham
+# chieu no (do 2026-09-05: grep repo+/etc+strings vendor = 0), nen truoc day
+# ket luan "de yen". Su co 19:31 chung minh gia dinh do khong an toan: vendor
+# CO san template port 53 o dau do va da dung. De mot ban config sai san trong
+# thu muc cua vendor la de moi tai nhiem — tu chua no cho dong nhat, chi phi 0.
+DORMANT_CFG_CACHE = {}
+
+def _dormant_config_paths():
+    out = []
+    try:
+        for p in sorted(Path(CONFIG_DIR).glob('gencore*.json')):
+            if str(p) in (str(RUNTIME_SOURCE_FILE), str(RUNTIME_FILE)):
+                continue
+            if p.is_file() and p.stat().st_size > 0:
+                out.append(p)
+    except Exception:
+        pass
+    return out
+
+def heal_dormant_configs(reason='startup'):
+    """Tu chua cac ban config ngu dong. KHONG restart gencore (chung khong duoc nap).
+
+    Cache theo (mtime, size) de khong parse lai file 135 KB moi vong watchdog;
+    file bi ghi lai (vendor tao lai) thi mtime doi => tu kiem lai ngay.
+    Tra ve tong so entry da sua.
+    """
+    total = 0
+    for p in _dormant_config_paths():
+        try:
+            st = p.stat()
+            key = f'{st.st_mtime_ns}:{st.st_size}'
+        except OSError:
+            continue
+        if DORMANT_CFG_CACHE.get(str(p)) == key:
+            continue
+        try:
+            n = migrate_proxy_dns_file(p)
+        except Exception as e:
+            _wd_log(f'DORMANT-HEAL {p.name} loi: {e}')
+            continue
+        if n:
+            total += n
+            _wd_log(f'DORMANT-HEAL ({reason}) {p.name}: sua {n} entry (moi tai nhiem: DNS port 53 / thieu detour / thieu deny-last)')
+            try:
+                _ss_log(f'DORMANT-HEAL ({reason}) {p.name}: sua {n} entry')
+            except Exception:
+                pass
+        try:
+            st = p.stat()
+            DORMANT_CFG_CACHE[str(p)] = f'{st.st_mtime_ns}:{st.st_size}'
+        except OSError:
+            pass
+    return total
+
 def startup_migrate_proxy_dns():
     """Chay 1 lan khi app start: tu chua config cu con dung DNS port 53.
 
@@ -3874,6 +4451,11 @@ def startup_migrate_proxy_dns():
             total += migrate_proxy_dns_file(path)
         except Exception:
             pass
+    # Ver 2.47: file ngu dong dem RIENG — sua chung khong can restart gencore.
+    try:
+        heal_dormant_configs(reason='startup')
+    except Exception:
+        pass
     if total:
         try:
             _wd_log(f'STARTUP MIGRATE: doi {total} DNS server proxy_* sang {PROXY_DNS_ADDRESS} (port 53 bi proxy chan)')

@@ -3,17 +3,53 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="light" />
   <title>Genrouter</title>
   <style>
-    :root { color-scheme: only light; }
-    body { font-family: Arial, sans-serif; background:linear-gradient(160deg,#f6c3ee 0%,#e4c4fb 45%,#ffcdd6 100%) fixed; color:#43163c; margin:0; }
+    /* ---- Palette: giao dien SANG (mac dinh) ---- */
+    :root {
+      color-scheme: only light;
+      --bg1:#f6c3ee; --bg2:#e4c4fb; --bg3:#ffcdd6;
+      --text:#43163c; --text-dim:#6b7280; --text-soft:#b4719f; --text-head:#9d3b78;
+      --accent:#db2777; --accent-hi:#f056c7; --accent-ink:#be185d;
+      --surface:#fdecf8; --surface-2:#fdeaf7; --surface-3:#fce7f6; --surface-4:#fdeef9;
+      --surface-hi:#f9d7f0; --surface-alt:#fbdff3; --th-bg:#f8cdef;
+      --line:#ec9fd9; --line-2:#eec4e4; --line-3:#d99ccf; --line-4:#e39ad3; --line-5:#efc0e4;
+      --line-dash:#eec0e4; --line-lock:#dc9ed0; --line-status:#f2a9dc;
+      --grid1:#f8c6ee; --grid2:#fbd7f3; --grid-line:#ecabd8;
+      --bulk1:#fbdff4; --bulk2:#fdeaf8;
+      --status1:#fce7f6; --status2:#fdf2fb;
+      --tab-bg:#86198f; --tab-ink:#fbe3ff;
+      --info:#1d4ed8; --info-b:#2563eb;
+      --chip-bg:#f8fafc; --chip-line:#eef2f7;
+      --disabled-bg:#e5e7eb; --disabled-ink:#6b7280;
+      --shadow-card:rgba(120,30,90,.08); --shadow-drop:rgba(120,20,90,.25);
+    }
+    /* ---- Palette: giao dien TOI ---- */
+    body.dark {
+      color-scheme: only dark;
+      --bg1:#1d1024; --bg2:#181229; --bg3:#251426;
+      --text:#f4e7f6; --text-dim:#a99bb2; --text-soft:#c39ec0; --text-head:#e59ac9;
+      --accent:#f472b6; --accent-hi:#f9a8d4; --accent-ink:#f9a8d4;
+      --surface:#241a2d; --surface-2:#2a1f34; --surface-3:#33253f; --surface-4:#241b2e;
+      --surface-hi:#3a2a48; --surface-alt:#2e2138; --th-bg:#33243f;
+      --line:#4c3659; --line-2:#3c2b49; --line-3:#573e66; --line-4:#5a3f68; --line-5:#3c2b49;
+      --line-dash:#42304f; --line-lock:#573e66; --line-status:#6b4a7a;
+      --grid1:#2b1e35; --grid2:#241a2d; --grid-line:#3f2c4c;
+      --bulk1:#261c30; --bulk2:#221929;
+      --status1:#33253f; --status2:#2a1f34;
+      --tab-bg:#5b1163; --tab-ink:#f7d8ff;
+      --info:#93c5fd; --info-b:#93c5fd;
+      --chip-bg:#2a1f34; --chip-line:#3c2b49;
+      --disabled-bg:#33253f; --disabled-ink:#a99bb2;
+      --shadow-card:rgba(0,0,0,.35); --shadow-drop:rgba(0,0,0,.55);
+    }
+    body { font-family: Arial, sans-serif; background:linear-gradient(160deg,var(--bg1) 0%,var(--bg2) 45%,var(--bg3) 100%) fixed; color:var(--text); margin:0; }
     .wrap { max-width: 1780px; margin: 0 auto; padding: 14px; }
     .titlebar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
     .titlebar-left { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .project-tabs { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .title { font-size:26px; font-weight:800; }
-    .brand { font-size:14px; font-weight:700; color:#db2777; }
+    .brand { font-size:14px; font-weight:700; color:var(--accent); }
     .titlebar-right { display:flex; align-items:center; gap:8px; }
     .toolbar { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px; }
     .toolbar.hidden { display:none; }
@@ -25,9 +61,9 @@
     .version-dot.has-update { background:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.18), 0 0 12px rgba(239,68,68,.55); }
     .conn-badge.connected { background:#dcfce7; color:#166534; border-color:#86efac; }
     .conn-badge.disconnected { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
-    .btn { border:1px solid #e39ad3; background:#fce7f6; padding:9px 13px; border-radius:10px; cursor:pointer; font-weight:700; }
-    .btn:hover { border-color:#f056c7; }
-    .btn.tab { border:1.5px solid var(--sc,#e5bccf); color:var(--sc,#9d3b78); background:#fce7f6; }
+    .btn { border:1px solid var(--line-4); background:var(--surface-3); padding:9px 13px; border-radius:10px; cursor:pointer; font-weight:700; }
+    .btn:hover { border-color:var(--accent-hi); }
+    .btn.tab { border:1.5px solid var(--sc,#e5bccf); color:var(--sc,var(--text-head)); background:var(--surface-3); }
     .btn.tab.active { background:var(--sc,#2563eb); color:#fff; border-color:var(--sc,#2563eb); box-shadow:0 4px 12px rgba(15,23,42,.18); }
     #sessionLabel { display:inline-flex; align-items:center; gap:7px; padding:5px 12px; border-radius:9px; background:var(--sc,#2563eb); color:#fff; font-weight:900; letter-spacing:.3px; font-size:13.5px; }
     #sessionLabel::before { content:''; width:8px; height:8px; border-radius:999px; background:rgba(255,255,255,.92); box-shadow:0 0 0 3px rgba(255,255,255,.22); }
@@ -36,29 +72,30 @@
     .btn.warn { background:#f59e0b; color:#fff; border-color:#f59e0b; }
     .btn.save-strong { background:#7c3aed; color:#fff; border-color:#7c3aed; padding:11px 18px; font-size:14px; box-shadow:0 10px 22px rgba(124,58,237,.28); }
     .btn.small { padding:6px 10px; font-size:12px; }
-    .status { display:inline-flex; align-items:center; min-height:20px; padding:10px 14px; border-radius:999px; background:linear-gradient(135deg,#fce7f6 0%,#fdf2fb 100%); border:1px solid #f2a9dc; color:#be185d; font-size:14px; font-weight:900; margin-left:6px; box-shadow:0 6px 18px rgba(219,39,119,.16), inset 0 1px 0 rgba(255,255,255,.85); }
+    .status { display:inline-flex; align-items:center; min-height:20px; padding:10px 14px; border-radius:999px; background:linear-gradient(135deg,var(--status1) 0%,var(--status2) 100%); border:1px solid var(--line-status); color:var(--accent-ink); font-size:14px; font-weight:900; margin-left:6px; box-shadow:0 6px 18px rgba(219,39,119,.16), inset 0 1px 0 rgba(255,255,255,.85); }
+    body.dark .status { box-shadow:0 6px 18px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06); }
     .status.adm-status { margin-left:0; }
-    .adm-log { width:100%; box-sizing:border-box; border:1px solid #e39ad3; border-radius:8px; padding:10px 12px; font-size:13px; line-height:1.45; min-height:170px; max-height:260px; overflow:auto; resize:vertical; background:#fce7f6; white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .adm-log { width:100%; box-sizing:border-box; border:1px solid var(--line-4); border-radius:8px; padding:10px 12px; font-size:13px; line-height:1.45; min-height:170px; max-height:260px; overflow:auto; resize:vertical; background:var(--surface-3); white-space:pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .adm-log-line { margin:0 0 6px 0; }
     .adm-log-line:last-child { margin-bottom:0; }
-    .adm-log-muted { color:#6b7280; font-size:12px; }
-    .adm-router-lock { min-width:120px; padding:8px 12px; border:1px solid #dc9ed0; border-radius:8px; background:#fce7f6; font-weight:700; color:#43163c; }
-    .panel { background:#fdecf8; border:1px solid #ec9fd9; border-radius:14px; overflow:hidden; }
-    .meta { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; padding:12px 14px; border-bottom:1px solid #eec4e4; background:#fdeaf7; gap:10px; }
+    .adm-log-muted { color:var(--text-dim); font-size:12px; }
+    .adm-router-lock { min-width:120px; padding:8px 12px; border:1px solid var(--line-lock); border-radius:8px; background:var(--surface-3); font-weight:700; color:var(--text); }
+    .panel { background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+    .meta { display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; padding:12px 14px; border-bottom:1px solid var(--line-2); background:var(--surface-2); gap:10px; }
     .meta-left { display:flex; align-items:center; gap:8px; justify-self:start; min-width:0; }
     .meta-center { display:flex; align-items:center; justify-content:center; }
     .meta-center.status-stack { flex-direction:column; gap:4px; }
     .meta-right { display:flex; align-items:center; gap:10px; justify-self:end; text-align:right; }
     .session-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .icon-btn { border:1px solid #e39ad3; background:#fce7f6; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
-    .notes-wrap { padding:12px 14px; border-bottom:1px solid #eec4e4; background:#fdeaf7; }
-    .notes-summary-box { border:1px solid #ec9fd9; border-radius:10px; background:#fbdff3; flex:1; min-height:96px; max-height:150px; overflow:auto; padding:9px 11px; white-space:pre-wrap; font-size:13px; line-height:1.5; }
-    .top-work-grid { display:grid; grid-template-columns: 1fr 1.15fr 1.05fr 0.95fr; gap:14px; padding:14px; border-bottom:1px solid #ecabd8; background:linear-gradient(180deg,#f8c6ee 0%,#fbd7f3 100%); align-items:stretch; }
-    .top-work-card { display:flex; flex-direction:column; gap:9px; background:#fdecf8; border:1px solid #ec9fd9; border-radius:12px; padding:12px 13px 13px; box-shadow:0 1px 3px rgba(120,30,90,.08); min-width:0; }
+    .icon-btn { border:1px solid var(--line-4); background:var(--surface-3); width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:16px; line-height:1; }
+    .notes-wrap { padding:12px 14px; border-bottom:1px solid var(--line-2); background:var(--surface-2); }
+    .notes-summary-box { border:1px solid var(--line); border-radius:10px; background:var(--surface-alt); flex:1; min-height:96px; max-height:150px; overflow:auto; padding:9px 11px; white-space:pre-wrap; font-size:13px; line-height:1.5; }
+    .top-work-grid { display:grid; grid-template-columns: 1fr 1.15fr 1.05fr 0.95fr; gap:14px; padding:14px; border-bottom:1px solid var(--grid-line); background:linear-gradient(180deg,var(--grid1) 0%,var(--grid2) 100%); align-items:stretch; }
+    .top-work-card { display:flex; flex-direction:column; gap:9px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 13px 13px; box-shadow:0 1px 3px var(--shadow-card); min-width:0; }
     .notes-summary-empty { color:#9ca3af; }
-    .bulkbar { display:grid; grid-template-columns: 1fr; gap:12px; padding:0; border-bottom:1px solid #eec4e4; background:linear-gradient(180deg,#fbdff4 0%,#fdeaf8 100%); }
+    .bulkbar { display:grid; grid-template-columns: 1fr; gap:12px; padding:0; border-bottom:1px solid var(--line-2); background:linear-gradient(180deg,var(--bulk1) 0%,var(--bulk2) 100%); }
     .bulk-card { display:grid; gap:8px; align-content:start; }
-    .bulk-card-title { display:flex; align-items:center; gap:8px; font-size:11.5px; font-weight:800; letter-spacing:.4px; color:#9d3b78; text-transform:uppercase; line-height:22px; padding-bottom:8px; border-bottom:1px dashed #eec0e4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .bulk-card-title { display:flex; align-items:center; gap:8px; font-size:11.5px; font-weight:800; letter-spacing:.4px; color:var(--text-head); text-transform:uppercase; line-height:22px; padding-bottom:8px; border-bottom:1px dashed var(--line-dash); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .bulk-card-title .t-ico { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:7px; font-size:12.5px; color:#fff; flex:0 0 auto; box-shadow:0 2px 5px rgba(15,23,42,.18); }
     .t-ico-blue { background:linear-gradient(135deg,#f472b6,#db2777); }
     .t-ico-amber { background:linear-gradient(135deg,#fbbf24,#d97706); }
@@ -69,20 +106,37 @@
     .top-work-card input, .top-work-card select { height:34px; box-sizing:border-box; width:100%; }
     .top-work-card textarea { width:100%; box-sizing:border-box; min-height:62px; max-height:62px; resize:none; font-size:12.5px; line-height:1.45; }
     .vpn-row { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-    .card-hint { font-size:11px; color:#b4719f; line-height:1.4; }
+    .card-hint { font-size:11px; color:var(--text-soft); line-height:1.4; }
+    .chip-box { background:var(--chip-bg); border:1px solid var(--chip-line); border-radius:8px; padding:6px 9px; margin-top:auto; }
+    /* ---- Danh sach VPN nhieu lua chon (checkbox) ---- */
+    .vpn-multi { position:relative; min-width:0; }
+    .vpn-multi-btn { width:100%; height:34px; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between; gap:6px; border:1px solid var(--line-3); background:var(--surface-3); color:var(--text); border-radius:8px; padding:0 9px; font-size:13px; font-weight:700; cursor:pointer; text-align:left; }
+    .vpn-multi-btn:hover { border-color:var(--accent-hi); }
+    .vpn-multi-btn > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .vpn-multi-caret { flex:0 0 auto; font-size:10px; opacity:.75; }
+    .vpn-multi-panel { display:none; position:absolute; z-index:60; top:calc(100% + 4px); left:0; right:0; min-width:210px; max-height:288px; overflow:auto; background:var(--surface); border:1px solid var(--line); border-radius:10px; box-shadow:0 14px 34px var(--shadow-drop); padding:5px; }
+    .vpn-multi.open .vpn-multi-panel { display:block; }
+    .vpn-opt { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:7px; font-size:13px; cursor:pointer; user-select:none; }
+    .vpn-opt:hover { background:var(--surface-hi); }
+    .vpn-opt input { width:15px; height:15px; flex:0 0 auto; margin:0; padding:0; accent-color:var(--accent); }
+    .vpn-opt-all { font-weight:900; color:var(--text-head); border-bottom:1px dashed var(--line-dash); border-radius:7px 7px 0 0; margin-bottom:3px; }
+    .vpn-opt-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .vpn-multi-empty { padding:8px; font-size:12.5px; color:var(--text-dim); }
     .view-tabs { display:flex; gap:0; align-items:center; margin-top:10px; }
-    .view-tab { border:1px solid #86198f; background:#86198f; color:#fbe3ff; padding:10px 16px; cursor:pointer; font-weight:900; opacity:.55; transition:.18s ease; }
+    .view-tab { border:1px solid var(--tab-bg); background:var(--tab-bg); color:var(--tab-ink); padding:10px 16px; cursor:pointer; font-weight:900; opacity:.55; transition:.18s ease; }
     .view-tab:first-child { border-radius:10px 0 0 10px; }
     .view-tab:last-child { border-radius:0 10px 10px 0; }
     .view-tab.active { background:linear-gradient(135deg,#ec4899,#c026d3); border-color:#db2777; color:#fff; opacity:1; box-shadow:0 8px 20px rgba(219,39,119,.32); }
-    .sub { color:#6b7280; font-size:12px; margin-top:5px; }
+    .sub { color:var(--text-dim); font-size:12px; margin-top:5px; }
+    .info-note { font-weight:800; color:var(--info); }
+    .info-note-b { color:var(--info-b); }
     .grid { max-height:76vh; overflow:auto; }
     table { width:100%; border-collapse:collapse; }
-    th, td { padding:10px 8px; border-bottom:1px solid #efc0e4; font-size:14px; vertical-align:middle; }
-    th { text-align:left; background:#f8cdef; position:sticky; top:0; z-index:1; }
-    tbody tr { background:#fdeef9; }
-    tbody tr:hover { background:#f9d7f0; }
-    input, textarea, select { width:100%; box-sizing:border-box; border:1px solid #d99ccf; border-radius:8px; padding:8px 10px; font-size:14px; background:#fce7f6; color:#43163c; }
+    th, td { padding:10px 8px; border-bottom:1px solid var(--line-5); font-size:14px; vertical-align:middle; }
+    th { text-align:left; background:var(--th-bg); position:sticky; top:0; z-index:1; }
+    tbody tr { background:var(--surface-4); }
+    tbody tr:hover { background:var(--surface-hi); }
+    input, textarea, select { width:100%; box-sizing:border-box; border:1px solid var(--line-3); border-radius:8px; padding:8px 10px; font-size:14px; background:var(--surface-3); color:var(--text); }
     textarea { min-height:90px; resize:vertical; }
     .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; }
     .online { background:#dcfce7; color:#166534; }
@@ -96,19 +150,19 @@
     .th-check { display:flex; align-items:center; justify-content:space-between; gap:8px; }
     .modal { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:9999; }
     .modal.show { display:flex; }
-    .modal-card { width:min(920px, 95vw); background:#fdecf8; border-radius:16px; border:1px solid #ec9fd9; box-shadow:0 20px 60px rgba(120,20,90,.25); }
-    .modal-head { display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-bottom:1px solid #eec4e4; }
+    .modal-card { width:min(920px, 95vw); background:var(--surface); border-radius:16px; border:1px solid var(--line); box-shadow:0 20px 60px var(--shadow-drop); }
+    .modal-head { display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-bottom:1px solid var(--line-2); }
     .modal-body { padding:16px 18px; display:grid; gap:12px; }
-    .modal-foot { padding:16px 18px; border-top:1px solid #eec4e4; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+    .modal-foot { padding:16px 18px; border-top:1px solid var(--line-2); display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
     .field label { display:block; font-size:13px; font-weight:700; margin-bottom:6px; }
     .cfg-text { min-height:360px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .checkline { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
     .checkline label { display:flex; gap:8px; align-items:center; font-size:14px; }
-    .embedded-app { background:#fdecf8; border:1px solid #ec9fd9; border-radius:14px; overflow:hidden; min-height:78vh; }
-    .embedded-frame { width:100%; height:78vh; border:0; display:block; background:#fdecf8; }
+    .embedded-app { background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden; min-height:78vh; }
+    .embedded-frame { width:100%; height:78vh; border:0; display:block; background:var(--surface); }
     .group3-action-line { display:grid; grid-template-columns:minmax(220px,1fr) 74px 90px 110px 44px; gap:8px; align-items:center; }
-    .group3-schedule-time, .group3-schedule-count { height:38px; border:1px solid #d99ccf; border-radius:10px; padding:0 10px; font-size:16px; font-weight:700; text-align:center; box-sizing:border-box; background:#fce7f6; color:#43163c; }
-    .group3-schedule-time[disabled], .group3-schedule-count[disabled] { background:#e5e7eb; color:#6b7280; }
+    .group3-schedule-time, .group3-schedule-count { height:38px; border:1px solid var(--line-3); border-radius:10px; padding:0 10px; font-size:16px; font-weight:700; text-align:center; box-sizing:border-box; background:var(--surface-3); color:var(--text); }
+    .group3-schedule-time[disabled], .group3-schedule-count[disabled] { background:var(--disabled-bg); color:var(--disabled-ink); }
     .lic-line { display:inline-block; max-width:520px; font-weight:800; font-size:12px; padding:4px 10px; border-radius:8px; line-height:1.55; text-align:right; }
     .lic-ok { background:#ecfdf5; color:#047857; }
     .lic-bad { background:#fef2f2; color:#b91c1c; }
@@ -118,9 +172,27 @@
     .lock-id { background:#020617; color:#38bdf8; font-family:ui-monospace,Menlo,monospace; font-size:20px; font-weight:800; padding:14px 22px; border-radius:12px; cursor:pointer; user-select:all; }
     .lock-btn { background:#06b6d4; color:#fff; border:0; border-radius:10px; padding:10px 18px; font-weight:800; cursor:pointer; }
     #licBar { font-size:12px; padding:4px 10px; align-self:center; }
+    /* ---- Sac thai ngu nghia rieng cho giao dien TOI ---- */
+    body.dark .check-ok { color:#4ade80; }
+    body.dark .check-bad { color:#f87171; }
+    body.dark .check-wait { color:#e879f9; }
+    body.dark .online { background:#0d3320; color:#86efac; }
+    body.dark .offline { background:#3b1010; color:#fca5a5; }
+    body.dark .conn-badge.connected { background:#0d3320; color:#86efac; border-color:#166534; }
+    body.dark .conn-badge.disconnected { background:#3b1010; color:#fca5a5; border-color:#7f1d1d; }
+    body.dark .lic-ok { background:#052e23; color:#6ee7b7; }
+    body.dark .lic-bad { background:#3b0d0d; color:#fca5a5; }
+    body.dark .btn.warn { background:#b45309; border-color:#b45309; }
+    body.dark .notes-summary-empty { color:var(--text-dim); }
+    body.dark .btn, body.dark .icon-btn { color:var(--text); }
+    body.dark .icon-btn:hover { border-color:var(--accent-hi); }
   </style>
 </head>
 <body>
+  <script>
+    // Ap giao dien da luu TRUOC khi ve phan con lai -> khong bi nhay sang/toi.
+    (function () { try { if (localStorage.getItem('pm_theme') === 'dark') document.body.classList.add('dark'); } catch (e) {} })();
+  </script>
   <div class="lock-screen" id="lockScreen">
     <h1>PHẦN MỀM CHƯA ĐƯỢC KÍCH HOẠT</h1>
     <p>Vui lòng gửi ID máy cho admin để active. Khi chưa active, toàn bộ chức năng bị khoá.</p>
@@ -136,6 +208,7 @@
           <button class="btn tab active" id="projectTabProxy" onclick="switchProjectTab('proxy')">TIKTOK 03 PROXY MANAGER - HGTHAI</button>
         </div>
         <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
+        <button class="icon-btn" id="themeBtn" onclick="toggleTheme()">🌙</button>
       </div>
       <div class="titlebar-right">
         <button class="btn version-btn" id="versionBtn" onclick="handleVersionClick()"><span>Version: <span id="versionText">đang nạp...</span></span><span class="version-dot" id="versionDot"></span></button>
@@ -161,7 +234,7 @@
       <div class="meta">
         <div class="meta-left session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Sửa tên hiển thị cấu hình">✏️</button><button class="icon-btn" onclick="openSessionManager()" title="Quản lý cấu hình" id="manageSessionBtn">⚙️</button></div>
         <div class="meta-center" style="display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center;">
-          <div id="proxyMachineNote" class="sub" style="font-weight:800; color:#1d4ed8;">Máy trong router này: đang nạp...</div>
+          <div id="proxyMachineNote" class="sub info-note">Máy trong router này: đang nạp...</div>
           <span class="status" id="status">Ready</span>
         </div>
         <div class="meta-right"><div class="lic-line" id="licBar" style="display:none"></div></div>
@@ -190,10 +263,15 @@
             <div class="bulk-card-title"><span class="t-ico t-ico-green">🔒</span>Gán VPN theo số máy</div>
             <div class="vpn-row">
               <input id="vpnMachines" placeholder="all | 1,2,3,5 | 1-9">
-              <select id="vpnPick"></select>
+              <div class="vpn-multi" id="vpnMulti">
+                <button type="button" class="vpn-multi-btn" id="vpnMultiBtn" onclick="toggleVpnMultiPanel()" aria-haspopup="listbox" aria-expanded="false">
+                  <span id="vpnMultiLabel">— không có VPN active —</span><span class="vpn-multi-caret">▾</span>
+                </button>
+                <div class="vpn-multi-panel" id="vpnMultiPanel" role="listbox" aria-multiselectable="true"></div>
+              </div>
             </div>
             <div class="bulk-actions"><button class="btn apply" style="width:100%;" onclick="applyBulkVpn()">GÁN VPN</button></div>
-            <div id="vpnAssignedList" class="card-hint" style="background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:6px 9px;margin-top:auto;"></div>
+            <div id="vpnAssignedList" class="card-hint chip-box"></div>
           </div>
           <div class="top-work-card">
             <div class="bulk-card-title"><span class="t-ico t-ico-violet">📝</span>Note tổng</div>
@@ -286,7 +364,7 @@
       </div>
       <div class="modal-body">
         <div class="sub">Mỗi dòng: <b>số_máy|proxy_x|ip</b> — ví dụ: <span class="mono">101|proxy_1|192.15.4.1</span> · vẫn nhận format cũ <span class="mono">proxy_1|192.15.4.1</span> · tối đa 1000 dòng · sẽ ép gencore.json match đúng proxy tag và IP đã nhập</div>
-        <div class="sub" style="color:#2563eb;font-weight:700;">Cấu hình này dùng chung cho tất cả cấu hình/session. GÁN MAC cũng là dữ liệu dùng chung của router.</div>
+        <div class="sub info-note-b" style="font-weight:700;">Cấu hình này dùng chung cho tất cả cấu hình/session. GÁN MAC cũng là dữ liệu dùng chung của router.</div>
         <textarea id="ipMacText" class="cfg-text" spellcheck="false"></textarea>
         <div class="checkline">
           <label><input type="checkbox" id="cfgApplyRuntime" checked> Apply runtime ngay</label>
@@ -795,14 +873,100 @@
         opt.value = 'vpn'; opt.textContent = 'VPN'; opt.setAttribute('data-vpn', '1');
         sel.appendChild(opt);
       });
-      const pick = document.getElementById('vpnPick');
-      if (pick) {
-        const cur = pick.value;
-        pick.innerHTML = VPN_ACCOUNTS.filter(a => a.running)
-          .map(a => `<option value="${esc('vpn:' + a.name)}">🟢 ${esc(a.name)}</option>`).join('')
-          || '<option value="">— không có VPN active —</option>';
-        if ([...pick.options].some(o => o.value === cur)) pick.value = cur;
+      renderVpnMulti();
+    }
+
+    // ================= Danh sach VPN nhieu lua chon =================
+    // VPN_PICKED giu ten account da tick; giu nguyen qua moi lan refresh 30s,
+    // account nao tat tunnel thi tu roi khoi danh sach.
+    var VPN_PICKED = new Set();
+    function vpnRunningNames() {
+      return VPN_ACCOUNTS.filter(a => a && a.running).map(a => String(a.name));
+    }
+    function vpnPickedList() {
+      // Tra ve DUNG THU TU dang hien tren danh sach -> "bo cac VPN duoi cung" xac dinh duoc.
+      return vpnRunningNames().filter(n => VPN_PICKED.has(n));
+    }
+    function renderVpnMulti() {
+      const panel = document.getElementById('vpnMultiPanel');
+      if (!panel) return;
+      const names = vpnRunningNames();
+      // don cac account da tat tunnel khoi lua chon cu
+      for (const n of [...VPN_PICKED]) if (!names.includes(n)) VPN_PICKED.delete(n);
+      if (!names.length) {
+        panel.innerHTML = '<div class="vpn-multi-empty">— không có VPN active —</div>';
+        updateVpnMultiLabel();
+        return;
       }
+      const allOn = names.every(n => VPN_PICKED.has(n));
+      // Khong nhet ten VPN vao attribute onchange: dung data-name + listener delegate.
+      const head = `<label class="vpn-opt vpn-opt-all"><input type="checkbox" data-all="1" ${allOn ? 'checked' : ''}><span class="vpn-opt-name">${allOn ? 'Bỏ chọn hết' : 'Chọn hết'} (${names.length})</span></label>`;
+      const body = names.map(n => `<label class="vpn-opt"><input type="checkbox" data-name="${esc(n)}" ${VPN_PICKED.has(n) ? 'checked' : ''}><span class="vpn-opt-name">🟢 ${esc(n)}</span></label>`).join('');
+      panel.innerHTML = head + body;
+      if (!panel.dataset.bound) {
+        panel.dataset.bound = '1';
+        panel.addEventListener('change', (ev) => {
+          const t = ev.target;
+          if (!t || t.type !== 'checkbox') return;
+          if (t.dataset.all) onVpnPickAll(t.checked);
+          else if (t.dataset.name != null) onVpnPickOne(t.dataset.name, t.checked);
+        });
+      }
+      updateVpnMultiLabel();
+    }
+    function updateVpnMultiLabel() {
+      const el = document.getElementById('vpnMultiLabel');
+      if (!el) return;
+      const picked = vpnPickedList();
+      const total = vpnRunningNames().length;
+      if (!total) { el.textContent = '— không có VPN active —'; return; }
+      if (!picked.length) { el.textContent = `Chọn VPN (0/${total})`; return; }
+      if (picked.length === 1) { el.textContent = `🟢 ${picked[0]}`; return; }
+      el.textContent = `Đã chọn ${picked.length}/${total} VPN`;
+    }
+    function onVpnPickOne(name, on) {
+      if (on) VPN_PICKED.add(String(name)); else VPN_PICKED.delete(String(name));
+      renderVpnMulti();
+    }
+    function onVpnPickAll(on) {
+      VPN_PICKED = on ? new Set(vpnRunningNames()) : new Set();
+      renderVpnMulti();
+    }
+    function toggleVpnMultiPanel(force) {
+      const box = document.getElementById('vpnMulti');
+      const btn = document.getElementById('vpnMultiBtn');
+      if (!box) return;
+      const open = (typeof force === 'boolean') ? force : !box.classList.contains('open');
+      box.classList.toggle('open', open);
+      if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    document.addEventListener('click', (ev) => {
+      const box = document.getElementById('vpnMulti');
+      if (box && box.classList.contains('open') && !box.contains(ev.target)) toggleVpnMultiPanel(false);
+    });
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') toggleVpnMultiPanel(false); });
+
+    // Chia N may cho M VPN: M > N thi BO cac VPN duoi cung; con lai chia DEU
+    // (lech nhau toi da 1 may) roi GHEP NGAU NHIEN may <-> vpn.
+    function shuffleInPlace(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+      }
+      return arr;
+    }
+    function buildVpnPlan(nMachines, vpns) {
+      const list = (vpns || []).slice(0, nMachines);   // bo cac VPN duoi cung khi M > N
+      const M = list.length;
+      if (!nMachines || !M) return null;
+      const base = Math.floor(nMachines / M);
+      const rem = nMachines % M;
+      // ai duoc +1 may: rut ngau nhien cho cong bang giua cac lan bam
+      const extra = new Set(shuffleInPlace(list.map((_, i) => i)).slice(0, rem));
+      const bag = [];
+      list.forEach((nm, i) => { const k = base + (extra.has(i) ? 1 : 0); for (let t = 0; t < k; t++) bag.push(nm); });
+      shuffleInPlace(bag);
+      return { list, bag, dropped: (vpns || []).length - M };
     }
     function parseMachinesSpec(spec, max) {
       const s = String(spec || '').trim().toLowerCase();
@@ -832,52 +996,61 @@
       const specRaw = String(document.getElementById('vpnMachines')?.value || '').trim();
       const parsed = parseMachinesSpec(specRaw, vis.length);
       if (!parsed) return setStatus('Số máy không hợp lệ (all | 1,2,3 | 1-9)');
-      const accSel = String(document.getElementById('vpnPick')?.value || '');
-      if (!accSel.startsWith('vpn:')) return setStatus('Chưa có VPN active — bật tunnel ở trang VPN trước');
-      const acc = accSel.slice(4);
-      const targets = (parsed === 'all') ? vis : parsed.map(n => vis[n - 1]).filter(Boolean);
+      const picked = vpnPickedList();
+      if (!picked.length) return setStatus('Chưa tick VPN nào — mở danh sách VPN và tick ít nhất 1 loại');
+      const targets = (parsed === 'all') ? vis.slice() : parsed.map(n => vis[n - 1]).filter(Boolean);
       if (!targets.length) return setStatus('Không map được máy nào');
 
-      // Cap nhat bang truoc cho UI phan hoi ngay
-      for (const r of targets) { r.proxyType = 'vpn'; r.proxy = accSel; }
+      const plan = buildVpnPlan(targets.length, picked);
+      if (!plan) return setStatus('Không chia được VPN cho số máy đã chọn');
+
+      // Cap nhat bang truoc cho UI phan hoi ngay + gom IP theo tung account
+      const byAcc = new Map();
+      targets.forEach((r, i) => {
+        const acc = plan.bag[i];
+        r.proxyType = 'vpn';
+        r.proxy = 'vpn:' + acc;
+        const ip = String(r.ip || '').trim();
+        if (!ip) return;
+        if (!byAcc.has(acc)) byAcc.set(acc, []);
+        byAcc.get(acc).push(ip);
+      });
       persistDraft(currentSession);
       render();
 
-      const ips = targets.map(r => String(r.ip || '').trim()).filter(Boolean);
-      setStatus(`GÁN VPN ${acc}: đang gán ${ips.length} máy...`);
+      const dropNote = plan.dropped > 0 ? ` (bỏ ${plan.dropped} VPN cuối vì nhiều hơn số máy)` : '';
+      setStatus(`GÁN VPN: ${targets.length} máy / ${plan.list.length} VPN${dropNote} — đang gán...`);
 
-      // Duong NHANH: 1 request bulk (router >= Ver 2.32).
-      // Router cu chua co action nay -> tu dong lui ve vong lap le.
-      try {
-        const res = await fetchJSON('/api/vpn/action', {
-          method: 'POST',
-          body: JSON.stringify({ action: 'assign-bulk', name: acc, ips })
-        });
-        if (res && res.ok) {
-          setStatus(`GÁN VPN ${acc}: OK ${res.count || ips.length}/${ips.length} máy`);
-          return;
-        }
-        const errTxt = String((res && (res.error || res.output)) || '');
-        if (!/action khong ho tro|khong ho tro: assign-bulk|die_use|dung: /i.test(errTxt)) {
-          setStatus(`GÁN VPN ${acc} lỗi: ${errTxt || 'không rõ'}`);
-          return;
-        }
-        setStatus('Router chưa có bản gán nhanh — dùng cách cũ (chậm hơn)...');
-      } catch (e) {
-        setStatus('Thử gán nhanh không được — dùng cách cũ...');
-      }
-
-      // Fallback: gan tung may (tuong thich router chua update)
+      const isUnsupported = (res) => {
+        const t = String((res && (res.error || res.output)) || '');
+        return /action khong ho tro|khong ho tro: assign-bulk|die_use|dung: /i.test(t);
+      };
       let okN = 0, failN = 0;
-      for (const r of targets) {
+      const errList = [];
+      for (const [acc, ips] of byAcc) {
+        let fb = false;
         try {
-          const res = await fetchJSON('/api/vpn/action', { method:'POST', body: JSON.stringify({ action:'assign', name: acc, ip: r.ip }) });
-          if (res.ok) okN++; else { failN++; setStatus(`Lỗi gán ${r.ip}: ${res.output || res.error || ''}`); }
-        } catch (e) { failN++; }
+          // Duong NHANH: 1 request cho ca nhom (router >= Ver 2.32)
+          const res = await fetchJSON('/api/vpn/action', { method: 'POST', body: JSON.stringify({ action: 'assign-bulk', name: acc, ips }) });
+          if (res && res.ok) { okN += (res.count || ips.length); continue; }
+          if (isUnsupported(res)) fb = true;
+          else { failN += ips.length; errList.push(`${acc}: ${(res && (res.output || res.error)) || 'không rõ'}`); continue; }
+        } catch (e) { fb = true; }
+        if (fb) {
+          // Router cu chua co assign-bulk -> lui ve gan tung IP
+          for (const ip of ips) {
+            try {
+              const r2 = await fetchJSON('/api/vpn/action', { method: 'POST', body: JSON.stringify({ action: 'assign', name: acc, ip }) });
+              if (r2 && r2.ok) okN++; else { failN++; }
+            } catch (e2) { failN++; }
+          }
+        }
       }
       persistDraft(currentSession);
       render();
-      setStatus(`GÁN VPN ${acc}: OK ${okN}/${targets.length} máy` + (failN ? ` (${failN} lỗi)` : ''));
+      setStatus(failN
+        ? `GÁN VPN: OK ${okN}/${targets.length} máy — ${failN} lỗi${errList.length ? ' (' + errList[0] + ')' : ''}`
+        : `GÁN VPN: OK ${okN}/${targets.length} máy - Đã gán thành công theo yêu cầu`);
     }
     function effVpnAccount(r) {
       if (String(r?.proxyType || '').toLowerCase() !== 'vpn') return '';
@@ -1283,7 +1456,7 @@
         const subParts = [];
         if (secondary && secondary !== primary) subParts.push(secondary);
         subParts.push(`Session ${session}${meta.hidden ? ' • đang ẩn' : ''}`);
-        return `<div style="display:grid;grid-template-columns:180px 1fr auto;gap:10px;align-items:center;border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;">
+        return `<div style="display:grid;grid-template-columns:180px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;">
           <div><b>${esc(primary)}</b>${secondary && secondary !== primary ? ` <span class="sub" style="display:inline;margin:0;">(${esc(secondary)})</span>` : ''}</div>
           <div class="sub" style="margin:0;">${subParts.join(' • ')}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">${actions.join('')}</div>
@@ -1511,6 +1684,23 @@
       try { await fetch('/api/pm/reboot-router', {method:'POST'}); if (typeof setStatus === 'function') setStatus('Đã gửi lệnh reboot router'); } catch (e2) {}
     }
   }
+  // ---- Sang / Toi ----
+  function applyThemeIcon() {
+    const btn = document.getElementById('themeBtn');
+    if (!btn) return;
+    const dark = document.body.classList.contains('dark');
+    // Hien bieu tuong cua che do SE chuyen sang khi bam.
+    btn.textContent = dark ? '\u{1F4A1}' : '\u{1F319}';
+    btn.title = dark ? 'Chuy\u1ec3n sang giao di\u1ec7n S\u00e1ng' : 'Chuy\u1ec3n sang giao di\u1ec7n T\u1ed1i';
+  }
+  function toggleTheme() {
+    const dark = !document.body.classList.contains('dark');
+    document.body.classList.toggle('dark', dark);
+    try { localStorage.setItem('pm_theme', dark ? 'dark' : 'light'); } catch (e) {}
+    applyThemeIcon();
+  }
+  applyThemeIcon();
+
   refreshLicense(true);
   setInterval(() => refreshLicense(true), 60000);
   refreshVpnAccounts();

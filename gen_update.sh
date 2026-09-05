@@ -97,9 +97,19 @@ if [ "$MODE" = "check" ]; then
   log "remote : $REF @ ${SHORT:-?} â€” ${LABEL}"
   log "local  : $(cat "$APP_DIR/VERSION.txt" 2>/dev/null || echo unknown)"
   diff_cnt=0
-  for f in app.py static/index.html; do
+  for f in app.py static/index.html tools/etc_install.sh tools/dataplane_guard.py; do
     a="$(md5f "$APP_DIR/$f")"; b="$(md5f "$PKG/$f")"
     if [ "$a" != "$b" ]; then echo "[DIFF] $f  local=${a:-none} remote=${b:-none}"; diff_cnt=$((diff_cnt+1)); fi
+  done
+  # [Ver 2.47] file NGOAI app dir: bao cao rieng vi etc_install.sh moi dat chung vao cho
+  for pair in "etc/genrouter_killswitch.sh:/etc/genrouter_killswitch.sh" \
+              "etc/genrouter/core/tproxy:/etc/genrouter/core/tproxy" \
+              "etc/genrouter/core/tproxy:/etc/shm/tproxy" \
+              "etc/gen_vpn_guard.sh:/etc/gen_vpn_guard.sh"; do
+    src="$PKG/${pair%%:*}"; dst="${pair##*:}"
+    [ -f "$src" ] || continue
+    a="$(md5f "$dst")"; b="$(md5f "$src")"
+    if [ "$a" != "$b" ]; then echo "[DIFF] $dst  local=${a:-none} remote=${b:-none}"; diff_cnt=$((diff_cnt+1)); fi
   done
   if [ "$diff_cnt" -eq 0 ]; then
     echo "[OK] may da la ban moi nhat ($REF)"
@@ -164,6 +174,38 @@ fi
 [ -f "$APP_DIR/gen_fw_fix.sh" ] && sh "$APP_DIR/gen_fw_fix.sh" || true
 # gen_vpn_guard: chua duong br-lan -> tun* + self-heal (cron 1 phut + hook fix_fw)
 [ -f "$APP_DIR/tools/gen_vpn_guard_install.sh" ] && sh "$APP_DIR/tools/gen_vpn_guard_install.sh" "$APP_DIR/tools/gen_vpn_guard.sh" >/dev/null 2>&1 || true
+
+# ---- [Ver 2.47] etc/: kill-switch + tproxy da sua + cron watchdog ----
+# Truoc Ver 2.47, script nay CHI dong bo app dir + tools/, nen may update qua duong
+# nay bi THIEU 3 thanh phan nam NGOAI app dir (chi install.sh moi trien khai):
+#   /etc/genrouter_killswitch.sh                   khong qua proxy/VPN => khong ra WAN
+#   /etc/genrouter/core/tproxy + /etc/shm/tproxy   ban da sua rt_tables 200/201 + FIX07
+#   cron */5 goi tools/dataplane_guard.py          watchdog data-plane
+# => day la ly do ban va tay tren 1 may khong bao gio lan ra ca dan may.
+# Phai COPY etc/ vao APP_DIR TRUOC roi moi goi: etc_install.sh auto-detect tim
+# "$APP_DIR/etc", khong copy thi no truot va bo qua IM LANG (khong bao loi).
+if [ -d "$PKG/etc" ]; then
+  rm -rf "$APP_DIR/etc"
+  mkdir -p "$APP_DIR/etc"
+  if cp -r "$PKG/etc/." "$APP_DIR/etc/"; then
+    if [ -f "$APP_DIR/tools/etc_install.sh" ]; then
+      log "etc_install: kill-switch + tproxy + cron watchdog ..."
+      if sh "$APP_DIR/tools/etc_install.sh" "$APP_DIR/etc" > "$WORK/etc_install.out" 2>&1; then
+        sed 's/^/  /' "$WORK/etc_install.out"
+      else
+        err "etc_install.sh tra ve loi (log duoi), van tiep tuc update"
+        sed 's/^/  /' "$WORK/etc_install.out" >&2
+      fi
+    else
+      err "thieu $APP_DIR/tools/etc_install.sh -> KHONG trien khai duoc kill-switch/tproxy"
+    fi
+  else
+    err "copy etc/ that bai -> KHONG trien khai duoc kill-switch/tproxy"
+  fi
+else
+  err "package $REF khong co etc/ -> bo qua (ban truoc Ver 2.44?)"
+fi
+
 # keep canonical label with commit sha (same format as key-update)
 echo "$VT" > "$APP_DIR/VERSION.txt"
 cp "$APP_DIR/gen_update.sh" /root/gen_update.sh 2>/dev/null || true
