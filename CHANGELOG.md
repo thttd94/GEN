@@ -1,5 +1,131 @@
 # CHANGELOG
 
+## Ver 2.45 (2026-09-05) - chong RO IP THAT khi chay che do VPN (fail-open -> fail-closed)
+
+Ban 2.44 tro xuong co mot lo fail-open trong che do VPN. Trong che do nay moi may khach
+co mot outbound rieng trong `gencore.json`:
+
+```json
+{"tag": "proxy_7", "type": "direct"}
+```
+
+`type: direct` nghia la "cu di thang, routing se day vao tunnel". Viec day vao tunnel do
+`ip rule from <IP> lookup <table>` lam, va rule do **chi ton tai khi `vpn_mgr.sh assign-many`
+chay thanh cong**. Nhung `sync_vpn_state_on_apply` (app.py:2296) BO QUA may co tunnel khong chay:
+
+```python
+summary['skipped'].append({'ip': ip, 'account': acc, 'reason': 'tunnel khong chay'})
+```
+
+May bi bo qua thi khong vao `ipset genrouter_vpn`, khong co `ip rule` rieng, nen bi TPROXY
+hijack vao sing-box, gap outbound `direct` va **ra WAN bang IP that**. Dung ra phai chan.
+Rui ro nay chi hien hinh khi co tunnel chet dung luc apply - nhung do la dung luc no nguy hiem
+nhat, vi khong co canh bao nao va may khach van "chay binh thuong".
+
+### Vi sao khong sua bang `type: block`
+
+Da thu va do: `gencore check` (sing-box 1.11.6) CHAP NHAN ca `{"type":"block"}` (chi WARN
+legacy) va ca bien the route `{"action":"reject"}`. Nhung `extract_rows` (app.py:1770) nhan dien
+"may nay dang o che do VPN" **chinh bang `ob_type == 'direct'`**. Doi sang `block` se lam GUI mat
+nhan dien VPN, keo theo phai sua dong bo `extract_rows` + `build_old_gui_update_proxy_payload_from_rows`
+(app.py:2183) + `config_doc_stats`. Sua 3 cho trong app dung sinh menh GUI de doi lay mot viec ma
+tang iptables lam duoc gon hon => chon chan o tang iptables.
+
+### Lop `[VPN_WANT]` trong `etc/genrouter_killswitch.sh`
+
+Them mot ipset thu hai va mot rule hieu tap hop:
+
+| ipset | y nghia | ai dong bo |
+|---|---|---|
+| `genrouter_vpn_want` | may **KHAI BAO** che do VPN (outbound `proxy_*` co `type: direct` trong runtime) | `genrouter_killswitch.sh` (moi phut), trich tu `/etc/genrouter/gencore.json` |
+| `genrouter_vpn` | may **DA duoc gan tunnel that** | `gen_vpn_guard.sh` dong bo tu `/data/vpn/map.txt` |
+
+```sh
+iptables -t mangle -I GENROUTER 2 \
+  -m set --match-set genrouter_vpn_want src \
+  -m set ! --match-set genrouter_vpn src -j RETURN
+```
+
+Rule chi match **phan hieu**: khai VPN MA chua duoc gan tunnel.
+
+- Che do proxy: khong outbound nao `type: direct` => `want` RONG => rule **bi xoa** => vo hai.
+- Che do VPN gan du: `want == vpn` => phan hieu rong => rule khong match gi => vo hai.
+- Chi khi co may khai VPN ma chua gan thi rule moi chan - dung luc can chan.
+
+**RETURN o day la CHAN THAT, khong phai tha ra WAN.** Da do: may khong co `ip rule` rieng thi roi
+vao `ip rule iif br-lan lookup 201`, va table 201 co `unreachable default`
+(ban `tproxy` da sua tu 2026-09-03). `ip route get 1.1.1.1 from <IP> iif br-lan` tra ve
+`Host is unreachable`. Chen o **vi tri 2** vi `gen_vpn_guard.sh` ep 4 rule cua no ve vi tri 1
+moi phut - dat o 2 thi hai ben khong tranh cho, va van dung truoc rule TPROXY dau tien
+(do duoc: TPROXY som nhat o vi tri 15 cua chain).
+
+Trich tap IP bang `python3` + `json` chu khong bang `sed`/`awk`: `gencore.json` la MOT dong dai
+va can doi chieu tag outbound <-> route rule; lam bang sed/awk rat de sai am tham. Da do:
+python3 ~0,4 s cho 322 may, ban shell `grep -o` ~1,4 s va phu thuoc thu tu khoa JSON.
+
+### Sua tiep mot LOI IM LANG vua sinh ra o Ver 2.44: `awk 'NR==FNR'` sai khi file thu nhat RONG
+
+Ver 2.44 thay `comm` (BusyBox khong co) bang `awk 'NR==FNR{s[$1];next} !($1 in s)'`. Cach do
+**sai khi file thu nhat rong**: awk khong doc duoc ban ghi nao tu file rong, nen `NR==FNR` van
+DUNG voi moi dong cua file thu HAI; toan bo file thu hai bi nap vao mang `s` roi `next` bo qua
+=> **0 dong ket qua**.
+
+Do that tren router, 7 to hop:
+
+| tinh huong | `NR==FNR` | `getline` trong BEGIN | dung |
+|---|---|---|---|
+| set RONG, cfg 3 IP | **0 SAI** | 3 | 3 |
+| set 3 IP, cfg rong | 0 | 0 | 0 |
+| ca hai rong | 0 | 0 | 0 |
+| set{a,b} cfg{a,b,c} | 1 | 1 | 1 |
+| set{a,b,c} cfg{a} | 0 | 0 | 0 |
+| khong giao nhau | 2 | 2 | 2 |
+| 1 phan tu moi | 1 | 1 | 1 |
+| **tong** | **6/7** | **7/7** | |
+
+Hau qua neu de nguyen: tren router MOI (hoac sau khi `ipset destroy`), `genrouter_mapped` rong
+=> sync add 0 IP => ipset **mai mai rong** => nhanh "chi chan khi ipset co du lieu" khong bao gio
+bat => **lop chan DNS chet im lang**, dung loai loi ma 2.44 vua chua. Dang la loi ngu, chua phat
+tac vi set hien co 322 entry tu lan tao dau tien.
+
+Nay dung `while ((getline l < LF) > 0) s[l]=1` trong `BEGIN` - doc tuong minh file thu nhat, rong
+thi mang rong, dung ngu nghia tap hop. Day cung la cach `tools/vpn_mgr.sh:496` da dung san.
+Ca **4 cho** trong file (2 cho `genrouter_mapped` + 2 cho `genrouter_vpn_want`) deu doi.
+
+### Thu nghiem nguoc 6/6 PASS
+
+Chay tren chain `GR428` + ipset gia, khong cham traffic that:
+
+| | tinh huong | ket qua |
+|---|---|---|
+| A | 5 may khai VPN, chua gan tunnel nao (`vpn` rong) | `want`=5, rule o vi tri 2, **khong lay may proxy** |
+| B | chay lai lan 2 | `want`=5, vi tri 2, tong rule 4 - idempotent |
+| C | gan du 5 may (`vpn` == `want`) | rule con nhung phan hieu rong => vo hai |
+| D | chi 2/5 may duoc gan | **dung 3 may bi chan** |
+| E | doi sang toan proxy => `want` rong | rule **bi xoa**, tong rule ve 3 |
+| F | quay lai VPN tu trang thai `want` rong | `want`=2 - **dung ca loi `NR==FNR`** |
+
+Ca F la ca ma ban `NR==FNR` truot; ca A/C/D cung truot vi cung nguyen nhan.
+
+### Nghiem thu tren router that
+
+Chay o che do proxy dang phuc vu 322 may: **stderr rong**, snapshot
+`iptables -t mangle -S GENROUTER` + `iptables -S INPUT` + `ip rule` + `ip route show table 201`
++ `ipset genrouter_mapped` truoc-sau **0 dong khac** (do bang `difflib`, khong dung `diff` vi
+BusyBox khong co), chay lan 2 cung 0 dong khac.
+
+Sau khi cai: TPROXY 644 | GENROUTER 657 | `ip rule` 6 | `genrouter_mapped` 322 |
+`genrouter_vpn_want` **0** (dung, dang che do proxy) | INPUT chan DNS 2 | openvpn 32 / tun 32 / wg 1
+| `gencore.json` md5 khong doi | app pid + gencore pid nguyen | log killswitch tang dung 1 dong
+`MK ipset genrouter_vpn_want`.
+
+### Bai hoc do luong (noi tiep 2.44)
+
+- **`awk 'NR==FNR'` la bay khi file thu nhat co the rong.** Dung `while ((getline l < F) > 0)`.
+  Thu nghiem nguoc **phai co ca "tap hien tai rong"** - khong co ca do thi loi nay lot.
+- Harness thu nghiem cung phai **bat stderr** va **khong `rm` file trung gian** truoc khi kiem.
+  Mat 5 vong chan doan chi vi `2>/dev/null` + `rm -f` nam trong doan ma dang thu.
+
 ## Ver 2.44 (2026-09-05) - "FULL FINAL" thuc su: pull source ve la co du he thong
 
 Ban 2.43 tro xuong co mot khoang trong lang le: `install.sh` **chi trien khai app dir**

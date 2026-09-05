@@ -92,8 +92,14 @@ fi
 # 322 entry hien co la do lan tao dau tien, khong phai do dong bo.
 # Hau qua neu khong sua: doi danh sach may (them/bot/doi IP) thi ipset dung yen
 # => may MOI bi chan DNS oan, may DA BO van duoc phep hoi DNS.
-# Thay `comm` bang `awk` (BusyBox co san) - cung ngu nghia tap hop, khong them
-# phu thuoc moi.
+#
+# [Ver 2.45 2026-09-05] SUA TIEP: ban 2.44 thay `comm` bang
+# `awk 'NR==FNR{s[$1];next} ...'`. Cach do SAI khi file thu nhat RONG: awk khong
+# mo duoc block NR==FNR nen coi luon file thu HAI la "tap hien co" => 0 dong add.
+# Do that 7 to hop: NR==FNR 6/7, sai dung o "set rong, cfg co 3 IP" (tra 0, dung 3).
+# Nghia la tren router MOI (ipset chua co entry nao) thi ipset se MAI MAI RONG
+# va lop chan DNS khong bao gio bat - dung loai loi im lang vua chua.
+# Nay dung `getline` trong BEGIN: 7/7 dung, va la cach `vpn_mgr.sh:496` da dung san.
 RT_CFG=/etc/genrouter/gencore.json
 ipset list genrouter_mapped >/dev/null 2>&1 || {
   ipset create genrouter_mapped hash:ip maxelem 4096 2>/dev/null && _log "MK ipset genrouter_mapped"; }
@@ -104,8 +110,8 @@ if [ -f "$RT_CFG" ]; then
     ipset list genrouter_mapped | sed -n '/Members/,$p' | tail -n +2 \
       | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | sort -u > /tmp/ks_cur.txt
     # co trong config ma chua co trong set -> add ; co trong set ma khong con trong config -> del
-    { awk 'NR==FNR{s[$1];next} !($1 in s){print "add genrouter_mapped "$1}' /tmp/ks_cur.txt /tmp/ks_mapped.txt
-      awk 'NR==FNR{s[$1];next} !($1 in s){print "del genrouter_mapped "$1}' /tmp/ks_mapped.txt /tmp/ks_cur.txt
+    { awk -v LF=/tmp/ks_cur.txt   'BEGIN{while((getline l < LF)>0) s[l]=1} !($1 in s){print "add genrouter_mapped "$1}' /tmp/ks_mapped.txt
+      awk -v LF=/tmp/ks_mapped.txt 'BEGIN{while((getline l < LF)>0) s[l]=1} !($1 in s){print "del genrouter_mapped "$1}' /tmp/ks_cur.txt
     } > /tmp/ks_batch.txt
     if [ -s /tmp/ks_batch.txt ]; then
       ipset restore -! < /tmp/ks_batch.txt 2>/dev/null && _log "SYNC ipset genrouter_mapped ($(wc -l < /tmp/ks_batch.txt) thay doi)"
@@ -147,6 +153,106 @@ if [ -s /tmp/ks_catchall.txt ]; then
   done < /tmp/ks_catchall.txt
 fi
 rm -f /tmp/ks_catchall.txt
+
+# --- [Ver 2.45 2026-09-05] CHONG RO IP THAT khi chay che do VPN ---
+#
+# LOI: trong che do VPN, moi may co mot outbound rieng trong gencore.json dat la
+# {"tag":"proxy_N","type":"direct"} - nghia la "cu di thang, routing se day vao tunnel".
+# Viec day vao tunnel do `ip rule from <IP> lookup <table>` lam, va rule do chi
+# duoc tao khi `vpn_mgr.sh assign-many` chay thanh cong.
+#
+# Nhung `sync_vpn_state_on_apply` (app.py:2296) BO QUA may co tunnel khong chay:
+#     summary['skipped'].append({'ip': ip, 'account': acc, 'reason': 'tunnel khong chay'})
+# May bi bo qua thi khong vao `ipset genrouter_vpn`, khong co `ip rule` rieng
+# => bi TPROXY hijack vao sing-box => gap outbound `direct` => RA WAN BANG IP THAT.
+# Day la fail-OPEN: dung ra phai chan (fail-closed).
+#
+# CHUA: may nao KHAI BAO che do VPN ma CHUA duoc gan tunnel thi cho RETURN khoi
+# chain GENROUTER truoc cac rule TPROXY. Da do: `ip route get 1.1.1.1 from <IP>
+# iif br-lan` cua may khong co ip rule rieng tra ve "Host is unreachable"
+# (nho `ip rule iif br-lan lookup 201` + `unreachable default` trong table 201)
+# => RETURN = CHAN THAT, khong phai tha ra WAN.
+#
+# Hai tap hop:
+#   genrouter_vpn_want  = may KHAI BAO VPN (outbound proxy_* type=direct trong runtime)
+#   genrouter_vpn       = may DA duoc gan tunnel that (gen_vpn_guard.sh dong bo tu map.txt)
+# Rule chi match phan hieu: want MA khong co trong vpn.
+#
+# Che do proxy: khong outbound nao type=direct => want RONG => rule duoc XOA => vo hai.
+# Che do VPN gan du: want == vpn => phan hieu rong => rule khong match gi => vo hai.
+# Chi khi co may khai VPN ma chua gan thi rule moi chan - dung luc can chan.
+VPN_WANT_SET=genrouter_vpn_want
+if [ -f "$RT_CFG" ]; then
+  ipset list "$VPN_WANT_SET" >/dev/null 2>&1 || {
+    ipset create "$VPN_WANT_SET" hash:ip maxelem 4096 2>/dev/null && _log "MK ipset $VPN_WANT_SET"; }
+
+  # Trich tap IP khai bao VPN. Dung python3 (co san, 0 ms cho file 128 KB) vi
+  # gencore.json la MOT dong dai va can doi chieu tag outbound <-> route rule -
+  # viec nay bang sed/awk se rat de sai am tham.
+  /usr/bin/python3 - "$RT_CFG" > /tmp/ks_vpnwant.txt 2>/dev/null <<'PYEOF'
+import json, sys
+try:
+    doc = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+direct = set()
+for o in (doc.get('outbounds') or []):
+    if not isinstance(o, dict):
+        continue
+    tag = str(o.get('tag') or '')
+    if tag.startswith('proxy_') and str(o.get('type') or '') == 'direct':
+        direct.add(tag)
+out = set()
+for r in ((doc.get('route') or {}).get('rules') or []):
+    if not isinstance(r, dict):
+        continue
+    if str(r.get('outbound') or '') not in direct:
+        continue
+    ip = str(r.get('source_ip_cidr') or '').strip()
+    if not ip:
+        continue
+    ip = ip.split('/')[0]
+    p = ip.split('.')
+    if len(p) == 4 and all(x.isdigit() and 0 <= int(x) <= 255 for x in p):
+        out.add(ip)
+for ip in sorted(out):
+    print(ip)
+PYEOF
+
+  if [ -f /tmp/ks_vpnwant.txt ]; then
+    ipset list "$VPN_WANT_SET" | sed -n '/Members/,$p' | tail -n +2 \
+      | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | sort -u > /tmp/ks_wcur.txt
+    sort -u /tmp/ks_vpnwant.txt > /tmp/ks_wwant.txt
+    # dung `getline` trong BEGIN, KHONG dung NR==FNR: NR==FNR sai khi file thu
+    # nhat rong (do that 7 to hop, xem ghi chu o khoi genrouter_mapped ben tren).
+    { awk -v LF=/tmp/ks_wcur.txt  -v S="$VPN_WANT_SET" 'BEGIN{while((getline l < LF)>0) s[l]=1} !($1 in s){print "add "S" "$1}' /tmp/ks_wwant.txt
+      awk -v LF=/tmp/ks_wwant.txt -v S="$VPN_WANT_SET" 'BEGIN{while((getline l < LF)>0) s[l]=1} !($1 in s){print "del "S" "$1}' /tmp/ks_wcur.txt
+    } > /tmp/ks_wbatch.txt
+    if [ -s /tmp/ks_wbatch.txt ]; then
+      ipset restore -! < /tmp/ks_wbatch.txt 2>/dev/null \
+        && _log "SYNC ipset $VPN_WANT_SET ($(wc -l < /tmp/ks_wbatch.txt) thay doi, tong $(wc -l < /tmp/ks_wwant.txt) may che do VPN)"
+    fi
+    rm -f /tmp/ks_wcur.txt /tmp/ks_wwant.txt /tmp/ks_wbatch.txt
+  fi
+  rm -f /tmp/ks_vpnwant.txt
+
+  # Rule chan: chi giu khi tap want CO du lieu (dang o che do VPN).
+  # Chen o vi tri 2 vi gen_vpn_guard.sh ep rule cua no ve vi tri 1 moi phut;
+  # dat o 2 thi hai ben khong tranh cho, va van dung TRUOC rule TPROXY dau tien
+  # (do duoc: TPROXY som nhat o vi tri 15 cua chain GENROUTER).
+  KS_LEAK="-m set --match-set $VPN_WANT_SET src -m set ! --match-set genrouter_vpn src -j RETURN"
+  if [ "$(ipset list "$VPN_WANT_SET" 2>/dev/null | grep -c '^[0-9]')" -gt 0 ]; then
+    if ! iptables -t mangle -C GENROUTER $KS_LEAK 2>/dev/null; then
+      iptables -t mangle -I GENROUTER 2 $KS_LEAK 2>/dev/null \
+        && _log "FIX GENROUTER chan may khai VPN nhung chua gan tunnel (chong ro IP that)"
+    fi
+  else
+    while iptables -t mangle -C GENROUTER $KS_LEAK 2>/dev/null; do
+      iptables -t mangle -D GENROUTER $KS_LEAK 2>/dev/null || break
+      _log "CLEAN GENROUTER bo rule chong ro IP (khong con may nao che do VPN)"
+    done
+  fi
+fi
 
 # [fix09] exit cuoi file
 exit 0
