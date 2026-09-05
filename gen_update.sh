@@ -47,7 +47,7 @@ PKG="$WORK/GEN-${REF}"
 rm -rf "$WORK"
 mkdir -p "$PKG"
 
-cleanup(){ rm -rf "$WORK"; }
+cleanup(){ rm -rf "$WORK"; [ "${GEN_SELF_UPDATED:-0}" = "1" ] && rm -f /root/.gen_update.sh.run; return 0; }
 trap cleanup EXIT INT TERM
 
 case "$REF" in
@@ -83,7 +83,14 @@ VT="$LABEL"
 
 # ---- self-install: chay tu dau (pipe wget / tmp / GUI package) cung tu dong vao /root ----
 SELF="$(readlink -f "$0" 2>/dev/null || echo "$0")"
-if [ "$SELF" != "/root/gen_update.sh" ]; then
+if [ "${GEN_SELF_UPDATED:-0}" = "1" ]; then
+  # [Ver 2.49] day la lan chay lai bang LOGIC MOI (xem khoi self-upgrade ben duoi).
+  # Ban moi da co san trong tay -> dat vao /root bang cp, KHONG fetch lai qua mang.
+  # Che do --check phai KHONG doi gi nen bo qua buoc nay.
+  if [ "$MODE" != "check" ]; then
+    cp "$SELF" /root/gen_update.sh 2>/dev/null && chmod 755 /root/gen_update.sh 2>/dev/null
+  fi
+elif [ "$SELF" != "/root/gen_update.sh" ]; then
   if fetch 'https://raw.githubusercontent.com/thttd94/GEN/main/gen_update.sh' /root/.gen_update.sh.new 2>/dev/null && mv /root/.gen_update.sh.new /root/gen_update.sh; then
     chmod 755 /root/gen_update.sh
     log "self-install: /root/gen_update.sh (lan sau chi can go: sh /root/gen_update.sh)"
@@ -91,6 +98,43 @@ if [ "$SELF" != "/root/gen_update.sh" ]; then
 fi
 
 md5f(){ md5sum "$1" 2>/dev/null | awk '{print $1}'; }
+
+# ---- [Ver 2.49] LOGIC SELF-UPGRADE: luon apply bang logic cua ban MOI NHAT ----------
+# Van de do duoc (d574/d575): gen_update.sh la NGUOI THI HANH, nen may dang o ban CU se
+# apply bang luat CU du package tai ve la ban moi. Vi du that:
+#   - Ver 2.19 KHONG co doan copy $PKG/tools/ => app.py len 2.4x nhung tools/vpn_mgr.sh
+#     giu ban CU; app.py::ensure_vpn_mgr() thay tools/ cu roi copy CHINH BAN CU sang
+#     /data/vpn => engine VPN van cu, bug "openvpn khong chay duoc" VAN CON, GUI moi goi
+#     `set-auth` vao engine cu => loi. Ver 2.19 va 2.33 deu KHONG goi etc_install.sh =>
+#     kill-switch/tproxy/cron khong duoc cai. Tat ca dien ra IM LANG, bao "[OK] update xong".
+#   - Chay `--check` bang ban cu con te hon: danh sach so file cu KHONG co tools/vpn_mgr.sh
+#     va static/vpn.html => in "[OK] may da la ban moi nhat" trong khi engine VPN dang cu.
+# Chot: neu gen_update.sh trong package KHAC ban dang chay thi chay lai bang ban trong
+# package (mot lan duy nhat, chan lap bang GEN_SELF_UPDATED). Ke ca --check.
+# Ghi ra /root/.gen_update.sh.run chu KHONG ghi de /root/gen_update.sh dang chay:
+# busybox sh doc script theo tung doan, ghi de file dang chay se lam script chay sai.
+GEN_SELF_UPDATED="${GEN_SELF_UPDATED:-0}"
+if [ "$GEN_SELF_UPDATED" != "1" ] && [ -f "$PKG/gen_update.sh" ]; then
+  rm -f /root/.gen_update.sh.run 2>/dev/null
+  _cur="$(md5f "$SELF")"; _new="$(md5f "$PKG/gen_update.sh")"
+  if [ -n "${_new:-}" ] && [ "${_cur:-}" != "$_new" ]; then
+    if cp "$PKG/gen_update.sh" /root/.gen_update.sh.run 2>/dev/null; then
+      chmod 755 /root/.gen_update.sh.run 2>/dev/null
+      log "logic self-upgrade: ban dang chay (${_cur:-none}) khac main ($_new)"
+      log "=> chay lai bang LOGIC MOI de khong bi nang cap nua voi (chi mot lan)"
+      GEN_SELF_UPDATED=1; export GEN_SELF_UPDATED
+      # truyen lai tham so tuong minh (khong dung "$@" vi mot so build busybox bao loi
+      # "unbound variable" khi set -u ma khong co tham so nao)
+      if [ "$MODE" = "check" ]; then
+        exec sh /root/.gen_update.sh.run --check
+      else
+        exec sh /root/.gen_update.sh.run "$REF"
+      fi
+    else
+      err "khong ghi duoc /root/.gen_update.sh.run - chay tiep bang logic CU (co the nang cap thieu)"
+    fi
+  fi
+fi
 
 # ============================== CHECK MODE ==============================
 if [ "$MODE" = "check" ]; then

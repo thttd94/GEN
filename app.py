@@ -2905,6 +2905,75 @@ def ensure_vpn_guard():
     except Exception:
         pass
     return True
+ETC_INSTALL_LOG = BASE_DIR / 'logs' / 'etc_install.log'
+
+def _etc_install_run(reason: str = 'startup'):
+    """Chay tools/etc_install.sh (idempotent) va ghi log. Tra (rc, output)."""
+    ei = BASE_DIR / 'tools' / 'etc_install.sh'
+    etc_dir = BASE_DIR / 'etc'
+    stamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        ETC_INSTALL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    if not ei.exists() or not etc_dir.is_dir():
+        try:
+            with open(ETC_INSTALL_LOG, 'a', encoding='utf-8') as fh:
+                fh.write(f'\n=== {stamp} etc_install BO QUA ({reason}): '
+                         f'etc_install.sh={ei.exists()} etc_dir={etc_dir.is_dir()} ===\n')
+        except Exception:
+            pass
+        return (-1, '')
+    try:
+        r = subprocess.run(['sh', str(ei), str(etc_dir)], timeout=120,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = (r.stdout or b'').decode('utf-8', 'replace')
+        with open(ETC_INSTALL_LOG, 'a', encoding='utf-8') as fh:
+            fh.write(f'\n=== {stamp} etc_install ({reason}) rc={r.returncode} ===\n{out}')
+        return (r.returncode, out)
+    except Exception as e:
+        try:
+            with open(ETC_INSTALL_LOG, 'a', encoding='utf-8') as fh:
+                fh.write(f'\n=== {stamp} etc_install LOI ({reason}): {e} ===\n')
+        except Exception:
+            pass
+        return (-1, '')
+
+def ensure_etc_installed():
+    """[Ver 2.49] Tu trien khai etc/ luc KHOI DONG: kill-switch + ban tproxy da sua +
+    cron watchdog. Chay trong thread nen de khong lam cham GUI.
+
+    Vi sao BAT BUOC co: `update_repo_from_remote()` chi bat dau goi etc_install.sh tu
+    Ver 2.47. Router dang o ban CU (do duoc: 2.19 va 2.33) khi bam nut update tren GUI
+    se chay update_repo_from_remote() cua CHINH BAN CU dang nam trong RAM - ban do KHONG
+    biet den etc_install.sh. Ket qua: app.py/static/tools len ban moi va router reboot,
+    nhung /etc/genrouter_killswitch.sh, /etc/genrouter/core/tproxy, /etc/shm/tproxy va
+    cron */5 dataplane_guard VAN THIEU, va thieu mot cach IM LANG (GUI bao "cap nhat
+    thanh cong"). Phai doi den lan update KE TIEP moi duoc bu - dung ho lo hong ma
+    Ver 2.47/2.48 vua dong o cac cho khac.
+
+    Dat o khoi khoi dong nen chi can MOT lan update qua GUI la du: app.py moi chay len
+    va tu bu phan con thieu, khong phu thuoc ban cu da lam gi. Cung la self-heal: neu
+    file /etc/... bi vendor hay tay nguoi ghi de, lan restart sau se dua lai ban dung.
+
+    etc_install.sh idempotent: file trung noi dung thi chi in [=], khong ghi, khong
+    backup; crontab chi APPEND dong con thieu, KHONG ghi de; va KHONG tu chay
+    kill-switch (viec doi routing/iptables van do cron 1 phut quyet dinh)."""
+    def _worker():
+        try:
+            rc, out = _etc_install_run('startup')
+            if rc == 0 and 'file thay doi' in out:
+                for ln in out.splitlines():
+                    if ln.startswith('[OK] etc_install.sh xong'):
+                        _wd_log(f'etc_install (startup): {ln.strip()}')
+                        break
+        except Exception:
+            pass
+    try:
+        threading.Thread(target=_worker, daemon=True).start()
+    except Exception:
+        pass
+    return True
 _VPN_DEPS = {'openvpn': None, 'wg': None, 'installing': False, 'log': '', 'ts': 0}
 _VPN_DEPS_LOCK = threading.Lock()
 _FEEDS_FILE = Path('/etc/opkg/distfeeds.conf')
@@ -3930,6 +3999,37 @@ def wd_health_json():
         age = -1
     out['watchdog'] = {'log_age_sec': age, 'restarts': int(WD_STATE.get('restarts', 0) or 0),
                        'heals': int(HEAL_STATE.get('count', 0) or 0)}
+    # 5) [Ver 2.49] etc/: 3 thanh phan NGOAI app dir co dung ban trong repo khong?
+    # De nghiem thu rollout tu xa (chi can HTTP, khong can SSH tung may): truoc day
+    # muon biet may da co kill-switch + ban tproxy da sua + cron watchdog chua thi phai
+    # SSH vao dem tay. Do bang md5 giua etc/ trong app dir va file dang nam o /etc.
+    _etc_pairs = [('etc/genrouter_killswitch.sh', '/etc/genrouter_killswitch.sh'),
+                  ('etc/genrouter/core/tproxy', '/etc/genrouter/core/tproxy'),
+                  ('etc/genrouter/core/tproxy', '/etc/shm/tproxy'),
+                  ('etc/gen_vpn_guard.sh', '/etc/gen_vpn_guard.sh')]
+    _etc = {'missing': [], 'diff': [], 'cron_killswitch': False, 'cron_dataplane': False}
+    for _rel, _dst in _etc_pairs:
+        _src = BASE_DIR / _rel
+        if not _src.exists():
+            continue
+        if not os.path.exists(_dst):
+            _etc['missing'].append(_dst)
+        elif _file_md5(_dst) != _file_md5(str(_src)):
+            _etc['diff'].append(_dst)
+    try:
+        _cron = Path('/etc/crontabs/root').read_text(encoding='utf-8', errors='replace')
+    except Exception:
+        _cron = ''
+    _etc['cron_killswitch'] = 'genrouter_killswitch' in _cron
+    _etc['cron_dataplane'] = 'dataplane_guard' in _cron
+    _etc['ok'] = not _etc['missing'] and not _etc['diff'] and _etc['cron_killswitch']
+    out['etc'] = _etc
+    if _etc['missing']:
+        out['problems'].append('thieu file he thong: ' + ' '.join(_etc['missing']))
+    if _etc['diff']:
+        out['problems'].append('file he thong khac ban trong app: ' + ' '.join(_etc['diff']))
+    if not _etc['cron_killswitch']:
+        out['problems'].append('crontab thieu dong kill-switch')
     out['ok'] = not out['problems']
     return out
 
@@ -4506,6 +4606,7 @@ if __name__ == '__main__':
     startup_migrate_proxy_dns()
     ensure_vpn_mgr()
     ensure_vpn_guard()
+    ensure_etc_installed()
     ensure_vpn_deps_async()
     _ss_seed_backups()
     threading.Thread(target=license_check_loop, daemon=True).start()
