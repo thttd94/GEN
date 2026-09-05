@@ -97,7 +97,10 @@ if [ "$MODE" = "check" ]; then
   log "remote : $REF @ ${SHORT:-?} â€” ${LABEL}"
   log "local  : $(cat "$APP_DIR/VERSION.txt" 2>/dev/null || echo unknown)"
   diff_cnt=0
-  for f in app.py static/index.html tools/etc_install.sh tools/dataplane_guard.py; do
+  # [Ver 2.48] PHAI co ca tools/vpn_mgr.sh va static/vpn.html: Ver 2.48 sua dung 2 file
+  # nay (bug "openvpn khong chay duoc") ma danh sach cu KHONG so chung => --check bao
+  # "da la ban moi nhat" trong khi engine VPN van la ban cu. Dung cai bay im lang.
+  for f in app.py static/index.html static/vpn.html tools/etc_install.sh tools/dataplane_guard.py tools/vpn_mgr.sh; do
     a="$(md5f "$APP_DIR/$f")"; b="$(md5f "$PKG/$f")"
     if [ "$a" != "$b" ]; then echo "[DIFF] $f  local=${a:-none} remote=${b:-none}"; diff_cnt=$((diff_cnt+1)); fi
   done
@@ -105,7 +108,8 @@ if [ "$MODE" = "check" ]; then
   for pair in "etc/genrouter_killswitch.sh:/etc/genrouter_killswitch.sh" \
               "etc/genrouter/core/tproxy:/etc/genrouter/core/tproxy" \
               "etc/genrouter/core/tproxy:/etc/shm/tproxy" \
-              "etc/gen_vpn_guard.sh:/etc/gen_vpn_guard.sh"; do
+              "etc/gen_vpn_guard.sh:/etc/gen_vpn_guard.sh" \
+              "tools/vpn_mgr.sh:/data/vpn/vpn_mgr.sh"; do
     src="$PKG/${pair%%:*}"; dst="${pair##*:}"
     [ -f "$src" ] || continue
     a="$(md5f "$dst")"; b="$(md5f "$src")"
@@ -168,6 +172,19 @@ if [ -d "$PKG/tools" ]; then
   mkdir -p "$APP_DIR/tools"
   cp -r "$PKG/tools/." "$APP_DIR/tools/" || err "copy tools failed"
   chmod +x "$APP_DIR/tools"/*.sh 2>/dev/null
+  # [Ver 2.48] dong bo LUON engine VPN dang chay. app.py::ensure_vpn_mgr() cung tu
+  # phuc hoi khi khoi dong (tu Ver 2.48 so md5, truoc do so size nen ban khac noi
+  # dung ma trung size se bi giu lai im lang), nhung lam tuong minh o day de
+  # `sh /root/gen_update.sh` mot lenh la du, khong phu thuoc thu tu restart.
+  if [ -f "$APP_DIR/tools/vpn_mgr.sh" ]; then
+    mkdir -p /data/vpn 2>/dev/null
+    if cp "$APP_DIR/tools/vpn_mgr.sh" /data/vpn/vpn_mgr.sh 2>/dev/null; then
+      chmod +x /data/vpn/vpn_mgr.sh 2>/dev/null
+      log "vpn engine: /data/vpn/vpn_mgr.sh = $(md5f /data/vpn/vpn_mgr.sh)"
+    else
+      err "khong ghi duoc /data/vpn/vpn_mgr.sh (/data khong ton tai?) - app.py se tu phuc hoi khi khoi dong"
+    fi
+  fi
 fi
 [ -f "$PKG/gen_fw_fix.sh" ] && cp "$PKG/gen_fw_fix.sh" "$APP_DIR/gen_fw_fix.sh"
 # firewall sync (hide 8000/9000 + udp fast-reject) - idempotent, adaptive per-router

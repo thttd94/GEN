@@ -2848,7 +2848,11 @@ VPN_HOSTS_FILE = '/data/vpn/express_hosts.txt'
 
 def ensure_vpn_mgr():
     """Tu phat hien + phuc hoi /data/vpn/vpn_mgr.sh tu ban gan trong app (tools/vpn_mgr.sh).
-    Moi router tu lai ngay sau update/restart, khong phu thuoc deploy tay. Tra True neu engine san sang."""
+    Moi router tu lai ngay sau update/restart, khong phu thuoc deploy tay. Tra True neu engine san sang.
+
+    [Ver 2.48] So MD5 thay vi so SIZE. Ban truoc chi so st_size: hai ban khac noi dung
+    ma trung size thi router GIU BAN CU IM LANG - dung cai bay da lam ban va tay khong
+    bao gio lan ra ca dan may (xem Ver 2.47 / etc_install.sh)."""
     try:
         Path('/data/vpn').mkdir(parents=True, exist_ok=True)
     except Exception:
@@ -2856,7 +2860,7 @@ def ensure_vpn_mgr():
     dst = Path(VPN_MGR)
     src = BASE_DIR / 'tools' / 'vpn_mgr.sh'
     try:
-        if src.exists() and (not dst.exists() or dst.stat().st_size != src.stat().st_size):
+        if src.exists() and (not dst.exists() or _file_md5(str(dst)) != _file_md5(str(src))):
             shutil.copy(str(src), str(dst))
             try:
                 os.chmod(str(dst), 493)
@@ -3864,12 +3868,25 @@ def wd_health_json():
     except OSError:
         mtime = 0
     stale = bool(pid and start and mtime and mtime > start + int(thr.get('stale_grace_sec', 1) or 1))
+    # [Ver 2.48] CHONG BAO DONG GIA: chi so mtime thi health bao stale=True VINH VIEN
+    # sau moi lan apply (apply ghi lai gencore.json vai giay SAU khi gencore start),
+    # trong khi _wd_check_config_stale() da xac nhan RAM = dia (same_proc + md5 khop)
+    # nen KHONG restart. Hai cho dung hai tieu chuan => health.ok=false mai mai va
+    # nguoi doc mat long tin vao chi so. Dung DUNG dieu kien cua logic that.
+    _li = _gencore_loaded_load()
+    _md5_disk = _file_md5(RUNTIME_FILE)
+    _same_proc = (str(_li.get('pid') or '') == str(pid)
+                  and abs(float(_li.get('start_epoch') or 0) - float(start or 0)) <= 2.0)
+    _confirmed = bool(_same_proc and _li.get('md5') == _md5_disk)
+    if _confirmed:
+        stale = False
     out['config'] = {
         'proc_start': int(start) if start else 0,
         'file_mtime': int(mtime),
         'lag_sec': int(mtime - start) if (start and mtime) else 0,
-        'md5_disk': _file_md5(RUNTIME_FILE)[:12],
-        'md5_loaded': str(_gencore_loaded_load().get('md5') or '')[:12],
+        'md5_disk': _md5_disk[:12],
+        'md5_loaded': str(_li.get('md5') or '')[:12],
+        'confirmed': _confirmed,
         'stale': stale}
     if stale:
         out['problems'].append('config tren dia moi hon tien trinh gencore => RAM co the giu ban cu')
@@ -3917,7 +3934,13 @@ def wd_health_json():
     return out
 
 def gencore_watchdog_loop():
-    _wd_log('WATCHDOG start (Ver 2.47: + config self-heal, + apply lock, + STALE-CONFIG, + FD-LEAK)')
+    # [Ver 2.48] Doc nhan tu VERSION.txt thay vi hardcode: ban 2.47 in "WATCHDOG start
+    # (Ver 2.47...)" ngay ca khi may da len 2.48, lam log sai va gay chan doan lech.
+    try:
+        _wd_ver = normalize_version_key(read_current_version_label()) or 'Ver ?'
+    except Exception:
+        _wd_ver = 'Ver ?'
+    _wd_log('WATCHDOG start (%s: + config self-heal, + apply lock, + STALE-CONFIG, + FD-LEAK)' % _wd_ver)
     time.sleep(25)
     try:
         wd_boot_recover()
@@ -4281,10 +4304,20 @@ class Handler(BaseHTTPRequestHandler):
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()
                 ipaddr = str(payload.get('ip', '')).strip()
-                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
+                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
                     return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
                 if action == 'up':
                     return self._send_json(vpn_run(['up', name]))
+                if action == 'set-auth':
+                    # [Ver 2.48] va tai khoan bi thieu credential (nguyen nhan loi
+                    # "openvpn khong chay duoc"): ghi file auth + tra lai dong
+                    # auth-user-pass trong config.ovpn. name='--all' = tat ca.
+                    au_user = str(payload.get('username', '')).strip()
+                    au_pass = str(payload.get('password', ''))
+                    if not au_user or not au_pass:
+                        return self._send_json({'ok': False, 'error': 'thieu username/password'})
+                    tgt = '--all' if str(payload.get('all', '')) in ('1', 'true', 'True') else name
+                    return self._send_json(vpn_run(['set-auth', tgt, au_user, au_pass]))
                 if action == 'down':
                     return self._send_json(vpn_run(['down', name]))
                 if action == 'del':

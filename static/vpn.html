@@ -200,9 +200,21 @@ async function addOpenvpn() {
   if (!name) return log('nhập tên tài khoản');
   if (ovpn_text.length < 50) return log('dán nội dung file vào ô lớn');
   if (isWgConf(ovpn_text)) return await act('add-wg', {name, wg_text: ovpn_text});
+  if (!username && ovpnNeedsAuth(ovpn_text)) {
+    return log('⚠ File .ovpn này CẦN username/password (không có chứng chỉ client). '
+      + 'Hãy điền 2 ô username/password rồi bấm lại — nếu để trống, tài khoản sẽ tạo được '
+      + 'nhưng bấm UP sẽ báo "openvpn khong chay duoc". '
+      + 'ProtonVPN: lấy ở trang Account, mục "OpenVPN / IKEv2 username" (không phải email đăng nhập).');
+  }
   await act('add-openvpn', {name, ovpn_text, username, password});
 }
 function isWgConf(t){ return /^\s*\[Interface\]/m.test(t) && /PrivateKey/i.test(t); }
+// [Ver 2.48] Config .ovpn khong co chung chi client thi BAT BUOC username/password.
+// Truoc ban nay: de trong 2 o -> vpn_mgr.sh xoa im lang dong 'auth-user-pass',
+// tao tai khoan hong, den luc bam UP moi bao "openvpn khong chay duoc".
+function ovpnNeedsAuth(t){
+  return !/^\s*(cert|pkcs12)\s/m.test(t) && !/^\s*<(cert|pkcs12)>/m.test(t);
+}
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -227,6 +239,23 @@ function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&
       return;
     }
     if (!confirm('Nạp ' + files.length + ' file thành ' + files.length + ' tài khoản VPN riêng?')) { this.value = ''; return; }
+    // [Ver 2.48] chan tu dau: nap NHIEU file dung chung 2 o user/pass. Neu de trong,
+    // TAT CA tai khoan sinh ra deu thieu credential va chet luc UP (su co 06/09).
+    if (!user) {
+      const needAuth = [];
+      for (const f of files) {
+        const t = await f.text();
+        if (!isWgConf(t) && ovpnNeedsAuth(t)) needAuth.push(f.name);
+      }
+      if (needAuth.length) {
+        log('⚠ DỪNG: ' + needAuth.length + '/' + files.length + ' file CẦN username/password '
+          + 'nhưng 2 ô đang để trống. Điền username/password rồi chọn lại các file. '
+          + '(ProtonVPN: trang Account → "OpenVPN / IKEv2 username", không phải email đăng nhập)');
+        info.textContent = 'Đã dừng — thiếu username/password cho ' + needAuth.length + ' file';
+        this.value = '';
+        return;
+      }
+    }
     let ok = 0, fail = 0;
     for (const f of files) {
       try {

@@ -18,6 +18,7 @@
 #   vpn_mgr.sh add-wg <ten> </duoc/wg.conf>      (can wireguard-tools)
 #   vpn_mgr.sh import-old                  : don cac ovpn cu trong configs/
 #   vpn_mgr.sh up|down <ten>               : bat/tat 1 tunnel
+#   vpn_mgr.sh set-auth <ten|--all> <u> <p>: gan/sua username-password OpenVPN
 #   vpn_mgr.sh assign <ten> <IP>           : gan client vao 1 VPN
 #   vpn_mgr.sh assign-many <ten> <IP...>   : gan NHIEU client 1 luot (nhanh)
 #   vpn_mgr.sh unassign-many <IP...>       : bo gan NHIEU client 1 luot
@@ -89,6 +90,17 @@ running() { # running <ten>
 }
 
 # ---------- them tai khoan ----------
+# [Ver 2.48] Config .ovpn CAN username/password khi khong co chung chi client.
+# openvpn tu choi chay ngay neu thieu ca 3 (--cert/--key, --pkcs12, --auth-user-pass):
+#   "Options error: No client-side authentication method is specified."
+# Dung cho CA 2 thoi diem: luc `add` (kiem file nguon) va luc `up` (kiem config da chuan hoa).
+# Tra 0 = CAN auth-user-pass.
+ovpn_needs_auth() {
+  [ -f "${1:-}" ] || return 1
+  grep -qE '^[[:space:]]*(cert|pkcs12)[[:space:]]|^[[:space:]]*<(cert|pkcs12)>' "$1" && return 1
+  return 0
+}
+
 norm_ovpn() { # norm_ovpn <src.ovpn> <dst.ovpn> <dev> <authpath|->
   awk -v D="$3" -v A="$4" '
     {
@@ -108,6 +120,16 @@ cmd_add_openvpn() {
   [ -n "$name" ] && [ -n "$src" ] || die_use
   exists "$name" && err "tai khoan '$name' da co"
   [ -f "$src" ] || err "khong thay file $src"
+  # [Ver 2.48] KHONG tao tai khoan hong roi de no chet luc UP.
+  # Truoc ban nay: norm_ovpn() XOA IM LANG dong 'auth-user-pass' khi khong co user,
+  # van in [OK], den luc UP moi bao "openvpn khong chay duoc" ma khong noi ly do.
+  if [ -z "$user" ] && [ "${VPN_ALLOW_NOAUTH:-0}" != "1" ] && ovpn_needs_auth "$src"; then
+    echo "[ERR] file .ovpn nay YEU CAU username/password (khong co chung chi client)." >&2
+    echo "      Hay dien 2 o username/password roi them lai tai khoan '$name'." >&2
+    echo "      ProtonVPN: lay o trang Account, muc 'OpenVPN / IKEv2 username'" >&2
+    echo "      (KHONG phai email + mat khau dang nhap website)." >&2
+    exit 1
+  fi
   d="$ACCT/$name"; mkdir -p "$d"
   idx=$(next_idx)
   dev="tun$idx"; tbl=$((300+idx)); pri=$((90+idx))
@@ -187,6 +209,11 @@ cmd_import_old() {
       u=$(printf '%s' "$au" | sed -n 1p); p=$(printf '%s' "$au" | sed -n 2p)
       cmd_add_openvpn "" x "$f" "$u" "$p"
     else
+      # [Ver 2.48] khong co auth.txt: bo qua file can dang nhap thay vi tao tai khoan hong
+      if ovpn_needs_auth "$f"; then
+        echo "bo qua $b: can username/password (thieu $OLD_AUTH)"
+        continue
+      fi
       cmd_add_openvpn "" x "$f"
     fi
     mv "$ACCT/x" "$ACCT/$b"
@@ -310,12 +337,34 @@ do_up() {
     rm -f "$log"
     extra=""
     [ -f "$ACCT/$name/auth" ] && extra="--auth-user-pass $ACCT/$name/auth"
-    openvpn --config "$ACCT/$name/config.ovpn" \
+    # [Ver 2.48] chan som + noi RO ly do (truoc day chi in "openvpn khong chay duoc")
+    if [ -z "$extra" ] && ovpn_needs_auth "$ACCT/$name/config.ovpn"; then
+      echo "[ERR] tai khoan '$name' THIEU username/password OpenVPN." >&2
+      echo "      Config can dang nhap nhung luc them tai khoan da de trong 2 o" >&2
+      echo "      username/password, nen dong 'auth-user-pass' bi bo." >&2
+      echo "      SUA NGAY: sh $0 set-auth $name '<username>' '<password>'" >&2
+      echo "      (ProtonVPN: trang Account > 'OpenVPN / IKEv2 username'," >&2
+      echo "       KHONG phai email + mat khau dang nhap website)" >&2
+      exit 1
+    fi
+    # [Ver 2.48] 'dhcp-option' (so IT) moi la ten option ProtonVPN push. Ban truoc viet
+    # 'dhcp-options' (so nhieu) nen filter khong khop gi => 49/59 log day dong
+    # "Options error: option 'dhcp-option' cannot be used in this context".
+    if ! openvpn --config "$ACCT/$name/config.ovpn" \
       $extra \
       --daemon --writepid "/tmp/vpn_$name.pid" --log "$log" \
       --route-nopull \
       --pull-filter ignore "redirect-gateway" \
-      --pull-filter ignore "dhcp-options" || err "openvpn khong chay duoc"
+      --pull-filter ignore "dhcp-option"; then
+      echo "[ERR] openvpn khong chay duoc - LY DO THAT:" >&2
+      if [ -s "$log" ]; then
+        tail -6 "$log" | sed 's/^/      /' >&2
+      else
+        echo "      (log rong hoac khong ghi duoc: $log)" >&2
+      fi
+      echo "      xem day du: tail -30 $log" >&2
+      exit 1
+    fi
   fi
   i=0
   while [ $i -lt 45 ]; do
@@ -419,12 +468,45 @@ cmd_clean_stale() {
   ok "clean-stale xong"
 }
 
+# [Ver 2.48] gan/sua username-password OpenVPN cho tai khoan DA tao.
+# Chua chuc nang cua ban va tay: ghi file auth + bao dam config.ovpn tro DUNG vao no
+# (them lai dong 'auth-user-pass <path>' neu truoc do bi norm_ovpn xoa).
+# Idempotent, backup config.ovpn mot lan (.bak_setauth), KHONG tu bam UP.
+cmd_set_auth() { # cmd_set_auth x <ten|--all> <user> <pass>
+  target="$2"; u="$3"; p="$4"
+  [ -n "$target" ] && [ -n "$u" ] && [ -n "$p" ] || \
+    err "dung: $0 set-auth <ten-tai-khoan|--all> '<username>' '<password>'"
+  n_ok=0
+  for d in "$ACCT"/*/; do
+    [ -d "$d" ] || continue
+    n=$(basename "$d")
+    [ "$target" = "--all" ] || [ "$target" = "$n" ] || continue
+    if [ "$(meta_get "$n" type)" = "wireguard" ]; then
+      echo "[-] $n: wireguard, bo qua"; continue
+    fi
+    [ -f "$d/config.ovpn" ] || { echo "[!] $n: khong co config.ovpn, bo qua"; continue; }
+    printf '%s\n%s\n' "$u" "$p" > "$d/auth"; chmod 600 "$d/auth"
+    [ -f "$d/config.ovpn.bak_setauth" ] || cp "$d/config.ovpn" "$d/config.ovpn.bak_setauth"
+    if grep -q '^auth-user-pass' "$d/config.ovpn"; then
+      sed -i "s|^auth-user-pass.*|auth-user-pass $d/auth|" "$d/config.ovpn"
+      echo "[=] $n: cap nhat auth"
+    else
+      printf 'auth-user-pass %s\n' "$d/auth" >> "$d/config.ovpn"
+      echo "[+] $n: THEM lai dong auth-user-pass (tai khoan nay dang bi loi)"
+    fi
+    n_ok=$((n_ok+1))
+  done
+  [ "$n_ok" -gt 0 ] || err "khong khop tai khoan nao ('$target')"
+  ok "da gan credential cho $n_ok tai khoan - gio bam UP hoac: $0 up <ten>"
+}
+
 case "$1" in
   add-openvpn) cmd_add_openvpn "$@" ;;
   add-express) cmd_add_express "$@" ;;
   add-wg)      cmd_add_wg "$@" ;;
   import-old)  cmd_import_old ;;
   clean-stale) cmd_clean_stale ;;
+  set-auth)    cmd_set_auth "$@" ;;
   up)          do_up "$@" ;;
   down)        do_down "$@" ;;
   startall)
