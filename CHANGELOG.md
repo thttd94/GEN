@@ -1,5 +1,91 @@
 # CHANGELOG
 
+## Ver 2.46 (2026-09-05) - dong cua so ro IP tu <=60 s ve ~0 s
+
+Ver 2.45 dung lop `[VPN_WANT]` trong `etc/genrouter_killswitch.sh` de chan may khai bao VPN
+ma chua duoc gan tunnel. Nhung kill-switch chi chay theo **cron moi 1 phut**, nen ngay sau khi
+apply cau hinh VPN van con mot cua so **<= 60 giay** ma may khai VPN + tunnel chet **ra WAN
+bang IP that**. Ban nay dong cua so do.
+
+### Diem hook: cuoi `cmd_clean_stale()` trong `tools/vpn_mgr.sh`
+
+Da doc lai duong apply de tim mot diem chay **dung 1 lan moi apply** va **sau khi moi thu da xong**:
+
+| buoc | dong | viec |
+|---|---|---|
+| 1 | app.py:2544 | ghi preset -> `/etc/genrouter/config/gencore.json` |
+| 2 | app.py:2557 | ghi runtime -> `/etc/genrouter/gencore.json` (day la file kill-switch doc) |
+| 3 | app.py:2561 | `sync_vpn_state_on_apply()` |
+| 3a | app.py:2287 | `vpn_mgr.sh unassign-many ...` (may khong con khai VPN) |
+| 3b | app.py:2300 | `vpn_mgr.sh assign-many <acc> <ip...>` (moi account 1 lan) |
+| 3c | **app.py:2305** | **`vpn_mgr.sh clean-stale`** <- chay 1 lan, sau cung |
+| 4 | app.py:2564 | `genrunner check` |
+
+`clean-stale` la ung vien duy nhat thoa ca ba: chay dung 1 lan/apply, chay sau khi
+`gencore.json` da la cau hinh moi **va** `map.txt` da phan anh tunnel that duoc gan,
+va **nam ngoai nhanh `if saved_text`** (thut le 8 ky tu, cung cap voi `if`) nen luon chay.
+
+Them ham `ks_refresh()` goi `/etc/genrouter_killswitch.sh`:
+
+```sh
+ks_refresh() {
+  [ -x /etc/genrouter_killswitch.sh ] && /etc/genrouter_killswitch.sh >/dev/null 2>&1
+  return 0
+}
+```
+
+Khong de quy: kill-switch khong goi `vpn_mgr.sh` (da kiem: 2 hit `vpn_mgr` trong file nhung
+**0 hit trong code**, ca 2 deu la comment). Kill-switch idempotent va do duoc **0 ms** nen goi
+them vo hai.
+
+### Bay da tranh duoc: `cmd_clean_stale` co HAI duong ra
+
+Ban dau chi chen `ks_refresh` truoc `ok "clean-stale xong"`. Thu nghiem nguoc **truot ngay ca A**:
+dong 369 co `return` som:
+
+```sh
+[ -s "$rules" ] || { rm -f "$rules"; ok "khong co rule vpn nao"; return 0; }
+```
+
+Khong co `ip rule lookup 3xx` nao thi ham **return truoc khi toi cuoi**. Ma day chinh la
+**tinh huong nguy hiem nhat**: apply mode VPN trong khi *moi* tunnel chet => 0 rule duoc tao =>
+`clean-stale` return som => kill-switch khong duoc goi => cua so ro IP van 60 s. Da goi
+`ks_refresh` o **ca hai** duong ra.
+
+### Thu nghiem nguoc 5/5 PASS (kill-switch STUB, khong cham `/etc`)
+
+| | tinh huong | ket qua |
+|---|---|---|
+| A | khong co `ip rule` vpn nao (nhanh return som) | goi 1 lan - **ca ban dau truot** |
+| B | chay lai lan 2 | goi 1 lan - idempotent |
+| C | co `ip rule` rac (nhanh day du) | goi 1 lan, rule rac bi don dung |
+| D | ban CU | **0 lan** o ca hai nhanh |
+| E | kiem de quy: kill-switch goi `vpn_mgr` | **0 hit trong code** |
+
+### Cai vao ca hai ban
+
+`ensure_vpn_mgr()` (app.py:2821) copy `tools/vpn_mgr.sh` -> `/data/vpn/vpn_mgr.sh` khi **khac size**,
+va `vpn_run()` chay ban `/data/vpn/`. Cai 1 ban thoi thi app se dap lai. Da ghi **ca hai**,
+cung md5 `ce1841a2e54b3abad267773925c39038` (24794 B).
+
+Chay that sau khi cai: ca hai nhanh `clean-stale` deu rc=0, stderr sach, `/api/vpn/status`
+tra ve dung 33 account, app **khong restart** (pid nguyen), toan ven runtime khong doi
+(TPROXY 644, GENROUTER 657, `ip rule` 6, ipset 322/0/0, map.txt 0).
+
+### Thu nghiem end-to-end ca ro IP (chain + ipset + gencore.json GIA)
+
+Mo phong dung tinh huong that: 3 may khai VPN + 1 may proxy, nhung chi 1 may duoc gan tunnel.
+
+| IP | trong `want` | trong `vpn` | ket qua |
+|---|---|---|---|
+| .101 | co | co | qua tunnel that (rule chan khong match) |
+| .102 | co | khong | **CHAN** - `ip route get` = `Host is unreachable` |
+| .103 | co | khong | **CHAN** - `ip route get` = `Host is unreachable` |
+| .109 | khong | khong | may proxy, TPROXY -> sing-box, khong bi anh huong |
+
+Truoc khi chay kill-switch: `want`=0, 0 rule chan => .102/.103 bi TPROXY hijack => ra WAN IP that.
+Sau khi chay: `want`=3, rule chan o vi tri 2, .102/.103 unreachable. Da don sach chain/ipset gia.
+
 ## Ver 2.45 (2026-09-05) - chong RO IP THAT khi chay che do VPN (fail-open -> fail-closed)
 
 Ban 2.44 tro xuong co mot lo fail-open trong che do VPN. Trong che do nay moi may khach

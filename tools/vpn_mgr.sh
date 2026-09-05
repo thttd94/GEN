@@ -359,6 +359,20 @@ do_down() {
   ok "'$name' DOWN"
 }
 
+# [Ver 2.46 2026-09-05] DONG CUA SO RO IP THAT khi apply mode VPN.
+# Kill-switch dong bo `ipset genrouter_vpn_want` (may KHAI BAO VPN, trich tu
+# /etc/genrouter/gencore.json) roi chen rule chan "khai VPN ma chua gan tunnel".
+# Cron goi no moi 1 phut, nen sau khi apply co cua so <=60 s ma may khai VPN
+# nhung tunnel chet van RA WAN BANG IP THAT. clean-stale la buoc CUOI cua
+# sync_vpn_state_on_apply (app.py:2305, dung 1 lan/apply, sau moi assign-many),
+# va luc do gencore.json DA la cau hinh moi (ghi o app.py:2557) => goi ngay tai
+# day thi cua so ve ~0 s. Kill-switch idempotent, do duoc 0 ms, va KHONG goi
+# vpn_mgr.sh nen khong de quy.
+ks_refresh() {
+  [ -x /etc/genrouter_killswitch.sh ] && /etc/genrouter_killswitch.sh >/dev/null 2>&1
+  return 0
+}
+
 cmd_clean_stale() {
   # Quet ip rule lookup 300-399:
   #   - IP khong co trong map.txt -> xoa rule (rac)
@@ -366,7 +380,7 @@ cmd_clean_stale() {
   #   - table thieu default ma dev con song -> tu v?a ensure_route thay vi xoa
   rules="/tmp/vpn_rules.$$"
   ip rule show 2>/dev/null | awk '/lookup 3[0-9][0-9]/' > "$rules"
-  [ -s "$rules" ] || { rm -f "$rules"; ok "khong co rule vpn nao"; return 0; }
+  [ -s "$rules" ] || { rm -f "$rules"; ks_refresh; ok "khong co rule vpn nao"; return 0; }
   while IFS= read -r line; do
     prio=$(printf '%s\n' "$line" | awk '{gsub(/:/,"",$1);print $1}')
     fromip=$(printf '%s\n' "$line" | awk '{for(i=1;i<=NF;i++) if($i=="from"){print $(i+1);exit}}')
@@ -401,6 +415,7 @@ cmd_clean_stale() {
     fi
   done < "$rules"
   rm -f "$rules"
+  ks_refresh
   ok "clean-stale xong"
 }
 
