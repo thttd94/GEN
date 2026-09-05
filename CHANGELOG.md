@@ -1,5 +1,71 @@
 # CHANGELOG
 
+## Ver 2.42 (2026-09-05) - FIX GOC: 13 tunnel VPN "song" ma khong ra Internet + watchdog data-plane
+
+**Su co that:** 13/33 tunnel VPN khong ra duoc Internet nhieu NGAY ma khong co bat ky canh bao nao.
+Nhin tu ngoai vao thi hoan toan binh thuong: `tun` UP, co IP trong tunnel, ping duoc gateway noi bo
+(`10.96.0.1` 2/2), renegotiation cua OpenVPN thanh cong deu moi ~55 phut. Chi co goi tin ra Internet
+la chet: `1.1.1.1` 0/2, `rx_packets` chi 44-66 goi so voi hang trieu o tunnel lanh, `rx_dropped/errors = 0`.
+
+**Nguyen nhan goc (da chung minh bang thu nghiem doi chieu, khong phai suy dien):**
+
+36 tai khoan OpenVPN + 1 WireGuard cua router **dung CHUNG 1 username Proton**. Proton gioi han so
+session **co data-plane tren MOI NUT** cho moi tai khoan (~5). Session vuot han muc **van giu duoc
+control channel**: thiet bi `tun` van UP, van co IP, reneg van OK => `Inactivity timeout` va
+`ping-restart` cua OpenVPN **KHONG BAO GIO kich hoat**, nen OpenVPN tu no khong the biet minh da chet.
+
+Bang chung quyet dinh: nut `45.14.71.6` co **9 session** cung tai khoan, dung **5** cai song.
+Gui `SIGUSR1` cho `tun4` => `tun4` song va **`tun9` (cai song lau nhat) chet**, tong LUON = 5.
+Moi nut co <= 5 session thi 100% OK. WireGuard **cung tinh vao han muc do** (`wg37` endpoint
+`141.98.213.194` trung nut voi 4 tunnel OpenVPN => bi cat; bat tay thanh cong nhung chi 36 KiB/13 KiB
+toan control, ping `10.2.0.1` OK / `1.1.1.1` 0%).
+
+Da loai tru bang do dac: **khong phai MTU** (moi `tun` = 1500, `wg` = 1420, `mssfix 0` co san),
+**khong phai route** (moi dev 1 route rieng, table `300+idx`), **khong phai DNS**, **khong phai trung IP
+trong tunnel**.
+
+**Chua:**
+
+- Doi `remote` cua 6 tai khoan sang nut con trong suat, `SIGHUP`/`SIGUSR1` de dang ky lai session.
+  Configs khong pin `verify-x509-name`, `ca`/`tls-crypt` giong nhau nen doi nut la an toan.
+- Ket qua: **33/33 giao dien ra Internet, 33 exit IP khac nhau**, nut dong nhat con **4 session**
+  (giu <= 4 thay vi 5 de co bien an toan, vi moi lan reconnect sinh 1 ban ghi session moi va
+  day cai cu nhat ra khoi suat).
+- Danh doi duy nhat: `proton-kr-38` ra IP Nhat thay vi Han, vi Proton chi co **3 nut KR** (kr-03/04/05)
+  cho 13 suat can dung. Muon vuot 12 suat KR phai mua **tai khoan Proton username khac** - han muc
+  tinh theo tai khoan, khong theo thiet bi.
+
+**Fix triet de - watchdog thuong tru `tools/dataplane_guard.py` (moi):**
+
+- Do **THUC TE** tung thiet bi bang `SO_BINDTODEVICE` + HTTP GET ra `api.ipify.org` (RETRY=2).
+  **Khong dung `wget --bind-address`**: cach do do cho ket qua SAI (bao mot tunnel da chay 15,8 GB
+  la "chet").
+- Chet -> `SIGUSR1` (toi da 4 tunnel/lan chay, cooldown 900 s/tai khoan) roi **do lai de xac nhan**.
+- Nut > 4 session -> ghi `[RECOMMEND]`; exit IP trung nhau -> ghi `[WARN]`. Watchdog **khong tu doi nut**.
+- **`[AUTODRIFT]`**: doi chieu co `auto` trong `meta` voi tap tunnel dang chay THAT, va **du bao so
+  session tren tung nut sau reboot**. Ly do: co `auto` lech la **bom hen gio** - dang chay ma `auto=0`
+  thi reboot mat tunnel; khong chay ma `auto=1` thi `startall` bat them va co the day mot nut vuot han
+  muc, tai lap dung su co nay. Cac chi so cu khong the thay truoc vi chung chi do trang thai hien tai.
+- Lay dev/pid/account tu `/proc/<pid>/cmdline`, **khong dung pid file** (pid file tung sai).
+- Co file lock chong 2 ban chay chong nhau. Log `/data/vpn/logs/dataplane_guard.log`,
+  state `dataplane_guard_state.json`. Che do: mac dinh = do + chua, `check` = chi doc, `status` = in trang thai.
+- Cron `*/5` (xem `etc/crontabs/root` - phai **APPEND**, khong ghi de 3 dong vendor).
+
+**Da test tren router that:**
+
+- Thu nghiem chu dong: chan TCP/80 ra `tun23` => watchdog phat hien `X|TimeoutError`, tu `SIGUSR1`,
+  ghi `[HEAL]`, do lai OK.
+- Tu chua that trong van hanh: 04:11 ngay 05/09, `tun23` chet -> `[HEAL]` -> tro lai 33/33.
+- Thu nghiem `[AUTODRIFT]` co doi chieu: co tinh tao lech (tat `auto` 1 tai khoan dang chay + bat
+  `auto` 3 tai khoan cung tro ve `45.14.71.6`) => watchdog bao du **ca 3 loai**: mat tunnel sau reboot,
+  bat them sau reboot, va **"nut 45.14.71.6 se co 7 session (> 4)"**. Tra lai nguyen trang => bao sach.
+- Sau 77 lan chay qua cron: 33/33 lien tuc, 1 lan tu chua thanh cong.
+
+**Bai hoc ky thuat (BusyBox/OpenWrt):** khong co `base64` (day file phai giai ma bang `python3 -c`),
+khong co `fold`, khong ho tro `ping -i 0.2`; `AF_PACKET` phai `socket.htons(3)`; chuoi
+`100% packet loss` khop ca pattern `0% packet loss` nen parse `ping` de sai; sau khi sua crontab +
+reload, moc `*/5` ngay sat do co the bi bo 1 lan (dung `logread` de xac minh, dung ket luan som).
+
 ## Ver 2.41-b (2026-09-04) - BAO MAT: bo mat khau cai dat khoi source
 
 **Van de:** `install.sh` gan cung `INSTALL_PASSWORD="..."` dang chu ro, trong khi repo nay la

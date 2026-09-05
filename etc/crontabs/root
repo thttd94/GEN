@@ -3,3 +3,4 @@ PATH=/usr/bin:/usr/sbin:/bin:/sbin
 * * * * * rm -rf /etc/genrouter/update/* && /etc/shm/ov.sh
 * * * * * /etc/gen_vpn_guard.sh fix >/dev/null 2>&1
 * * * * * /etc/genrouter_killswitch.sh >/dev/null 2>&1
+*/5 * * * * /usr/bin/python3 /opt/proxy-manager-v1/tools/dataplane_guard.py >/dev/null 2>&1

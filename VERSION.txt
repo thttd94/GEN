@@ -1,1 +1,1 @@
-Ver 2.41 (fix goc DNS: detour='direct' cho DNS local + guard khoa dns_local_detour; truoc do hijack-dns bat goi cua chinh sing-box => loopback => 322 may 0 reply DNS)
+Ver 2.42 (watchdog data-plane cho VPN: phat hien tunnel "song ma khong ra Internet" do Proton gioi han ~5 session/nut/tai khoan, tu SIGUSR1 de dang ky lai session, va canh bao [AUTODRIFT] khi co `auto` lech se pha han muc sau reboot)
