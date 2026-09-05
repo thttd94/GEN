@@ -21,7 +21,12 @@ CACH CHUA CUA WATCHDOG NAY:
      - khong chay ma auto=1 -> reboot se BAT THEM -> co the vuot han muc/nut
      Ca hai deu ghi [AUTODRIFT]. Watchdog KHONG tu sua co auto (viec nay doi
      chu dinh nguoi van hanh: co the account do dang co tinh de danh).
-  5. Moi thu ghi vet vao log + state json.
+  5. Doi chieu PHAN BO may/tunnel (them 2026-09-05):
+     Neu preset hoac map.txt don qua nhieu may vao mot so it tunnel thi tran
+     bang thong cua ca router = tran cua may tunnel do (da do: 322/322 may vao
+     1 tunnel => 147-204 Mbps thay vi ~950). Ghi [SPREAD]. Watchdog KHONG tu
+     chia lai (doi chu dinh nguoi van hanh, chay tools/vpn_spread.py).
+  6. Moi thu ghi vet vao log + state json.
 
 Dung:
   dataplane_guard.py            do + tu chua (mac dinh)
@@ -50,6 +55,13 @@ RETRY = 2                 # so lan do lai truoc khi ket luan chet
 MAX_HEAL_PER_RUN = 4      # toi da bao nhieu tunnel duoc SIGUSR1 moi lan chay
 HEAL_COOLDOWN = 900       # giay: khong SIGUSR1 cung 1 account trong khoang nay
 MAX_PER_NODE = 4          # nguong an toan da do duoc
+
+# Phan bo may/tunnel: bao dong khi mot tunnel ganh qua SPREAD_TOLERANCE lan
+# phan chia deu. KHONG dat nguong theo so may tuyet doi - moi router co so may
+# khac nhau (200, 500, 1000...), tat ca suy ra tu so dem thuc te.
+SPREAD_TOLERANCE = 2.0
+STATE_FILE = "/opt/proxy-manager-v1/session_state.json"
+MAPF = "/data/vpn/map.txt"
 
 
 def log(msg):
@@ -227,6 +239,83 @@ def auto_flag_drift(inv):
     return missing, extra, forecast
 
 
+def spread_drift(inv):
+    """Canh bao khi may khach bi don vao qua it tunnel.
+
+    Vi sao can: 05/09/2026 do duoc preset VPN gan CA 322 may vao dung 1 tai
+    khoan (proton-jp-171/tun1). Ca router khi do chi chay bang tran cua 1
+    tunnel: 147-204 Mbps, va o 40-80 luong dong thoi chi mo duoc 20-32 ket noi.
+    Cac chi so cu cua watchdog deu 'xanh' vi tunnel nao cung song - khong the
+    thay loai loi nay.
+
+    Khong dong dinh con so nao: N = so may dem duoc trong nguon that (map.txt
+    khi dang o mode VPN, session_state khi la preset), M = so tunnel dang chay.
+
+    Tra ve list cac dong canh bao.
+    """
+    warns = []
+    n_tun = len(inv)
+    if n_tun < 2:
+        return warns
+
+    def check(label, counts, total):
+        if total < n_tun:
+            # it may hon so tunnel: khong the chia deu, khong phai loi
+            return
+        used = len(counts)
+        fair = float(total) / n_tun
+        worst_acc, worst = max(counts.items(), key=lambda kv: kv[1])
+        if used <= 1:
+            warns.append("[SPREAD] %s: %d may don HET vao 1 tunnel (%s) trong khi "
+                         "co %d tunnel dang chay -> tran bang thong = tran cua 1 "
+                         "tunnel. Chua: vpn_spread.py apply <session> --yes"
+                         % (label, total, worst_acc, n_tun))
+            return
+        if worst > fair * SPREAD_TOLERANCE:
+            warns.append("[SPREAD] %s: %d may / %d tunnel (deu = %.1f may) nhung "
+                         "'%s' ganh %d may (> %.1fx). Chua: vpn_spread.py apply "
+                         "<session> --yes" % (label, total, n_tun, fair,
+                                              worst_acc, worst, SPREAD_TOLERANCE))
+        if used < n_tun:
+            warns.append("[SPREAD] %s: chi dung %d/%d tunnel, %d tunnel dang chay "
+                         "ma khong phuc vu may nao"
+                         % (label, used, n_tun, n_tun - used))
+
+    # 1. Thuc te dang chay (chi co du lieu khi router dang o mode VPN)
+    counts = {}
+    try:
+        with open(MAPF) as f:
+            for ln in f:
+                parts = ln.split()
+                if len(parts) >= 2:
+                    counts[parts[1]] = counts.get(parts[1], 0) + 1
+    except Exception:
+        counts = {}
+    if counts:
+        check("dang chay (map.txt)", counts, sum(counts.values()))
+
+    # 2. Preset: chua apply nhung apply la sap - bat truoc khi thanh su co
+    try:
+        with open(STATE_FILE) as f:
+            state = json.load(f)
+    except Exception:
+        state = {}
+    if isinstance(state, dict):
+        for sid in sorted(k for k in state if k != "__meta__"):
+            sess = state.get(sid)
+            if not isinstance(sess, dict):
+                continue
+            c = {}
+            for item in sess.values():
+                if isinstance(item, dict):
+                    acc = str(item.get("vpn_account") or "").strip()
+                    if acc:
+                        c[acc] = c.get(acc, 0) + 1
+            if c:
+                check("preset session %s" % sid, c, sum(c.values()))
+    return warns
+
+
 def acquire_lock():
     """Khong cho 2 ban chay chong nhau (1 lan quet co the mat vai phut)."""
     try:
@@ -302,6 +391,11 @@ def main():
 
     # ---- doi chieu co 'auto' voi thuc te (chong bom hen gio khi reboot) ----
     miss_auto, extra_auto, forecast = auto_flag_drift(inv)
+    spread_warns = spread_drift(inv)
+    if spread_warns:
+        changed = True
+    for w in spread_warns:
+        log(w)
     over_forecast = {n: k for n, k in forecast.items()
                      if k > MAX_PER_NODE and n not in ("?", "")}
     if miss_auto or extra_auto or over_forecast:
@@ -333,6 +427,10 @@ def main():
             print("khong chay ma auto=1: %s" % " ".join(n for n, _ in extra_auto))
         if over_forecast:
             print("reboot se vuot suat tai nut: %s" % over_forecast)
+        for w in spread_warns:
+            print(w)
+        if not spread_warns:
+            print("phan bo may/tunnel: khong lech")
         save_state(st)
         return 0
 

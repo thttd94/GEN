@@ -1,5 +1,69 @@
 # CHANGELOG
 
+## Ver 2.43 (2026-09-05) - FIX GOC: ca dan may khach bi don vao DUNG 1 tunnel VPN + tools/vpn_spread.py
+
+**Su co that:** preset VPN gan **TOAN BO may khach vao dung 1 tai khoan VPN** (do duoc:
+322/322 may -> `proton-jp-171` -> `tun1`). Tat ca chi so cua watchdog deu "xanh" vi 33/33 tunnel
+deu song va ra Internet duoc - khong co gi bao loi. Nhung tran bang thong cua CA ROUTER khi do
+bang tran cua DUNG 1 tunnel.
+
+**Bang chung do dac** (cua so thoi gian co dinh T=4 s, `SO_BINDTODEVICE`, 2 vong xen ke):
+
+| Cau hinh | Bang thong | So voi tran WAN |
+|---|---|---|
+| 1 tunnel, 2 luong | **139,2 Mbps** | 16% |
+| 33 tunnel, 2 luong/tunnel | **554,2 Mbps** | 62% |
+| WAN truc tiep (khong tunnel), 60 luong | 889,7 Mbps | 100% |
+
+=> chia deu may cho cac tunnel dang chay: **3,93x** bang thong.
+
+**Chua - `tools/vpn_spread.py` (moi):**
+
+- Chia deu N may cho M tunnel bang round-robin, **xen ke theo nut** de 2 may lien tiep khong
+  cung mot nut Proton (nhieu tunnel co the tro ve cung nut; chia tuan tu se don mot khoi may
+  lien tiep vao cung nut do).
+- **KHONG dong dinh con so nao.** N dem tu chinh API cua router (`/api/pm/sessions/<id>`),
+  M dem tu tien trinh `openvpn`/`wireguard` DANG CHAY that (dung lai `inventory()` cua
+  `dataplane_guard.py`). Router 200 may hay 1000 may deu chay dung, khong sua code.
+- Mac dinh **chi dung tunnel co `auto=1`** (reboot van con). `--all-running` de dung ca tunnel
+  `auto=0`; `--probe` de do that tung tunnel ra Internet truoc khi chia.
+- Ghi qua **DUNG API cua app** (`POST /api/pm/sessions/<id>`) - duong ma GUI dung - nen chi
+  cham preset + `session_state.json`, **KHONG cham `gencore.json` runtime**: chay luc nao cung
+  duoc, khong lam gian doan may dang chay. Viec `apply` van do nguoi van hanh bam.
+- Co che do `plan` (in ke hoach, khong ghi gi) va bat buoc `--yes` moi ghi that.
+- Doc lai va doi chieu sau khi ghi; lech ke hoach thi tra ve loi.
+
+**Them khoa kiem `[SPREAD]` vao `tools/dataplane_guard.py`** (`spread_drift()`), vi cac khoa cu
+khong the thay loai loi nay:
+
+- Doi chieu CA HAI nguon: `map.txt` (dang chay that) va tung session trong `session_state.json`
+  (preset - bat truoc khi nguoi van hanh bam apply).
+- Bao dong khi: (a) don HET may vao 1 tunnel; (b) mot tunnel ganh qua `SPREAD_TOLERANCE=2.0`
+  lan phan chia deu; (c) co tunnel dang chay ma khong phuc vu may nao.
+- Nguong tinh theo TY LE tren so dem thuc te, khong theo so may tuyet doi.
+- Khi so may < so tunnel thi **im lang** (khong the chia deu, khong phai loi).
+- Watchdog **chi canh bao, khong tu chia lai** - dung nguyen tac cua `[AUTODRIFT]`.
+- Thu nghiem nguoc 5 tinh huong (don 1 tunnel / chia deu / lech 3x / dung 1 nua so tunnel /
+  it may hon so tunnel): bat dung 4, im dung 1.
+
+**Nut co chai con lai cua mode VPN da do duoc, khong phai loi cau hinh: CPU.** May dung
+Intel i3-3220 **khong co AES-NI**, `cipher AES-256-GCM` phai ma hoa bang software trong
+user-space. Khi 33 tunnel cung tai: 32 process `openvpn` an **313% / 400%** (4 core), CPU toan
+may 91%; cung luc do WAN truc tiep chi ton 48% CPU cho 892 Mbps. Vi vay cang nhieu luong/tunnel
+thi cang cham: 2 luong 554 Mbps -> 4 luong 472 -> 8 luong 415 -> 12 luong 288. Tran thuc te cua
+mode VPN tren phan cung nay la **~550-620 Mbps (62-70% WAN)**; muon cao hon phai doi CPU co
+AES-NI hoac chuyen sang WireGuard (ma hoa trong kernel).
+
+**Do an toan cua duong apply (do that, khong suy dien):**
+
+- Chay dung duong ma `apply` se goi - 33 lan `vpn_mgr.sh assign-many` cho 300 may - het **16,14 s**,
+  con du 164 s truoc `APPLY_LOCK_TTL=180 s`.
+- Nghiem thu sau do: `ip rule` dung table **300/300**, `ipset genrouter_vpn` 300 entry,
+  `map.txt` 300 dong, **0/33 table thieu default route**, 4 rule chot cua `gen_vpn_guard.sh`
+  van o vi tri 1, `gen_vpn_guard.sh check` = `[OK]`.
+- `table`/`prio` cua 33 tunnel **khong trung nhau** (301-337 / 91-127).
+- Roll lai bang `unassign-many`: **2,87 s**, `ip rule`/`ipset`/`map.txt` ve dung nguyen trang.
+
 ## Ver 2.42 (2026-09-05) - FIX GOC: 13 tunnel VPN "song" ma khong ra Internet + watchdog data-plane
 
 **Su co that:** 13/33 tunnel VPN khong ra duoc Internet nhieu NGAY ma khong co bat ky canh bao nao.
