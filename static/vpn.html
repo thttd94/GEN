@@ -61,6 +61,12 @@
 
 <div class="card">
     <h2><span class="h-ico">🛰</span>Tunnel VPN</h2>
+    <div id="bulk-controls" style="margin-bottom:12px">
+      <button class="ok" onclick="bulkVpn('up')">UP ALL</button>
+      <button onclick="bulkVpn('down')">DOWN ALL</button>
+      <button class="bad" onclick="bulkVpn('del')">Xóa tất cả cấu hình VPN</button>
+      <span id="bulk-progress" role="status" aria-live="polite"></span>
+    </div>
     <table>
       <thead><tr><th>Tên</th><th>Loại</th><th title="IP công cộng của tunnel — có IP tức là VPN online">WAN IP</th><th>Trạng thái</th><th>Clients gán</th><th style="width:340px">Hành động</th></tr></thead>
       <tbody id="tb"><tr><td colspan="6" class="muted">…</td></tr></tbody>
@@ -159,6 +165,7 @@ function updateDepsBanner(d) {
 }
 
 async function act(action, extra, confirmText) {
+  if (BUSY) return;
   if (confirmText && !confirm(confirmText)) return;
   BUSY = true;
   try {
@@ -171,6 +178,38 @@ async function act(action, extra, confirmText) {
   if (['up','down','del'].includes(action)) {
     api('refresh-exitips').catch(()=>{});
     setTimeout(loadWanIps, 16000);
+  }
+}
+
+async function bulkVpn(action) {
+  if (BUSY || !['up','down','del'].includes(action)) return;
+  const names = [...new Set(ACCOUNTS.map(a => a.name))];
+  if (!names.length) return log('Không có cấu hình VPN.');
+  if (action === 'del' && !confirm(`Xóa toàn bộ ${names.length} cấu hình VPN trong danh sách? Tunnel sẽ dừng, máy đang dùng VPN có thể mất mạng. Không thể hoàn tác bằng nút này.`)) return;
+  BUSY = true;
+  const buttons = [...document.querySelectorAll('button')];
+  const disabled = buttons.map(b => b.disabled);
+  buttons.forEach(b => b.disabled = true);
+  let success = 0, failed = 0;
+  const progress = document.getElementById('bulk-progress');
+  try {
+    for (let i = 0; i < names.length; i++) {
+      progress.textContent = `${action.toUpperCase()}: ${i + 1}/${names.length}`;
+      try {
+        const r = await api(action, {name: names[i]});
+        if (r.ok) { success++; log(`${action}: ${names[i]} — OK`); }
+        else { failed++; log(`${action}: ${names[i]} — LỖI: ${r.error || r.output || 'API không xác nhận thành công'}`); }
+      } catch (e) {
+        failed++; log(`${action}: ${names[i]} — mất kết nối; dừng để tránh thao tác tiếp khi chưa rõ trạng thái.`);
+        break;
+      }
+    }
+  } finally {
+    progress.textContent = `Thành công ${success}; lỗi/chưa xác nhận ${failed}; chưa thực hiện ${names.length-success-failed}.`;
+    log(progress.textContent);
+    BUSY = false;
+    buttons.forEach((b,i) => b.disabled = disabled[i]);
+    await refresh();
   }
 }
 
@@ -319,7 +358,7 @@ async function refresh() {
       return `<tr>
         <td><b>${esc(a.name)}</b>${a.host?`<div class="muted">${esc(a.host)}</div>`:''}</td>
         <td>${esc(a.type)}</td><td class="wanip" title="${esc(a.dev)}">${wanIpCell(a)}</td><td>${st}</td><td>${chips}</td>
-        <td>${main}${auto}<button class="bad" onclick="act('del',{name:'${esc(a.name)}'},'Xóa tài khoản ${esc(a.name)}?')">Xóa</button></td>
+        <td>${main}${auto}<button class="bad" onclick="act('del',{name:'${esc(a.name)}'})">Xóa</button></td>
       </tr>`;
     }).join('');
   }

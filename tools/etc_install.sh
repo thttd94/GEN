@@ -87,6 +87,17 @@ if [ "$CRON_TOUCHED" = 1 ]; then
   echo "[OK] reload cron (backup: $CRONF.bak.$STAMP)"
 fi
 
+echo "=== 2b) client-isolate (tach client L2, giu router) ==="
+_put "$SRC_ETC/init.d/client-isolate" /etc/init.d/client-isolate 755
+_put "$SRC_ETC/client-isolate.nft.tpl" /etc/client-isolate.nft.tpl 644
+if [ -x /etc/init.d/client-isolate ]; then
+  /etc/init.d/client-isolate enable 2>/dev/null || ln -sf /etc/init.d/client-isolate /etc/rc.d/S99client-isolate 2>/dev/null
+  _add_cron 'client-isolate' '* * * * * nft list table bridge client_isolate >/dev/null 2>&1 || /etc/init.d/client-isolate start >/dev/null 2>&1'
+  /etc/init.d/client-isolate start 2>/dev/null || true
+else
+  echo "[--] thieu client-isolate, bo qua"
+fi
+
 echo "=== 3) tproxy da sua (vendor script) ==="
 # QUAN TRONG: /etc/shm/ov.sh chay MOI PHUT va copy /etc/shm/<file> ->
 # /etc/genrouter/core/<file> khi mtime cua target != 2025-05-05.
