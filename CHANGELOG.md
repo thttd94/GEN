@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## Ver 2.50 (2026-10-04) - bulk VPN tren GUI + cach ly client L2
+
+- `static/vpn.html`: nut UP ALL / DOWN ALL / Xoa tat ca, chay tuan tu qua API cu,
+  dedup, disable buttons, summary, dung khi mat mang. Xoa tung VPN bo confirm.
+- Cach ly client L2: bang nft `bridge client_isolate`, chi cho frame toi/lui MAC
+  router (doc dong luc start), drop con lai. Init `S99client-isolate` + cron guard
+  phuc hoi khi mat bang. Cai qua `tools/etc_install.sh` (idempotent, backup truoc).
+- Router IP local / config rieng (session, preset, map, accounts, auth, ovpn)
+  khong doi — update full chi thay code.
+
 ## Ver 2.46 (2026-09-05) - dong cua so ro IP tu <=60 s ve ~0 s
 
 Ver 2.45 dung lop `[VPN_WANT]` trong `etc/genrouter_killswitch.sh` de chan may khai bao VPN
