@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Ver 2.51 (2026-10-05) - tools/disk_expand.sh tu mo rong root
+
+- Moi con Gen co o cung / phan vung trong khac nhau. Script tu detect disk,
+  root partition, free space lien ke, roi mo rong toi da.
+- DRY-RUN mac dinh (chi in ke hoach). --apply moi lam that, co backup bang
+  phan vung. Tu choi khi free nam sau partition khac (khong tu xoa du lieu).
+- Giai /dev/root ao qua /proc/self/mountinfo + sysfs (BusyBox thieu stat).
+  Test dry-run OK tren Gen17 (p4 chan sau root -> bao khong mo rong duoc).
+
 ## Ver 2.50 (2026-10-04) - bulk VPN tren GUI + cach ly client L2
 
 - `static/vpn.html`: nut UP ALL / DOWN ALL / Xoa tat ca, chay tuan tu qua API cu,

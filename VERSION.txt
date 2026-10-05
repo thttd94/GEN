@@ -1,1 +1,1 @@
-Ver 2.50 (bulk Up/Down/Xoa VPN tren GUI + cach ly client L2 qua nft bridge, init S99 + cron guard + etc_install; config rieng tung router giu nguyen)
+Ver 2.51 (tools/disk_expand.sh tu mo rong root toi da theo disk trong + bulk VPN + cach ly client L2; config rieng tung router giu nguyen)
