@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## Ver 2.52 (2026-10-05) - DHCP server LAN + don interface WG chet
+
+- Gen17 mat DHCP (/etc/config/dhcp rong): client cam LAN khong duoc cap IP.
+  Them `etc/config/dhcp.tpl` + muc 2c trong `tools/etc_install.sh` tu them
+  section thieu (dnsmasq DHCP-only port=0 + dhcp.lan start=10 limit=1000
+  lease=30d + dhcp.wan ignore), idempotent, khong ghi de cau hinh san co.
+- Bai hoc Gen17: dnsmasq he thong de port=0 (KHONG giu 53, de gencore giu),
+  interface br-lan + notinterface eth0/tun*/wg* (tranh bind IP tunnel gay
+  crash loop). Da xoa 21 interface wg chet (wg1-wg21) con sot tu tunnel cu.
+- Moi Gen update code tu co DHCP chuan Gen14, khong can cau hinh tay.
 ## Ver 2.51 (2026-10-05) - tools/disk_expand.sh tu mo rong root
 
 - Moi con Gen co o cung / phan vung trong khac nhau. Script tu detect disk,

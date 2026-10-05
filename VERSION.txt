@@ -1,1 +1,1 @@
-Ver 2.51 (tools/disk_expand.sh tu mo rong root toi da theo disk trong + bulk VPN + cach ly client L2; config rieng tung router giu nguyen)
+Ver 2.52 (DHCP server LAN tu dong + don interface WG chet + disk_expand + bulk VPN + cach ly L2; config rieng tung router giu nguyen)
