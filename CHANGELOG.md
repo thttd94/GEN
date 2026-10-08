@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## Ver 2.53 (2026-10-08) - tick chan local 2 chieu tren GUI /vpn
+
+- `static/vpn.html`: checkbox "Chan local 2 chieu" + dong trang thai,
+  goi API `isolate`/`isolate-status`, co hieu luc ngay, khong can reboot.
+  Bat = chan client thay nhau (bridge client_isolate). Tat = mo het.
+- `tools/vpn_mgr.sh`: subcommand `isolate [status|show|two-way|off|guard]`.
+  `hide`/`one-way` cu map ve `off` de tuong thich. Mac dinh `off`.
+- `etc/init.d/client-isolate`: doc `/data/vpn/isolate.mode` khi boot/restart.
+  `off` = xoa sach bridge + gen_hide. Xoa han code L3 gen_hide (tung lam
+  mat internet vi drop blanket giet TPROXY vao INPUT, va chan ca SSH LAN).
+- `tools/etc_install.sh`: cron guard `isolate guard` moi phut thay cho 2 cron cu.
+- `app.py`: API `/api/vpn/action` them `isolate`/`isolate-status`.
+- Bai hoc Gen15: bridge isolate chan ca PC quan tri cung LAN toi may con.
+  Khi mo het phai xoa table + go cron guard + go boot link, verify PC toi
+  client OPEN moi xong.
+
 ## Ver 2.52 (2026-10-05) - DHCP server LAN + don interface WG chet
 
 - Gen17 mat DHCP (/etc/config/dhcp rong): client cam LAN khong duoc cap IP.

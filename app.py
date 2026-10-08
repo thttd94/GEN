@@ -4404,6 +4404,13 @@ class Handler(BaseHTTPRequestHandler):
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()
                 ipaddr = str(payload.get('ip', '')).strip()
+                if action in ('isolate', 'isolate-status'):
+                    mode = str(payload.get('mode', 'status')).strip()
+                    if action == 'isolate-status' or not mode:
+                        mode = 'status'
+                    if mode not in ('status', 'hide', 'show', 'two-way', 'one-way', 'off'):
+                        return self._send_json({'ok': False, 'error': 'mode khong hop le (hide|show|off)'})
+                    return self._send_json(vpn_run(['isolate', mode]))
                 if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
                     return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
                 if action == 'up':

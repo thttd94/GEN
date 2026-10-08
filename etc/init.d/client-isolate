@@ -1,20 +1,30 @@
 #!/bin/sh /etc/rc.common
 # Client isolation for br-lan — blocks client-to-client L2 traffic.
 # Router (gateway/DHCP/DNS) and internet access are unaffected.
+# Dieu khien boi /data/vpn/isolate.mode: two-way = chan, off = mo het.
 START=99
 NFT_FILE=/etc/client-isolate.nft
+MODEF=/data/vpn/isolate.mode
 MAC=$(ip -o link show br-lan 2>/dev/null | sed -n 's/.*link\/ether \([0-9a-f:]*\).*/\1/p' | head -1)
 gen_nft() {
 	[ -n "$MAC" ] || { echo "client-isolate: br-lan MAC not found"; return 1; }
 	sed "s/__ROUTER_MAC__/$MAC/g" "$NFT_FILE.tpl" > "$NFT_FILE"
 }
 start() {
+	MODE=$(cat "$MODEF" 2>/dev/null || echo off)
+	case "$MODE" in off)
+		nft delete table bridge client_isolate 2>/dev/null
+		nft delete table inet gen_hide 2>/dev/null
+		echo "client-isolate: off (mo het)"
+		return 0 ;; esac
 	gen_nft || return 1
 	nft delete table bridge client_isolate 2>/dev/null
 	nft -f "$NFT_FILE" && echo "client-isolate: active (router MAC $MAC)"
+	nft delete table inet gen_hide 2>/dev/null
 }
 stop() {
 	nft delete table bridge client_isolate 2>/dev/null
+	nft delete table inet gen_hide 2>/dev/null
 	echo "client-isolate: removed"
 }
 restart() {

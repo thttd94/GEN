@@ -1,1 +1,1 @@
-Ver 2.52 (DHCP server LAN tu dong + don interface WG chet + disk_expand + bulk VPN + cach ly L2; config rieng tung router giu nguyen)
+Ver 2.53 (tick chan local 2 chieu tren GUI /vpn + bo han chan 1 chieu + cron guard isolate; config rieng tung router giu nguyen)

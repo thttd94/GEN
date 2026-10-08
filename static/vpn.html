@@ -67,6 +67,13 @@
       <button class="bad" onclick="bulkVpn('del')">Xóa tất cả cấu hình VPN</button>
       <span id="bulk-progress" role="status" aria-live="polite"></span>
     </div>
+    <div id="isolate-controls" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Bật: chặn local 2 chiều (máy client không thấy nhau). Tắt: mở hết, local thấy nhau, internet bình thường.">
+        <input type="checkbox" id="isolate-twoway" onchange="setIsolate(this.checked?'show':'off')" style="width:16px;height:16px">
+        <b>Chặn local 2 chiều</b>
+      </label>
+      <span id="isolate-state" class="muted">đang tải…</span>
+    </div>
     <table>
       <thead><tr><th>Tên</th><th>Loại</th><th title="IP công cộng của tunnel — có IP tức là VPN online">WAN IP</th><th>Trạng thái</th><th>Clients gán</th><th style="width:340px">Hành động</th></tr></thead>
       <tbody id="tb"><tr><td colspan="6" class="muted">…</td></tr></tbody>
@@ -323,6 +330,7 @@ async function refresh() {
   } catch(e) { document.getElementById('upd').textContent = 'mất kết nối'; return; }
   document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()}`;
   loadWanIps();
+  loadIsolate();
 
   const tb = document.getElementById('tb');
   if (!ACCOUNTS.length) {
@@ -376,6 +384,30 @@ async function unassignAll(name) {
   if (!confirm(`Bỏ gán ${a.clients.length} máy khỏi ${name}?`)) return;
   for (const ip of a.clients) { try { await act('unassign', {ip}); } catch(e){} }
   refresh();
+}
+
+async function loadIsolate() {
+  try {
+    const r = await (await fetch('/api/vpn/action', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'isolate-status'})})).json();
+    const out = (r && r.output) || '';
+    const m = out.match(/mode=(\S+)/);
+    const mode = m ? m[1] : '?';
+    const el = document.getElementById('isolate-state');
+    const cb = document.getElementById('isolate-twoway');
+    if (mode === 'two-way') { cb.checked = true; el.textContent = 'đang chặn local 2 chiều (máy client không thấy nhau)'; }
+    else if (mode === 'off') { cb.checked = false; el.textContent = 'đang MỞ hết (local thấy nhau, internet bình thường)'; }
+    else if (mode === 'one-way') { cb.checked = false; el.textContent = 'đang MỞ hết (đã bỏ chặn 1 chiều)'; }
+    else el.textContent = out || 'không rõ';
+  } catch(e) { document.getElementById('isolate-state').textContent = 'mất kết nối'; }
+}
+async function setIsolate(mode) {
+  const el = document.getElementById('isolate-state');
+  el.textContent = 'đang đổi…';
+  try {
+    const r = await (await fetch('/api/vpn/action', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'isolate', mode})})).json();
+    log('isolate: ' + ((r && r.output) || JSON.stringify(r)));
+  } catch(e) { log('isolate lỗi: ' + e.message); }
+  loadIsolate();
 }
 
     function draftMachineMap() {

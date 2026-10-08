@@ -95,6 +95,7 @@ _put "$SRC_ETC/client-isolate.nft.tpl" /etc/client-isolate.nft.tpl 644
 if [ -x /etc/init.d/client-isolate ]; then
   /etc/init.d/client-isolate enable 2>/dev/null || ln -sf /etc/init.d/client-isolate /etc/rc.d/S99client-isolate 2>/dev/null
   _add_cron 'client-isolate' '* * * * * nft list table bridge client_isolate >/dev/null 2>&1 || /etc/init.d/client-isolate start >/dev/null 2>&1'
+  _add_cron 'isolate-guard' '* * * * * /opt/proxy-manager-v1/tools/vpn_mgr.sh isolate guard >/dev/null 2>&1'
   /etc/init.d/client-isolate start 2>/dev/null || true
 else
   echo "[--] thieu client-isolate, bo qua"
