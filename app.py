@@ -4683,15 +4683,52 @@ class Handler(BaseHTTPRequestHandler):
                         rd['ids'] = fixed
                     res = call_old_gui('/api/router/pppoe/rotate', method='PUT', data=rd)
                     # Firmware goc chi doi MAC macvlan, khong quay so lai -> tu ifdown/ifup de IP moi ve.
+                    # Glider cu bam interface da down (CONNECT OK nhung data EOF) -> restart glider sau ifup.
                     try:
                         sid = rd.get('id', '')
                         if sid != '' and str(sid).strip().isdigit():
                             iface = 'if_%03d' % int(str(sid).strip())
                             subprocess.run(['ifdown', iface], timeout=15)
                             time.sleep(2)
-                            subprocess.run(['ifup', iface], timeout=15)
+                            subprocess.run(['ifup', iface], timeout=30)
+                            time.sleep(12)
+                            # Restart glider cua interface nay de forward qua IP WAN moi.
+                            # Kill PID dang giu port proxy cua phien (cmdline glider khong chua ten iface).
+                            try:
+                                pt_kill = 15000 + int(str(sid).strip()) - 1
+                                subprocess.run('for p in $(netstat -tlnp 2>/dev/null | grep ":%d " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done' % pt_kill, shell=True, timeout=10)
+                            except Exception:
+                                pass
+                            time.sleep(3)
+                            try:
+                                lr2 = call_old_gui('/api/router/pppoe')
+                                raw2 = (lr2 or {}).get('data')
+                                if isinstance(raw2, dict):
+                                    raw2 = raw2.get('data', raw2)
+                                lst2 = raw2 if isinstance(raw2, list) else (raw2.get('sessions') or [] if isinstance(raw2, dict) else [])
+                                for s in (lst2 or []):
+                                    try:
+                                        if int(s.get('id')) == int(str(sid).strip()):
+                                            import urllib.parse as _up2
+                                            for key in ('socks5', 'http'):
+                                                px = s.get(key) or ''
+                                                if px:
+                                                    break
+                                            u2 = _up2.urlparse(px if '://' in px else 'socks5://' + px)
+                                            su = _up2.unquote(u2.username or '')
+                                            sp = _up2.unquote(u2.password or '')
+                                            pt = u2.port or (15000 + int(str(sid).strip()) - 1)
+                                            scheme = 'http' if (s.get('http') or '') == px else 'socks5'
+                                            spx = '%s://%s:%s@0.0.0.0:%d' % (scheme, su, sp, pt)
+                                            hpx = s.get('http') or ''
+                                            subprocess.Popen(['/etc/genrouter/core/run_glider.sh', spx if scheme == 'socks5' else (s.get('socks5') or spx), hpx or spx, 'pppoe-%s' % iface], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                            break
+                                    except Exception:
+                                        continue
+                            except Exception:
+                                pass
                             res = dict(res or {})
-                            res['redial'] = {'ok': True, 'iface': iface}
+                            res['redial'] = {'ok': True, 'iface': iface, 'glider_restarted': True}
                     except Exception as ex:
                         res = dict(res or {})
                         res['redial'] = {'ok': False, 'error': str(ex)[:150]}
