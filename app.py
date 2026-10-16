@@ -4649,7 +4649,25 @@ class Handler(BaseHTTPRequestHandler):
                             fixed.append(int(str(x).strip()))
                         except Exception:
                             fixed.append(x)
-                    return self._send_json(call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': fixed}))
+                    res = call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': fixed})
+                    # Server goc xoa UCI/interface nhung KHONG kill pppd -> pppd song
+                    # van giu session ISP, chiem slot (gioi han 32). Don sach o day.
+                    try:
+                        for x in fixed:
+                            try:
+                                num = int(str(x).strip())
+                            except Exception:
+                                continue
+                            iface = 'if_%03d' % num
+                            dev = 'dev_%03d' % num
+                            pt = 15000 + num - 1
+                            subprocess.run('ifdown %s 2>/dev/null; sleep 2; for p in $(pgrep -f "ipparam %s" 2>/dev/null); do kill -9 $p 2>/dev/null; done; sleep 1; for p in $(pgrep -f "ipparam %s" 2>/dev/null); do kill -9 $p 2>/dev/null; done; for p in $(netstat -tlnp 2>/dev/null | grep ":%d " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done; ip link del %s 2>/dev/null; uci del network.%s 2>/dev/null; uci del network.%s 2>/dev/null; uci commit network 2>/dev/null; /etc/init.d/network reload 2>/dev/null; true' % (iface, iface, iface, pt, dev, iface, dev), shell=True, timeout=30)
+                        res = dict(res or {})
+                        res['cleaned'] = {'ok': True, 'ids': fixed}
+                    except Exception as ex:
+                        res = dict(res or {})
+                        res['cleaned'] = {'ok': False, 'error': str(ex)[:150]}
+                    return self._send_json(res)
                 if action == 'reset':
                     rd = dict(payload.get('data') or {})
                     if 'id' in rd:
