@@ -1,6 +1,19 @@
 # CHANGELOG
 
-## Ver 2.55 (2026-10-16) - PPPoE da cong + giu cau hinh + WAN DHCP
+## Ver 2.55 (2026-10-16) - PPPoE da phien + VLAN + giu connect khi xoay IP
+
+- Tab `/pppoe`: o VLAN tuy chon (trong = khong dung, Viettel = 35) - tu tao
+  `ethX.vlan` truoc khi quay so; tach tao N phien thanh N lan goi dung
+  user/pass goc (ISP chi cap 1 bo); nut CHECK hieu `pppoe:<id>`;
+  xoay IP restart glider theo port (kill PID giu `:1500x`) - client giu
+  connect, IP doi that; luu TK + VLAN de dien nhanh; hien lich xoay.
+- Backend `app.py`: apply/check resolve `pppoe:<id>` sang socks glider that
+  (LAN IP thay `0.0.0.0`); ep id so cho reset/rotate/delete/proxy
+  (server goc 400 voi id string); tao N (toi da 64) + tra tong UP.
+- Verify live Gen15: 7/7 phien online (ISP mo multi-session), xoay IP
+  doi that + data 200 OK, CHECK pppoe LIVE, APPLY may 844 socks that.
+
+## Ver 2.55-base (2026-10-16) - PPPoE da cong + giu cau hinh + WAN DHCP
 
 - Tab `/pppoe`: dropdown cong WAN eth0-eth5 (giu lua chon cu khi load lai),
   nut Luu/Khoi phuc snapshot, tat tu luu snapshot, bat ep WAN chinh ve DHCP.

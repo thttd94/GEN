@@ -1,1 +1,1 @@
-Ver 2.55 (PPPoE da cong + giu cau hinh on/off + WAN DHCP + cot PPPOE tren GUI chinh; config rieng tung router giu nguyen)
+Ver 2.55 (PPPoE da phien + VLAN tuy chon + giu connect khi xoay IP; config rieng tung router giu nguyen)
