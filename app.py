@@ -1913,7 +1913,38 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
         outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
     if normalized_type == 'pppoe' or str(proxy).startswith('pppoe:'):
-        # Giu direct tam, resolve sang proxy glider that khi apply (pppoe:<id> -> socks5 that).
+        # pppoe:<id> -> socks5 glider that cua phien (khong de direct).
+        sid = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
+        try:
+            pmap = pppoe_session_proxies()
+            info = pmap.get(sid, {}) if sid else {}
+            raw_px = info.get('socks') or info.get('http') or ''
+            if raw_px:
+                import urllib.parse as _up
+                u = _up.urlparse(raw_px if '://' in raw_px else 'socks5://' + raw_px)
+                server = (u.hostname or '').strip() or '127.0.0.1'
+                # Glider bind 0.0.0.0 (all if) nhung gencore chay tren router:
+                # client LAN phai di qua LAN IP, khong phai 0.0.0.0/127.0.0.1.
+                if server in ('0.0.0.0', '127.0.0.1', 'localhost', ''):
+                    try:
+                        lan = subprocess.check_output(['uci', '-q', 'get', 'network.lan.ipaddr'], text=True, timeout=5).strip()
+                        if lan:
+                            server = lan
+                    except Exception:
+                        pass
+                    if server in ('0.0.0.0', '127.0.0.1', 'localhost', ''):
+                        server = '192.15.0.1'
+                port = int(u.port or 0)
+                user = _up.unquote(u.username or '')
+                password = _up.unquote(u.password or '')
+                if port:
+                    if info.get('http') and raw_px == info.get('http'):
+                        outbounds[idx] = {'tag': tag, 'type': 'http', 'server': server, 'server_port': port, 'username': user, 'password': password}
+                    else:
+                        outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': server, 'server_port': port, 'username': user, 'password': password, 'version': '5'}
+                    return
+        except Exception:
+            pass
         outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
     server, port, user, password = parse_proxy(proxy)
