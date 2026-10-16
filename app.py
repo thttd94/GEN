@@ -4550,7 +4550,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json(call_old_gui('/api/router/pppoe', method='POST', data=data))
                 if action == 'delete':
                     ids = payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
-                    return self._send_json(call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': ids}))
+                    fixed = []
+                    for x in (ids if isinstance(ids, list) else [ids]):
+                        try:
+                            fixed.append(int(str(x).strip()))
+                        except Exception:
+                            fixed.append(x)
+                    return self._send_json(call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': fixed}))
                 if action == 'reset':
                     rd = dict(payload.get('data') or {})
                     if 'id' in rd:
