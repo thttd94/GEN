@@ -854,23 +854,38 @@
     var VPN_ACCOUNTS = [];
     // ---- PPPoE Manager tich hop vao Proxy Type / Proxy ----
     var PPPOE_SESSIONS = [];
+    var PPPOE_OPTS_CACHE = '';
     async function refreshPppoeSessions() {
       try {
         const d = await (await fetch('/api/pppoe/list')).json();
         const raw = (d && d.data && (d.data.data || d.data));
-        PPPOE_SESSIONS = Array.isArray(raw) ? raw : (raw ? (raw.sessions || raw.list || []) : []);
-        if (typeof currentRows !== 'undefined' && typeof render === 'function') render();
+        const lst = Array.isArray(raw) ? raw : (raw ? (raw.sessions || raw.list || []) : []);
+        const sig = JSON.stringify(lst.map(s => [s.id ?? s.wan_id, s.ip || '', s.status]));
+        const oldSig = JSON.stringify(PPPOE_SESSIONS.map(s => [s.id ?? s.wan_id, s.ip || '', s.status]));
+        PPPOE_SESSIONS = lst;
+        if (sig !== oldSig) {
+          PPPOE_OPTS_CACHE = '';
+          if (typeof currentRows !== 'undefined' && typeof render === 'function') render();
+        }
       } catch(e){}
     }
-    function pppoeOptionsHtml(cur) {
-      return PPPOE_SESSIONS.map(s => {
+    function pppoeOptionsInner() {
+      if (PPPOE_OPTS_CACHE) return PPPOE_OPTS_CACHE;
+      PPPOE_OPTS_CACHE = PPPOE_SESSIONS.map(s => {
         const id = s.id ?? s.wan_id ?? '';
         const ip = s.ip || s.wan_ip || s.public_ip || '';
         const up = (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true);
         const label = `PPPoE #${id}${ip ? ' (' + ip + ')' : (up ? '' : ' (down)')}`;
         const val = 'pppoe:' + id;
-        return `<option value="${esc(val)}" ${(String(cur||'')===val)?'selected':''}>${esc(label)}</option>`;
-      }).join('');
+        return {v: val, l: label};
+      }).map(o => `<option value="${esc(o.v)}">${esc(o.l)}</option>`).join('');
+      return PPPOE_OPTS_CACHE;
+    }
+    function pppoeOptionsHtml(cur) {
+      const inner = pppoeOptionsInner();
+      if (!cur) return inner;
+      const cv = String(cur);
+      return inner.replace('value="' + cv.replace(/"/g, '&quot;') + '"', 'value="' + cv.replace(/"/g, '&quot;') + '" selected');
     }
     async function refreshVpnAccounts() {
       try {
