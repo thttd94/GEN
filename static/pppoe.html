@@ -177,7 +177,8 @@ async function refresh() {
     list = Array.isArray(d) ? d : (d ? (d.sessions || d.list || []) : []);
   } catch(e){ document.getElementById('upd').textContent = 'mất kết nối'; return; }
   SESSIONS = list;
-  document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()}`;
+  const upN = list.filter(s => (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true)).length;
+  document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()} · ${list.length} phiên (${upN} UP)`;
   const tb = document.getElementById('tb');
   if (!list.length) {
     tb.innerHTML = '<tr><td colspan="7" class="muted">Chưa có phiên nào — tạo bằng form bên dưới.</td></tr>';

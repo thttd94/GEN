@@ -4542,12 +4542,31 @@ class Handler(BaseHTTPRequestHandler):
                         data['number'] = int(data.get('number') or 1)
                     except Exception:
                         data['number'] = 1
+                    if data['number'] < 1:
+                        data['number'] = 1
+                    if data['number'] > 64:
+                        data['number'] = 64
                     try:
                         data['duration'] = int(data.get('duration') or 0)
                     except Exception:
                         data['duration'] = 0
                     data['rotate'] = bool(payload.get('rotate'))
-                    return self._send_json(call_old_gui('/api/router/pppoe', method='POST', data=data))
+                    res = call_old_gui('/api/router/pppoe', method='POST', data=data)
+                    # Log tung phien de biet phien nao UP/down (N slots, ISP cho hay khong la viec cua line).
+                    try:
+                        time.sleep(3)
+                        lr = call_old_gui('/api/router/pppoe')
+                        raw = (lr or {}).get('data')
+                        if isinstance(raw, dict):
+                            raw = raw.get('data', raw)
+                        lst = raw if isinstance(raw, list) else (raw.get('sessions') or raw.get('list') or [] if isinstance(raw, dict) else [])
+                        up = sum(1 for s in (lst or []) if isinstance(s, dict) and (s.get('status') in ('up', 'online', True) or s.get('up') is True or s.get('online') is True))
+                        res = dict(res or {})
+                        res['sessions_total'] = len(lst or [])
+                        res['sessions_up'] = up
+                    except Exception:
+                        pass
+                    return self._send_json(res)
                 if action == 'delete':
                     ids = payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
                     fixed = []

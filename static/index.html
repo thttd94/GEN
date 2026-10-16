@@ -866,7 +866,8 @@
       return PPPOE_SESSIONS.map(s => {
         const id = s.id ?? s.wan_id ?? '';
         const ip = s.ip || s.wan_ip || s.public_ip || '';
-        const label = `PPPoE #${id}${ip ? ' (' + ip + ')' : ''}`;
+        const up = (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true);
+        const label = `PPPoE #${id}${ip ? ' (' + ip + ')' : (up ? '' : ' (down)')}`;
         const val = 'pppoe:' + id;
         return `<option value="${esc(val)}" ${(String(cur||'')===val)?'selected':''}>${esc(label)}</option>`;
       }).join('');
