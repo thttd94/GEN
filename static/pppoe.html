@@ -85,6 +85,7 @@
       <div><label>Cổng WAN</label><select id="f-device" style="width:100%"><option value="eth0">eth0</option><option value="eth1">eth1</option><option value="eth2">eth2</option><option value="eth3">eth3</option><option value="eth4">eth4</option><option value="eth5">eth5</option></select></div>
       <div><label>Số phiên</label><input id="f-number" type="number" value="1" min="1" max="50" style="width:100%"></div>
     </div>
+    <label>Tài khoản đã lưu</label><select id="f-saved" onchange="fillSaved()" style="width:100%"><option value="">— chọn để điền nhanh —</option></select>
     <label>User PPPoE</label><input id="f-user" placeholder="username nhà mạng" style="width:100%">
     <label>Pass PPPoE</label><input id="f-pass" type="password" placeholder="password nhà mạng" autocomplete="new-password" style="width:100%">
     <div class="grid2">
@@ -189,10 +190,12 @@ async function refresh() {
     const st = up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
     const ip = s.ip || s.wan_ip || s.public_ip || '';
     const proxy = s.socks5 || s.socks_proxy || s.proxy || '';
+    const dur = parseInt(s.duration, 10) || 0;
+    const sched = dur > 0 ? `<div class="muted" style="font-size:11px">🔁 ${dur} phút</div>` : '';
     return `<tr><td><b>${esc(id)}</b></td><td class="muted">${esc(iface)}</td>`
       + `<td>${esc(s.username || '')}</td>`
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
-      + `<td>${st}</td><td class="muted" style="font-size:11.5px">${esc(proxy)}</td>`
+      + `<td>${st}${sched}</td><td class="muted" style="font-size:11.5px">${esc(proxy)}</td>`
       + `<td><button onclick="fillId('${esc(id)}');resetOne()">🔁 Quay số</button>`
       + `<button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
       + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;
@@ -215,9 +218,36 @@ async function createSession() {
   };
   if (!data.username || !data.password) { log('thiếu user/pass PPPoE'); return; }
   log('đang tạo phiên...');
-  try { const r = await api('create', data); log('tạo phiên: ' + JSON.stringify(r).slice(0, 800)); }
+  try { const r = await api('create', data); log('tạo phiên: ' + JSON.stringify(r).slice(0, 800)); saveAccount(data.username, data.password); }
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
+}
+function loadAccounts() {
+  let accs = [];
+  try { accs = JSON.parse(localStorage.getItem('pppoe_accounts') || '[]'); } catch(e){}
+  const sel = document.getElementById('f-saved');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— chọn để điền nhanh —</option>' + accs.map((a, i) => `<option value="${i}">${esc(a.u)} (${esc(a.d || 'eth0')})</option>`).join('');
+}
+function saveAccount(u, p) {
+  if (!u || !p) return;
+  let accs = [];
+  try { accs = JSON.parse(localStorage.getItem('pppoe_accounts') || '[]'); } catch(e){}
+  if (!accs.some(a => a.u === u)) {
+    accs.push({u, p, d: document.getElementById('f-device').value || 'eth0'});
+    try { localStorage.setItem('pppoe_accounts', JSON.stringify(accs)); } catch(e){}
+  }
+  loadAccounts();
+}
+function fillSaved() {
+  const sel = document.getElementById('f-saved');
+  if (!sel || sel.value === '') return;
+  let accs = [];
+  try { accs = JSON.parse(localStorage.getItem('pppoe_accounts') || '[]'); } catch(e){}
+  const a = accs[parseInt(sel.value, 10)];
+  if (!a) return;
+  document.getElementById('f-user').value = a.u || '';
+  document.getElementById('f-pass').value = a.p || '';
 }
 async function setEnable(on) {
   const u = (window._pppoe_info || {}).username || document.getElementById('f-user').value.trim();
@@ -287,6 +317,7 @@ async function delAll() {
   refresh();
 }
 refresh();
+loadAccounts();
 setInterval(refresh, 30000);
 </script>
 </body>
