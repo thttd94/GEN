@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## Ver 2.56 (2026-10-16) - widget may realtime + TK he thong + xoa sach pppd
+
+- Widget goc phai 3 trang (chinh/VPN/PPPoE): nhiet do CPU, %CPU, RAM,
+  disk, uptime - refresh 5s tu /proc+/sys, doi mau theo nguong.
+  Nhung inline (app khong co route /static roi).
+- TK PPPoE luu HE THONG `/data/pppoe/accounts.json` (mo may nao cung
+  thay) + chip `user ✕` xoa tung TK. API `acc-list|acc-save|acc-del`.
+- Xoa phien don sach pppd: ifdown truoc (netifd khong respawn) -> kill
+  theo `ipparam` -> xoa UCI/interface -> network reload. Xoa tat ca:
+  don nhanh tung phien + reload 1 lan cuoi + quet vet (fix timeout 30s
+  chet giua chung). Khong ket slot ISP 32.
+
 ## Ver 2.55 (2026-10-16) - PPPoE da phien + VLAN + giu connect khi xoay IP
 
 - Tab `/pppoe`: o VLAN tuy chon (trong = khong dung, Viettel = 35) - tu tao
