@@ -4604,7 +4604,13 @@ class Handler(BaseHTTPRequestHandler):
                         res['redial'] = {'ok': False, 'error': str(ex)[:150]}
                     return self._send_json(res)
                 if action == 'proxy':
-                    return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
+                    pd = dict(payload.get('data') or {})
+                    if 'id' in pd:
+                        try:
+                            pd['id'] = int(str(pd['id']).strip())
+                        except Exception:
+                            pass
+                    return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=pd))
                 if action == 'enable':
                     edata = payload.get('data') or {}
                     want_on = bool(edata.get('enable'))
