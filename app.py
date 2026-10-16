@@ -4600,12 +4600,10 @@ class Handler(BaseHTTPRequestHandler):
                         dur = int(payload.get('duration') or 0)
                     except Exception:
                         dur = 0
-                    # Server goc 1 slot/user: tao N phien cung user bi ghi de.
-                    # Goij N lan, user goc + user_2..user_N de ra du N ban ghi.
+                    # Tao N phien: goi N lan voi DUNG user/pass goc (ISP chi cap 1 bo).
                     res = None
                     for k in range(n):
-                        uname = base_user if k == 0 else f"{base_user}_{k+1}"
-                        data = {'device': payload.get('device', ''), 'number': 1, 'username': uname, 'password': base_pass, 'proxy_username': payload.get('proxy_username', ''), 'proxy_password': payload.get('proxy_password', ''), 'duration': dur}
+                        data = {'device': payload.get('device', ''), 'number': 1, 'username': base_user, 'password': base_pass, 'proxy_username': payload.get('proxy_username', ''), 'proxy_password': payload.get('proxy_password', ''), 'duration': dur}
                         data['rotate'] = bool(payload.get('rotate'))
                         res = call_old_gui('/api/router/pppoe', method='POST', data=data)
                     # Log tung phien de biet phien nao UP/down (N slots, ISP cho hay khong la viec cua line).
