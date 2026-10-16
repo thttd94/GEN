@@ -4081,6 +4081,89 @@ def _wd_check_vpn_integrity(thr):
     _wd_log('VPN-INTEGRITY buoc bao ve: ' + '; '.join(steps))
     return False
 
+_SYSINFO_PREV = {'cpu': None, 'ts': 0}
+
+def sysinfo_json():
+    # Thong so may thoi gian thuc: nhiet do CPU, %CPU, RAM, disk, uptime, load.
+    # Doc truc tiep /proc + /sys (khong phu thuoc lenh ngoai, chay duoc BusyBox).
+    out = {'ok': True, 'ts': int(time.time())}
+    # 1) Nhiet do: lay max cac thermal_zone (mC -> C).
+    try:
+        temps = []
+        for z in sorted(Path('/sys/class/thermal').glob('thermal_zone*')):
+            try:
+                v = int((z / 'temp').read_text().strip())
+                if 0 < v < 1000000:
+                    temps.append(v / 1000.0)
+            except Exception:
+                continue
+        out['temp_c'] = round(max(temps), 1) if temps else None
+    except Exception:
+        out['temp_c'] = None
+    # 2) %CPU: delta /proc/stat tu lan goi truoc (lan dau tra None).
+    try:
+        parts = Path('/proc/stat').read_text().split()
+        vals = [int(x) for x in parts[1:9]]
+        total = sum(vals)
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)
+        prev = _SYSINFO_PREV.get('cpu')
+        now = time.time()
+        if prev:
+            dt = total - prev[0]
+            di = idle - prev[1]
+            out['cpu_pct'] = round(max(0.0, min(100.0, (1 - di / dt) * 100)) if dt > 0 else 0.0) if dt > 0 else 0.0
+        else:
+            out['cpu_pct'] = None
+        _SYSINFO_PREV['cpu'] = (total, idle)
+        _SYSINFO_PREV['ts'] = now
+        try:
+            out['cpu_count'] = sum(1 for l in Path('/proc/cpuinfo').read_text().splitlines() if l.startswith('processor')) or 1
+        except Exception:
+            out['cpu_count'] = 1
+    except Exception:
+        out['cpu_pct'] = None
+        out['cpu_count'] = 0
+    # 3) RAM.
+    try:
+        mem = {}
+        for l in Path('/proc/meminfo').read_text().splitlines():
+            k, _, v = l.partition(':')
+            try:
+                mem[k.strip()] = int(v.strip().split()[0])
+            except Exception:
+                pass
+        total = mem.get('MemTotal', 0)
+        avail = mem.get('MemAvailable', mem.get('MemFree', 0))
+        used = max(0, total - avail)
+        out['mem'] = {'total_mb': round(total / 1024), 'used_mb': round(used / 1024), 'pct': round(used * 100.0 / total, 1) if total else 0}
+    except Exception:
+        out['mem'] = {}
+    # 4) Disk goc + /data.
+    try:
+        disks = []
+        for mp in ('/', '/data'):
+            try:
+                st = os.statvfs(mp)
+                t = st.f_blocks * st.f_frsize
+                f = st.f_bavail * st.f_frsize
+                u = t - f
+                disks.append({'mount': mp, 'total_gb': round(t / 1073741824, 1), 'used_gb': round(u / 1073741824, 1), 'pct': round(u * 100.0 / t, 1) if t else 0})
+            except Exception:
+                continue
+        out['disks'] = disks
+    except Exception:
+        out['disks'] = []
+    # 5) Uptime + load.
+    try:
+        out['uptime_s'] = int(float(Path('/proc/uptime').read_text().split()[0]))
+    except Exception:
+        out['uptime_s'] = 0
+    try:
+        out['load'] = [float(x) for x in Path('/proc/loadavg').read_text().split()[:3]]
+    except Exception:
+        out['load'] = []
+    return out
+
 def wd_health_json():
     """Ver 2.47: mot cho duy nhat de GUI/nguoi doc biet HE THONG CO DANG DUNG khong.
 
@@ -4405,6 +4488,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session, 'health': wd_health_json()})
         if path == '/api/pm/health':
             return self._send_json(wd_health_json())
+        if path == '/api/pm/sysinfo':
+            return self._send_json(sysinfo_json())
         if path == '/vpn':
             return self._send_file(STATIC_DIR / 'vpn.html')
         if path == '/pppoe':
