@@ -2857,7 +2857,23 @@ def check_proxy(proxy: str, session='1'):
     if not proxy.strip():
         return {'ok': False, 'status': 'empty', 'message': 'DEAD'}
     try:
-        server, port, user, password = parse_proxy(proxy)
+        pstr = str(proxy).strip()
+        if pstr.lower().startswith('pppoe:'):
+            # pppoe:<id> -> resolve sang socks glider that truoc khi probe.
+            sid = pstr.split(':', 1)[1].strip() if ':' in pstr else ''
+            pmap = pppoe_session_proxies()
+            info = pmap.get(sid, {}) if sid else {}
+            raw_px = info.get('socks') or info.get('http') or ''
+            if not raw_px:
+                return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
+            import urllib.parse as _up
+            u = _up.urlparse(raw_px if '://' in raw_px else 'socks5://' + raw_px)
+            server = (u.hostname or '').strip() or '127.0.0.1'
+            if server in ('0.0.0.0', '127.0.0.1', 'localhost', ''):
+                server = '192.15.0.1'
+            server, port, user, password = server, int(u.port or 0), _up.unquote(u.username or ''), _up.unquote(u.password or '')
+        else:
+            server, port, user, password = parse_proxy(proxy)
         ok, _probe_host, _probe_port = socks5_probe_multi(server, port, user, password)
         if not ok:
             return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
