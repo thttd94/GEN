@@ -4584,21 +4584,30 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pppoe/action':
                 action = str(payload.get('action', '')).strip()
                 if action == 'create':
-                    data = {k: payload.get(k, '') for k in ('device', 'number', 'username', 'password', 'proxy_username', 'proxy_password', 'duration')}
+                    base_user = str(payload.get('username', '')).strip()
+                    base_pass = str(payload.get('password', '') or '')
+                    n = 1
                     try:
-                        data['number'] = int(data.get('number') or 1)
+                        n = int(payload.get('number') or 1)
                     except Exception:
-                        data['number'] = 1
-                    if data['number'] < 1:
-                        data['number'] = 1
-                    if data['number'] > 64:
-                        data['number'] = 64
+                        n = 1
+                    if n < 1:
+                        n = 1
+                    if n > 64:
+                        n = 64
+                    dur = 0
                     try:
-                        data['duration'] = int(data.get('duration') or 0)
+                        dur = int(payload.get('duration') or 0)
                     except Exception:
-                        data['duration'] = 0
-                    data['rotate'] = bool(payload.get('rotate'))
-                    res = call_old_gui('/api/router/pppoe', method='POST', data=data)
+                        dur = 0
+                    # Server goc 1 slot/user: tao N phien cung user bi ghi de.
+                    # Goij N lan, user goc + user_2..user_N de ra du N ban ghi.
+                    res = None
+                    for k in range(n):
+                        uname = base_user if k == 0 else f"{base_user}_{k+1}"
+                        data = {'device': payload.get('device', ''), 'number': 1, 'username': uname, 'password': base_pass, 'proxy_username': payload.get('proxy_username', ''), 'proxy_password': payload.get('proxy_password', ''), 'duration': dur}
+                        data['rotate'] = bool(payload.get('rotate'))
+                        res = call_old_gui('/api/router/pppoe', method='POST', data=data)
                     # Log tung phien de biet phien nao UP/down (N slots, ISP cho hay khong la viec cua line).
                     try:
                         time.sleep(3)
