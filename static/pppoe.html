@@ -86,7 +86,8 @@
       <div><label>Số phiên</label><input id="f-number" type="number" value="1" min="1" max="50" style="width:100%"></div>
       <div><label>VLAN (trống = không dùng, Viettel = 35)</label><input id="f-vlan" type="number" value="" min="1" max="4094" placeholder="vd 35" style="width:100%"></div>
     </div>
-    <label>Tài khoản đã lưu</label><select id="f-saved" onchange="fillSaved()" style="width:100%"><option value="">— chọn để điền nhanh —</option></select>
+    <label>Tài khoản đã lưu (trên hệ thống)</label><select id="f-saved" onchange="fillSaved()" style="width:100%"><option value="">— chọn để điền nhanh —</option></select>
+    <div id="acc-list" class="muted" style="margin-top:6px"></div>
     <label>User PPPoE</label><input id="f-user" placeholder="username nhà mạng" style="width:100%">
     <label>Pass PPPoE</label><input id="f-pass" type="password" placeholder="password nhà mạng" autocomplete="new-password" style="width:100%">
     <div class="grid2">
@@ -124,7 +125,7 @@
 </div>
 
 <script>
-let SESSIONS = [], BUSY = false;
+let SESSIONS = [], BUSY = false, ACCS = [];
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function log(msg){ document.getElementById('log').textContent = msg; }
@@ -225,29 +226,31 @@ async function createSession() {
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
 }
-function loadAccounts() {
+async function loadAccounts() {
   let accs = [];
-  try { accs = JSON.parse(localStorage.getItem('pppoe_accounts') || '[]'); } catch(e){}
+  try { const r = await api('acc-list'); accs = (r && r.accounts) || []; } catch(e){}
+  ACCS = accs;
   const sel = document.getElementById('f-saved');
   if (!sel) return;
-  sel.innerHTML = '<option value="">— chọn để điền nhanh —</option>' + accs.map((a, i) => `<option value="${i}">${esc(a.u)} (${esc(a.d || 'eth0')})</option>`).join('');
+  sel.innerHTML = '<option value="">— chọn để điền nhanh —</option>' + accs.map((a, i) => `<option value="${i}">${esc(a.u)} (${esc(a.d || 'eth0')}${a.v ? ', VLAN ' + esc(a.v) : ''})</option>`).join('');
+  document.getElementById('acc-list').innerHTML = accs.map((a, i) => `<span class="chip">${esc(a.u)} <a href="#" onclick="delAccount(${i});return false" title="xóa TK này" style="color:#ff8aa5;text-decoration:none;font-weight:800">✕</a></span>`).join('') || '<span class="muted">chưa lưu TK nào</span>';
 }
-function saveAccount(u, p) {
+async function saveAccount(u, p) {
   if (!u || !p) return;
-  let accs = [];
-  try { accs = JSON.parse(localStorage.getItem('pppoe_accounts') || '[]'); } catch(e){}
-  if (!accs.some(a => a.u === u)) {
-    accs.push({u, p, d: document.getElementById('f-device').value || 'eth0', v: document.getElementById('f-vlan').value.trim() || ''});
-    try { localStorage.setItem('pppoe_accounts', JSON.stringify(accs)); } catch(e){}
-  }
+  try { await api('acc-save', {username: u, password: ***, device: document.getElementById('f-device').value || 'eth0', vlan: document.getElementById('f-vlan').value.trim() || ''}); } catch(e){}
+  loadAccounts();
+}
+async function delAccount(i) {
+  const a = ACCS[i];
+  if (!a) return;
+  if (!confirm(`Xóa TK ${a.u}?`)) return;
+  try { await api('acc-del', {username: a.u}); } catch(e){}
   loadAccounts();
 }
 function fillSaved() {
   const sel = document.getElementById('f-saved');
   if (!sel || sel.value === '') return;
-  let accs = [];
-  try { accs = JSON.parse(localStorage.getItem('pppoe_accounts') || '[]'); } catch(e){}
-  const a = accs[parseInt(sel.value, 10)];
+  const a = ACCS[parseInt(sel.value, 10)];
   if (!a) return;
   document.getElementById('f-user').value = a.u || '';
   document.getElementById('f-pass').value = a.p || '';

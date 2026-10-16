@@ -34,6 +34,7 @@ STATIC_HOSTS_FILE = Path('/etc/shm/list_ip_static.json') if Path('/etc/shm/list_
 LEASES_FILE = Path('/tmp/dhcp.leases')
 OLD_GUI_BASE = 'http://127.0.0.1:9000'
 PPPOE_SNAP_FILE = Path('/data/pppoe/sessions.json')
+PPPOE_ACCOUNTS_FILE = Path('/data/pppoe/accounts.json')
 STATIC_API_BASE = 'http://192.15.0.1:8000'
 if ROUTER_CONFIG_DIR.exists():
     CONFIG_DIR = ROUTER_CONFIG_DIR
@@ -2234,6 +2235,24 @@ def pppoe_snapshot_load():
         return {'ok': True, 'saved_at': (snap.get('saved_at') if isinstance(snap, dict) else ''), 'sessions': sessions or []}
     except Exception as ex:
         return {'ok': False, 'error': str(ex)[:200], 'sessions': []}
+
+def pppoe_accounts_load():
+    # TK PPPoE luu tren HE THONG (/data/pppoe) - doi may nao cung thay, khong phu thuoc trinh duyet.
+    try:
+        if not PPPOE_ACCOUNTS_FILE.exists():
+            return []
+        d = json.loads(PPPOE_ACCOUNTS_FILE.read_text(encoding='utf-8'))
+        return d if isinstance(d, list) else []
+    except Exception:
+        return []
+
+def pppoe_accounts_save(accs):
+    try:
+        PPPOE_ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PPPOE_ACCOUNTS_FILE.write_text(json.dumps(accs, ensure_ascii=False, indent=1), encoding='utf-8')
+        return True
+    except Exception:
+        return False
 
 def pppoe_wan_to_dhcp():
     """Ep WAN chinh ve DHCP sau khi bat mode PPPoE (mode chi de tao phien/proxy, khong chiem WAN)."""
@@ -4874,7 +4893,28 @@ class Handler(BaseHTTPRequestHandler):
                         except Exception as ex:
                             errors.append(str(ex)[:120])
                     return self._send_json({'ok': True, 'restored': restored, 'saved_at': snap.get('saved_at', ''), 'errors': errors})
-                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|proxy|enable|snap-save|snap-load|snap-restore)'})
+                if action == 'acc-list':
+                    return self._send_json({'ok': True, 'accounts': pppoe_accounts_load()})
+                if action == 'acc-save':
+                    u = str(payload.get('username', '')).strip()
+                    p = str(payload.get('password', '') or '')
+                    if not u or not p:
+                        return self._send_json({'ok': False, 'error': 'thieu user/pass'})
+                    accs = pppoe_accounts_load()
+                    ex = next((a for a in accs if isinstance(a, dict) and a.get('u') == u), None)
+                    nd = {'u': u, 'p': p, 'd': str(payload.get('device', '') or 'eth0'), 'v': str(payload.get('vlan', '') or '')}
+                    if ex:
+                        ex.update(nd)
+                    else:
+                        accs.append(nd)
+                    pppoe_accounts_save(accs)
+                    return self._send_json({'ok': True, 'accounts': accs})
+                if action == 'acc-del':
+                    u = str(payload.get('username', '')).strip()
+                    accs = [a for a in pppoe_accounts_load() if not (isinstance(a, dict) and a.get('u') == u)]
+                    pppoe_accounts_save(accs)
+                    return self._send_json({'ok': True, 'accounts': accs})
+                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|proxy|enable|snap-save|snap-load|snap-restore|acc-list|acc-save|acc-del)'})
             if path == '/api/vpn/action':
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()
