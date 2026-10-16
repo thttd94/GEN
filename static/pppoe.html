@@ -185,7 +185,7 @@ async function refresh() {
   tb.innerHTML = list.map(s => {
     const id = s.id ?? s.wan_id ?? '';
     const iface = s.interface || s.iface || (id !== '' ? `if_${String(id).padStart(3,'0')}` : '—');
-    const up = (s.up ?? s.status === 'up' ?? s.online);
+    const up = (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true);
     const st = up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
     const ip = s.ip || s.wan_ip || s.public_ip || '';
     const proxy = s.socks5 || s.socks_proxy || s.proxy || '';

@@ -4552,9 +4552,37 @@ class Handler(BaseHTTPRequestHandler):
                     ids = payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
                     return self._send_json(call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': ids}))
                 if action == 'reset':
-                    return self._send_json(call_old_gui('/api/router/pppoe/reset', method='PUT', data=payload.get('data') or {}))
+                    rd = dict(payload.get('data') or {})
+                    if 'id' in rd:
+                        try:
+                            rd['id'] = int(str(rd['id']).strip())
+                        except Exception:
+                            pass
+                    if 'ids' in rd and isinstance(rd['ids'], list):
+                        fixed = []
+                        for x in rd['ids']:
+                            try:
+                                fixed.append(int(str(x).strip()))
+                            except Exception:
+                                fixed.append(x)
+                        rd['ids'] = fixed
+                    return self._send_json(call_old_gui('/api/router/pppoe/reset', method='PUT', data=rd))
                 if action == 'rotate':
-                    return self._send_json(call_old_gui('/api/router/pppoe/rotate', method='PUT', data=payload.get('data') or {}))
+                    rd = dict(payload.get('data') or {})
+                    if 'id' in rd:
+                        try:
+                            rd['id'] = int(str(rd['id']).strip())
+                        except Exception:
+                            pass
+                    if 'ids' in rd and isinstance(rd['ids'], list):
+                        fixed = []
+                        for x in rd['ids']:
+                            try:
+                                fixed.append(int(str(x).strip()))
+                            except Exception:
+                                fixed.append(x)
+                        rd['ids'] = fixed
+                    return self._send_json(call_old_gui('/api/router/pppoe/rotate', method='PUT', data=rd))
                 if action == 'proxy':
                     return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
                 if action == 'enable':
