@@ -4652,6 +4652,7 @@ class Handler(BaseHTTPRequestHandler):
                     res = call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': fixed})
                     # Server goc xoa UCI/interface nhung KHONG kill pppd -> pppd song
                     # van giu session ISP, chiem slot (gioi han 32). Don sach o day.
+                    # Xoa nhieu: don nhanh tung phien (khong reload giua chung), reload 1 lan cuoi.
                     try:
                         for x in fixed:
                             try:
@@ -4661,7 +4662,8 @@ class Handler(BaseHTTPRequestHandler):
                             iface = 'if_%03d' % num
                             dev = 'dev_%03d' % num
                             pt = 15000 + num - 1
-                            subprocess.run('ifdown %s 2>/dev/null; sleep 2; for p in $(pgrep -f "ipparam %s" 2>/dev/null); do kill -9 $p 2>/dev/null; done; sleep 1; for p in $(pgrep -f "ipparam %s" 2>/dev/null); do kill -9 $p 2>/dev/null; done; for p in $(netstat -tlnp 2>/dev/null | grep ":%d " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done; ip link del %s 2>/dev/null; uci del network.%s 2>/dev/null; uci del network.%s 2>/dev/null; uci commit network 2>/dev/null; /etc/init.d/network reload 2>/dev/null; true' % (iface, iface, iface, pt, dev, iface, dev), shell=True, timeout=30)
+                            subprocess.run('ifdown %s 2>/dev/null; for p in $(pgrep -f "ipparam %s" 2>/dev/null); do kill -9 $p 2>/dev/null; done; for p in $(netstat -tlnp 2>/dev/null | grep ":%d " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done; ip link del %s 2>/dev/null; uci del network.%s 2>/dev/null; uci del network.%s 2>/dev/null; uci commit network 2>/dev/null; true' % (iface, iface, pt, dev, iface, dev), shell=True, timeout=15)
+                        subprocess.run('/etc/init.d/network reload 2>/dev/null; sleep 2; for i in $(pgrep -f "ipparam if_0" 2>/dev/null); do c=$(tr "\\0" " " < /proc/$i/cmdline 2>/dev/null | grep -oE "ipparam (if_[0-9]+)"); n=$(echo "$c" | grep -oE "[0-9]+"); echo "$n" | grep -q . || continue; echo "%s" | tr "," "\\n" | grep -qx "$n" && kill -9 $i 2>/dev/null; done; true' % ','.join(str(v) for v in fixed), shell=True, timeout=30)
                         res = dict(res or {})
                         res['cleaned'] = {'ok': True, 'ids': fixed}
                     except Exception as ex:
