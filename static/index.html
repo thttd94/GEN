@@ -224,6 +224,7 @@
       <div class="toolbar-right">
         <button class="btn warn" onclick="openIpMacConfig()">GÁN IP</button>
         <button class="btn warn" onclick="window.open('/vpn','_blank')" title="Trang cấu hình VPN">VPN</button>
+        <button class="btn warn" onclick="window.open('/pppoe','_blank')" title="Trang quản lý PPPoE đa phiên">PPPOE</button>
         <button class="btn warn" onclick="openMacAssignPage()">GÁN MAC</button>
         <button class="btn warn" onclick="openSetupRouter()">SETUP ROUTER</button>
         <button class="btn warn" onclick="rebootRouter()">REBOOT ROUTER</button>
@@ -804,6 +805,7 @@
               <option value="socks5" ${(String(row.proxyType || 'socks5').toLowerCase()==='socks5') ? 'selected' : ''}>SOCKS5</option>
               <option value="http" ${(String(row.proxyType || 'socks5').toLowerCase()==='http') ? 'selected' : ''}>HTTP</option>
               <option value="vpn" ${(String(row.proxyType || 'socks5').toLowerCase()==='vpn') ? 'selected' : ''}>VPN</option>
+              <option value="pppoe" ${(String(row.proxyType || 'socks5').toLowerCase()==='pppoe') ? 'selected' : ''}>PPPOE</option>
             </select>
           </td>
           ${(String(row.proxyType || 'socks5').toLowerCase()==='vpn')
@@ -811,6 +813,11 @@
                  <option value="" ${(!String(row.proxy || '').startsWith('vpn:')) ? 'selected' : ''}>— chọn VPN —</option>
                  ${vpnOptionsHtml(row.proxy)}
                </select></td>`
+            : (String(row.proxyType || 'socks5').toLowerCase()==='pppoe')
+            ? `<td><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="max-width:200px;">
+                 <option value="" ${(!String(row.proxy || '').startsWith('pppoe:')) ? 'selected' : ''}>— chọn PPPoE —</option>
+                 ${pppoeOptionsHtml(row.proxy)}
+               </select> <a class="muted" style="cursor:pointer;font-size:11px" href="/pppoe" target="_blank" title="Mở quản lý PPPoE">⚙</a></td>`
             : `<td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>`}
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
@@ -843,6 +850,25 @@
 
     // ---- VPN Manager tich hop vao Proxy Type / Proxy ----
     var VPN_ACCOUNTS = [];
+    // ---- PPPoE Manager tich hop vao Proxy Type / Proxy ----
+    var PPPOE_SESSIONS = [];
+    async function refreshPppoeSessions() {
+      try {
+        const d = await (await fetch('/api/pppoe/list')).json();
+        const raw = (d && d.data && (d.data.data || d.data));
+        PPPOE_SESSIONS = Array.isArray(raw) ? raw : (raw ? (raw.sessions || raw.list || []) : []);
+        if (typeof currentRows !== 'undefined' && typeof render === 'function') render();
+      } catch(e){}
+    }
+    function pppoeOptionsHtml(cur) {
+      return PPPOE_SESSIONS.map(s => {
+        const id = s.id ?? s.wan_id ?? '';
+        const ip = s.ip || s.wan_ip || s.public_ip || '';
+        const label = `PPPoE #${id}${ip ? ' (' + ip + ')' : ''}`;
+        const val = 'pppoe:' + id;
+        return `<option value="${esc(val)}" ${(String(cur||'')===val)?'selected':''}>${esc(label)}</option>`;
+      }).join('');
+    }
     async function refreshVpnAccounts() {
       try {
         const d = await (await fetch('/api/vpn/status')).json();
@@ -1705,6 +1731,8 @@
   setInterval(() => refreshLicense(true), 60000);
   refreshVpnAccounts();
   setInterval(() => refreshVpnAccounts(), 30000);
+  refreshPppoeSessions();
+  setInterval(() => refreshPppoeSessions(), 30000);
 </script>
 </body>
 </html>

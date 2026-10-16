@@ -1630,6 +1630,12 @@ def update_session_rows_meta(session_id, rows):
                 item['vpn_account'] = acc
             else:
                 item.pop('vpn_account', None)
+        if 'pppoe_account' in row:
+            pacc = str(row.get('pppoe_account') or '').strip()
+            if pacc:
+                item['pppoe_account'] = pacc
+            else:
+                item.pop('pppoe_account', None)
     save_session_state(state)
 
 def normalize_mac(mac):
@@ -1797,7 +1803,11 @@ def extract_rows(data, session='1'):
         ob_type = str((outbound or {}).get('type', '')).strip().lower() if isinstance(outbound, dict) else ''
         if tag and ob_type == 'direct':
             vpn_acc = str((meta or {}).get('vpn_account', '') or '').strip() or vpn_map.get(ip, '')
-            proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
+            pppoe_acc = str((meta or {}).get('pppoe_account', '') or '').strip()
+            if pppoe_acc:
+                proxy_val, ptype = ('pppoe:' + pppoe_acc, 'pppoe')
+            else:
+                proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
         else:
             proxy_val, ptype = (format_proxy(outbound), format_proxy_type(outbound))
         rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': True})
@@ -1881,9 +1891,12 @@ def apply_rows_to_data(data, rows_by_tag, session='1'):
         set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type)
         ptype_norm = str(proxy_type or 'socks5').strip().lower()
         vpn_acc_row = ''
+        pppoe_acc_row = ''
         if ptype_norm == 'vpn' or str(proxy).startswith('vpn:'):
             vpn_acc_row = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
-        touched_rows.append({'tag': tag, 'mac': row.get('mac', ''), 'note': row.get('note', ''), 'vpn_account': vpn_acc_row})
+        if ptype_norm == 'pppoe' or str(proxy).startswith('pppoe:'):
+            pppoe_acc_row = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
+        touched_rows.append({'tag': tag, 'mac': row.get('mac', ''), 'note': row.get('note', ''), 'vpn_account': vpn_acc_row, 'pppoe_account': pppoe_acc_row})
     update_session_rows_meta(session, touched_rows)
     return data
 
@@ -1896,6 +1909,10 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
         return
     normalized_type = str(proxy_type or 'socks5').strip().lower()
     if normalized_type == 'vpn' or str(proxy).startswith('vpn:'):
+        outbounds[idx] = {'tag': tag, 'type': 'direct'}
+        return
+    if normalized_type == 'pppoe' or str(proxy).startswith('pppoe:'):
+        # Giu direct tam, resolve sang proxy glider that khi apply (pppoe:<id> -> socks5 that).
         outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
     server, port, user, password = parse_proxy(proxy)
@@ -2149,6 +2166,36 @@ def apply_ip_identity_config(data, text, session='1'):
     rebuild_gencore_rules(data, tag_to_ip_map)
     return data
 
+def pppoe_session_proxies():
+    """Doc proxy glider cua tung phien PPPoE tu server goc 9000.
+    Tra ve {id: {socks, http}} — best effort, cache 60s."""
+    import time
+    now = time.time()
+    cache = getattr(pppoe_session_proxies, '_cache', None)
+    if cache and now - cache[0] < 60:
+        return cache[1]
+    out = {}
+    try:
+        r = call_old_gui('/api/router/pppoe')
+        raw = (r or {}).get('data')
+        if isinstance(raw, dict):
+            raw = raw.get('data', raw)
+        lst = raw if isinstance(raw, list) else (raw.get('sessions') or raw.get('list') or [] if isinstance(raw, dict) else [])
+        for s in lst or []:
+            if not isinstance(s, dict):
+                continue
+            sid = str(s.get('id', s.get('wan_id', ''))).strip()
+            if not sid:
+                continue
+            out[sid] = {
+                'socks': str(s.get('socks5') or s.get('socks_proxy') or s.get('proxy') or '').strip(),
+                'http': str(s.get('http_proxy') or s.get('http') or '').strip(),
+            }
+    except Exception:
+        pass
+    pppoe_session_proxies._cache = (now, out)
+    return out
+
 def build_old_gui_update_proxy_payload_from_rows(rows):
     """Dung payload cho binary vendor 9000 (/api/update_proxy).
 
@@ -2170,6 +2217,25 @@ def build_old_gui_update_proxy_payload_from_rows(rows):
             payload[ip] = 'ALLOW'
             continue
         if proxy_type == 'vpn' or proxy.startswith('vpn:'):
+            payload[ip] = 'ALLOW'
+            continue
+        if proxy_type == 'pppoe' or proxy.startswith('pppoe:'):
+            # pppoe:<id> -> proxy glider that cua phien, giong VPN resolve tunnel.
+            sid = proxy.split(':', 1)[1].strip() if ':' in proxy else ''
+            pmap = pppoe_session_proxies()
+            info = pmap.get(sid, {}) if sid else {}
+            raw_px = info.get('socks') or info.get('http') or ''
+            if raw_px:
+                try:
+                    server, port, username, password = parse_proxy(raw_px)
+                    item = {'type': 'http' if info.get('http') and raw_px == info.get('http') else 'socks5', 'server': server, 'port': int(port)}
+                    if username or password:
+                        item['username'] = username
+                        item['password'] = password
+                    payload[ip] = item
+                    continue
+                except Exception:
+                    pass
             payload[ip] = 'ALLOW'
             continue
         try:
@@ -2751,7 +2817,8 @@ def check_proxy_batch(items, session='1', max_workers=64):
 
 def call_old_gui(path, method='GET', data=None):
     body = None
-    headers = {}
+    # Server goc 9000 check header trinh duyet voi 1 so API (pppoe list tra 400/ngat neu thieu).
+    headers = {'Accept': 'application/json', 'Referer': 'http://127.0.0.1:9000/', 'Origin': 'http://127.0.0.1:9000'}
     if data is not None and method != 'GET':
         body = json.dumps(data).encode('utf-8')
         headers['Content-Type'] = 'application/json'
@@ -4243,6 +4310,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(wd_health_json())
         if path == '/vpn':
             return self._send_file(STATIC_DIR / 'vpn.html')
+        if path == '/pppoe':
+            return self._send_file(STATIC_DIR / 'pppoe.html')
+        if path == '/api/pppoe/list':
+            try:
+                return self._send_json(call_old_gui('/api/router/pppoe'))
+            except Exception as ex:
+                return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
+        if path == '/api/pppoe/status':
+            try:
+                return self._send_json(call_old_gui('/api/router/status_pppoe'))
+            except Exception as ex:
+                return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200]})
+        if path == '/api/pppoe/devices':
+            try:
+                return self._send_json(call_old_gui('/api/router/pppoe/device'))
+            except Exception as ex:
+                return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
         if path == '/api/vpn/status':
             return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map(), 'deps': vpn_deps_status()})
         if path == '/api/vpn/exitips':
@@ -4400,6 +4484,32 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/router-change-lan':
                 ip_lan = str(payload.get('ip_lan', '')).strip()
                 return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data={'ip_lan': ip_lan}))
+            if path == '/api/pppoe/action':
+                action = str(payload.get('action', '')).strip()
+                if action == 'create':
+                    data = {k: payload.get(k, '') for k in ('device', 'number', 'username', 'password', 'proxy_username', 'proxy_password', 'duration')}
+                    try:
+                        data['number'] = int(data.get('number') or 1)
+                    except Exception:
+                        data['number'] = 1
+                    try:
+                        data['duration'] = int(data.get('duration') or 0)
+                    except Exception:
+                        data['duration'] = 0
+                    data['rotate'] = bool(payload.get('rotate'))
+                    return self._send_json(call_old_gui('/api/router/pppoe', method='POST', data=data))
+                if action == 'delete':
+                    ids = payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
+                    return self._send_json(call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': ids}))
+                if action == 'reset':
+                    return self._send_json(call_old_gui('/api/router/pppoe/reset', method='PUT', data=payload.get('data') or {}))
+                if action == 'rotate':
+                    return self._send_json(call_old_gui('/api/router/pppoe/rotate', method='PUT', data=payload.get('data') or {}))
+                if action == 'proxy':
+                    return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
+                if action == 'enable':
+                    return self._send_json(call_old_gui('/api/router/enable_pppoe', method='POST', data=payload.get('data') or {}))
+                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|proxy|enable)'})
             if path == '/api/vpn/action':
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()

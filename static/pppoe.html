@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>PPPoE Manager — Router GEN</title>
+<style>
+  :root { color-scheme: dark; --bg:#08131f; --card:#10202f; --line:#1f4255; --txt:#e8f6ff; --dim:#8fb8cc; --ok:#2ee6a8; --bad:#ff5470; --acc:#38bdf8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:radial-gradient(900px 480px at 88% 112%, rgba(56,189,248,.14), transparent 60%), radial-gradient(1100px 520px at 12% -10%, #0e3a52 0%, var(--bg) 60%) fixed; color:var(--txt); font-family:'Segoe UI',system-ui,sans-serif; font-size:14px; }
+  .wrap { max-width:1150px; margin:0 auto; padding:20px 18px 30px; }
+  .hero { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; background:linear-gradient(135deg,#0c4a6e 0%,#164e63 45%,#0a1620 100%); border:1px solid #1f6a8a; border-radius:14px; padding:16px 20px; margin-bottom:18px; box-shadow:0 10px 30px rgba(8,60,90,.45); }
+  .hero h1 { margin:0; font-size:19px; display:flex; align-items:center; gap:10px; text-shadow:0 1px 8px rgba(56,189,248,.35); }
+  .hero .sub { color:var(--dim); font-size:12.5px; margin-top:4px; }
+  .pill { font-size:12px; padding:5px 12px; border-radius:999px; background:rgba(8,19,31,.72); border:1px solid var(--line); color:var(--dim); display:inline-flex; align-items:center; gap:7px; }
+  .pill::before { content:''; width:8px; height:8px; border-radius:999px; background:var(--ok); box-shadow:0 0 8px rgba(46,230,168,.7); }
+  .card { background:linear-gradient(180deg,#13293b 0%,var(--card) 100%); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:16px; box-shadow:0 6px 18px rgba(8,40,60,.4); }
+  .card h2 { display:flex; align-items:center; gap:9px; font-size:12.5px; text-transform:uppercase; letter-spacing:.5px; color:#bde7fa; border-bottom:1px dashed var(--line); padding-bottom:9px; margin:0 0 12px; }
+  .h-ico { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:7px; font-size:12.5px; background:linear-gradient(135deg,#38bdf8,#0ea5e9); box-shadow:0 2px 6px rgba(10,60,90,.5); flex:0 0 auto; }
+  .h-ico-green { background:linear-gradient(135deg,#34d399,#0f9d6a); }
+  .h-ico-amber { background:linear-gradient(135deg,#fbbf24,#ea580c); }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:top; font-size:13px; }
+  tbody tr:hover td { background:rgba(56,189,248,.07); }
+  th { color:#a8d8ec; font-weight:700; white-space:nowrap; text-transform:uppercase; font-size:11px; letter-spacing:.6px; }
+  tr:last-child td { border-bottom:none; }
+  button { background:#12293a; color:var(--txt); border:1px solid #27566e; border-radius:9px; padding:5px 10px; cursor:pointer; font-size:12px; font-weight:600; margin:2px 3px 2px 0; transition:.15s ease; white-space:nowrap; }
+  td:last-child button { font-size:11.5px; padding:5px 9px; }
+  button:hover { border-color:var(--acc); color:#bde7fa; transform:translateY(-1px); }
+  button.ok { background:linear-gradient(135deg,#0ea5e9,#0284c7 55%,#0369a1); color:#fff; border-color:#38bdf8; box-shadow:0 3px 10px rgba(56,189,248,.35); }
+  button.ok:hover { color:#fff; filter:brightness(1.13); }
+  button.bad { color:#ff8aa5; border-color:#7f1d3d; background:rgba(255,84,112,.09); }
+  button.bad:hover { color:#ffb3c4; border-color:var(--bad); }
+  input,select,textarea { background:#0a1826; color:var(--txt); border:1px solid var(--line); border-radius:9px; padding:7px 10px; font-size:13px; }
+  input:focus,select:focus,textarea:focus { outline:none; border-color:var(--acc); box-shadow:0 0 0 3px rgba(56,189,248,.18); }
+  label { display:block; color:var(--dim); font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin:10px 0 4px; }
+  .row { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
+  .row > .card { flex:1 1 340px; margin-bottom:0; }
+  .row { margin-bottom:16px; }
+  #log { background:#0a1826; border:1px solid var(--line); border-radius:10px; padding:10px 12px; max-height:180px; overflow:auto; font-family:Consolas,monospace; font-size:12px; white-space:pre-wrap; }
+  .chip { display:inline-block; background:#0a1826; border:1px solid var(--line); border-radius:999px; padding:3px 10px; margin:2px 3px 2px 0; font-size:12px; }
+  .st-up { display:inline-flex; align-items:center; gap:5px; background:rgba(46,230,168,.1); border:1px solid rgba(46,230,168,.45); color:#4ff0bd; font-weight:700; font-size:11.5px; border-radius:999px; padding:2px 10px; }
+  .st-down { display:inline-flex; align-items:center; gap:5px; background:rgba(143,184,204,.08); border:1px solid var(--line); color:var(--dim); font-weight:600; font-size:11.5px; border-radius:999px; padding:2px 10px; }
+  .wan-ok { color:#ffc94d; font-weight:800; letter-spacing:.3px; text-shadow:0 0 10px rgba(255,201,77,.35); }
+  .muted { color:var(--dim); font-size:12px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
+  @media (max-width:640px){ .grid2{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+  <div>
+    <h1>🌐 PPPoE Đa Phiên</h1>
+    <div class="sub">Mỗi phiên quay số riêng qua macvlan — mỗi phiên 1 IP WAN + proxy SOCKS5/HTTP riêng</div>
+  </div>
+  <span class="pill" id="upd">đang tải…</span>
+</div>
+
+<div class="card">
+  <h2><span class="h-ico">📡</span>Trạng thái PPPoE</h2>
+  <div id="pppoe-status" class="muted">đang tải…</div>
+  <div style="margin-top:10px" id="enable-row"></div>
+</div>
+
+<div class="card">
+  <h2><span class="h-ico">🛰</span>Danh sách phiên</h2>
+  <div style="margin-bottom:12px">
+    <button class="ok" onclick="refresh()">🔄 Tải lại</button>
+    <button onclick="resetAll()">🔁 Quay số lại tất cả</button>
+    <button onclick="rotateAll()">🔀 Xoay IP tất cả</button>
+    <button class="bad" onclick="delAll()">🗑 Xóa tất cả phiên</button>
+  </div>
+  <table>
+    <thead><tr><th>ID</th><th>Interface</th><th>User PPPoE</th><th title="IP công cộng của phiên">WAN IP</th><th>Trạng thái</th><th>Proxy</th><th style="width:320px">Hành động</th></tr></thead>
+    <tbody id="tb"><tr><td colspan="7" class="muted">…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="row">
+  <div class="card">
+    <h2><span class="h-ico h-ico-green">➕</span>Tạo phiên mới</h2>
+    <div class="grid2">
+      <div><label>Cổng WAN</label><select id="f-device" style="width:100%"><option value="eth0">eth0</option></select></div>
+      <div><label>Số phiên</label><input id="f-number" type="number" value="1" min="1" max="50" style="width:100%"></div>
+    </div>
+    <label>User PPPoE</label><input id="f-user" placeholder="username nhà mạng" style="width:100%">
+    <label>Pass PPPoE</label><input id="f-pass" type="password" placeholder="password nhà mạng" autocomplete="new-password" style="width:100%">
+    <div class="grid2">
+      <div><label>User proxy (trống = random)</label><input id="f-puser" placeholder="username" style="width:100%"></div>
+      <div><label>Pass proxy (trống = random)</label><input id="f-ppass" type="password" placeholder="password" autocomplete="new-password" style="width:100%"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Xoay IP mỗi (phút, 0 = tắt)</label><input id="f-duration" type="number" value="0" min="0" style="width:100%"></div>
+      <div style="display:flex;align-items:flex-end;padding-bottom:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0"><input type="checkbox" id="f-rotate" style="width:16px;height:16px"> Tự xoay IP</label></div>
+    </div>
+    <div style="margin-top:12px"><button class="ok" onclick="createSession()">➕ Tạo phiên</button></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="h-ico h-ico-amber">🔑</span>Đổi proxy / Xoay IP 1 phiên</h2>
+    <label>ID phiên</label><input id="o-id" placeholder="vd 1" style="width:100%">
+    <div class="grid2">
+      <div><label>User proxy mới</label><input id="o-puser" placeholder="username" style="width:100%"></div>
+      <div><label>Pass proxy mới</label><input id="o-ppass" type="password" placeholder="password" autocomplete="new-password" style="width:100%"></div>
+    </div>
+    <div style="margin-top:10px">
+      <button onclick="setProxy()">🔑 Đổi proxy</button>
+      <button onclick="resetOne()">🔁 Quay số lại</button>
+      <button onclick="rotateOne()">🔀 Xoay IP</button>
+      <button class="bad" onclick="delOne()">🗑 Xóa</button>
+    </div>
+    <div class="muted" style="margin-top:8px">Hoặc bấm trực tiếp nút trên từng dòng bảng.</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2><span class="h-ico h-ico-amber">📜</span>Kết quả lệnh</h2>
+  <div id="log">sẵn sàng.</div>
+</div>
+</div>
+
+<script>
+let SESSIONS = [], BUSY = false;
+
+function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function log(msg){ document.getElementById('log').textContent = msg; }
+async function api(action, extra={}) {
+  const r = await fetch('/api/pppoe/action', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({action}, extra))});
+  return r.json();
+}
+
+async function loadStatus() {
+  try {
+    const r = await (await fetch('/api/pppoe/status')).json();
+    const d = (r && r.data && (r.data.data || r.data)) || {};
+    const el = document.getElementById('pppoe-status');
+    const en = d.enable;
+    el.innerHTML = `Chế độ: <b>${en ? 'PPPoE' : 'DHCP'}</b> · User: <b>${esc(d.username || '—')}</b> · Cổng: <b>${esc(d.device || 'eth0')}</b> · Proxy: <b>${d.proxy_support ? 'hỗ trợ' : 'không'}</b>`;
+    document.getElementById('enable-row').innerHTML =
+      (en ? `<button class="bad" onclick="setEnable(false)">Tắt PPPoE (về DHCP)</button>`
+          : `<button class="ok" onclick="setEnable(true)">Bật PPPoE</button>`)
+      + ` <span class="muted">Bật/tắt cần user+pass (lấy từ form tạo phiên hoặc nhập khi bấm).</span>`;
+    window._pppoe_info = d;
+  } catch(e){ document.getElementById('pppoe-status').textContent = 'mất kết nối'; }
+}
+async function loadDevices() {
+  try {
+    const r = await (await fetch('/api/pppoe/devices')).json();
+    const list = ((r && r.data && (r.data.data || r.data)) || []);
+    const arr = Array.isArray(list) ? list : (list.devices || []);
+    if (arr.length) {
+      const sel = document.getElementById('f-device');
+      sel.innerHTML = arr.map(x => {
+        const v = (typeof x === 'string') ? x : (x.value || x.name || x.device || '');
+        return `<option value="${esc(v)}">${esc(v)}</option>`;
+      }).join('');
+    }
+  } catch(e){}
+}
+
+async function refresh() {
+  if (BUSY) return;
+  await loadStatus(); await loadDevices();
+  let list = [];
+  try {
+    const r = await (await fetch('/api/pppoe/list')).json();
+    const d = (r && r.data && (r.data.data || r.data));
+    list = Array.isArray(d) ? d : (d ? (d.sessions || d.list || []) : []);
+  } catch(e){ document.getElementById('upd').textContent = 'mất kết nối'; return; }
+  SESSIONS = list;
+  document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()}`;
+  const tb = document.getElementById('tb');
+  if (!list.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="muted">Chưa có phiên nào — tạo bằng form bên dưới.</td></tr>';
+    return;
+  }
+  tb.innerHTML = list.map(s => {
+    const id = s.id ?? s.wan_id ?? '';
+    const iface = s.interface || s.iface || (id !== '' ? `if_${String(id).padStart(3,'0')}` : '—');
+    const up = (s.up ?? s.status === 'up' ?? s.online);
+    const st = up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
+    const ip = s.ip || s.wan_ip || s.public_ip || '';
+    const proxy = s.socks5 || s.socks_proxy || s.proxy || '';
+    return `<tr><td><b>${esc(id)}</b></td><td class="muted">${esc(iface)}</td>`
+      + `<td>${esc(s.username || '')}</td>`
+      + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
+      + `<td>${st}</td><td class="muted" style="font-size:11.5px">${esc(proxy)}</td>`
+      + `<td><button onclick="fillId('${esc(id)}');resetOne()">🔁 Quay số</button>`
+      + `<button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
+      + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;
+  }).join('');
+}
+
+function fillId(id){ if (id !== undefined) document.getElementById('o-id').value = id; }
+function getId(preset){ return preset !== undefined ? preset : document.getElementById('o-id').value.trim(); }
+
+async function createSession() {
+  const data = {
+    device: document.getElementById('f-device').value.trim() || 'eth0',
+    number: parseInt(document.getElementById('f-number').value, 10) || 1,
+    username: document.getElementById('f-user').value.trim(),
+    password: document.getElementById('f-pass').value,
+    proxy_username: document.getElementById('f-puser').value.trim(),
+    proxy_password: document.getElementById('f-ppass').value,
+    duration: parseInt(document.getElementById('f-duration').value, 10) || 0,
+    rotate: document.getElementById('f-rotate').checked
+  };
+  if (!data.username || !data.password) { log('thiếu user/pass PPPoE'); return; }
+  log('đang tạo phiên...');
+  try { const r = await api('create', data); log('tạo phiên: ' + JSON.stringify(r).slice(0, 800)); }
+  catch(e){ log('lỗi: ' + e.message); }
+  refresh();
+}
+async function setEnable(on) {
+  const u = (window._pppoe_info || {}).username || document.getElementById('f-user').value.trim();
+  const p = (window._pppoe_info || {}).password || document.getElementById('f-pass').value;
+  if (on && (!u || !p)) { log('bật PPPoE cần user+pass — nhập ở form tạo phiên trước'); return; }
+  log(on ? 'đang bật PPPoE...' : 'đang tắt PPPoE...');
+  try { const r = await api('enable', {data: on ? {enable:true, username:u, password:p} : {enable:false}}); log('enable: ' + JSON.stringify(r).slice(0, 500)); }
+  catch(e){ log('lỗi: ' + e.message); }
+  refresh();
+}
+async function resetOne(preset) {
+  const id = getId(preset); if (!id) { log('nhập ID phiên'); return; }
+  try { const r = await api('reset', {data:{id}}); log('reset #' + id + ': ' + JSON.stringify(r).slice(0, 500)); }
+  catch(e){ log('lỗi: ' + e.message); }
+  refresh();
+}
+async function rotateOne(preset) {
+  const id = getId(preset); if (!id) { log('nhập ID phiên'); return; }
+  try { const r = await api('rotate', {data:{id}}); log('rotate #' + id + ': ' + JSON.stringify(r).slice(0, 500)); }
+  catch(e){ log('lỗi: ' + e.message); }
+  refresh();
+}
+async function setProxy() {
+  const id = document.getElementById('o-id').value.trim();
+  if (!id) { log('nhập ID phiên'); return; }
+  const data = {id, username: document.getElementById('o-puser').value.trim(), password: document.getElementById('o-ppass').value};
+  try { const r = await api('proxy', {data}); log('proxy #' + id + ': ' + JSON.stringify(r).slice(0, 500)); }
+  catch(e){ log('lỗi: ' + e.message); }
+  refresh();
+}
+async function delOne(preset) {
+  const id = getId(preset); if (!id) { log('nhập ID phiên'); return; }
+  if (!confirm(`Xóa phiên #${id}?`)) return;
+  try { const r = await api('delete', {ids:[id]}); log('xóa #' + id + ': ' + JSON.stringify(r).slice(0, 500)); }
+  catch(e){ log('lỗi: ' + e.message); }
+  refresh();
+}
+async function resetAll() {
+  if (!SESSIONS.length) { log('chưa có phiên nào'); return; }
+  if (!confirm(`Quay số lại ${SESSIONS.length} phiên?`)) return;
+  for (const s of SESSIONS) { const id = s.id ?? s.wan_id; try { await api('reset', {data:{id}}); } catch(e){} }
+  refresh();
+}
+async function rotateAll() {
+  if (!SESSIONS.length) { log('chưa có phiên nào'); return; }
+  if (!confirm(`Xoay IP ${SESSIONS.length} phiên?`)) return;
+  for (const s of SESSIONS) { const id = s.id ?? s.wan_id; try { await api('rotate', {data:{id}}); } catch(e){} }
+  refresh();
+}
+async function delAll() {
+  if (!SESSIONS.length) { log('chưa có phiên nào'); return; }
+  if (!confirm(`XÓA HẾT ${SESSIONS.length} phiên?`)) return;
+  try { const r = await api('delete', {ids: SESSIONS.map(s => s.id ?? s.wan_id)}); log('xóa hết: ' + JSON.stringify(r).slice(0, 500)); }
+  catch(e){ log('lỗi: ' + e.message); }
+  refresh();
+}
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

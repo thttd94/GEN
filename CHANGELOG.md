@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## Ver 2.54 (2026-10-16) - tab PPPoE da phien + loai proxy PPPoE
+
+- Tab rieng `/pppoe` (`static/pppoe.html`): bang phien (ID/interface/user/WAN IP/
+  trang thai/proxy), tao phien (device + so luong + user/pass PPPoE + user/pass
+  proxy + xoay IP), xoa/quay so/xoay IP/doi proxy tung phien + bulk, bat/tat che do.
+- Backend `app.py`: route `/pppoe` + `/api/pppoe/list|status|devices` (GET) +
+  `/api/pppoe/action` (create/delete/reset/rotate/proxy/enable) proxy sang
+  server goc port 9000. `call_old_gui` them header trinh duyet (server goc
+  tra 400/ngat GET tran voi API pppoe). Loi tra JSON dep, khong sap ket noi.
+- GUI chinh `static/index.html`: nut PPPOE tren toolbar + option PPPOE trong
+  dropdown proxy type + select chon phien (`pppoe:<id>`, link mo tab quan ly).
+  Giu meta `pppoe_account` nhu VPN, resolve sang proxy glider that khi apply
+  (`pppoe_session_proxies` cache 60s).
+
 ## Ver 2.53 (2026-10-08) - tick chan local 2 chieu tren GUI /vpn
 
 - `static/vpn.html`: checkbox "Chan local 2 chieu" + dong trang thai,
