@@ -4582,7 +4582,21 @@ class Handler(BaseHTTPRequestHandler):
                             except Exception:
                                 fixed.append(x)
                         rd['ids'] = fixed
-                    return self._send_json(call_old_gui('/api/router/pppoe/rotate', method='PUT', data=rd))
+                    res = call_old_gui('/api/router/pppoe/rotate', method='PUT', data=rd)
+                    # Firmware goc chi doi MAC macvlan, khong quay so lai -> tu ifdown/ifup de IP moi ve.
+                    try:
+                        sid = rd.get('id', '')
+                        if sid != '' and str(sid).strip().isdigit():
+                            iface = 'if_%03d' % int(str(sid).strip())
+                            subprocess.run(['ifdown', iface], timeout=15)
+                            time.sleep(2)
+                            subprocess.run(['ifup', iface], timeout=15)
+                            res = dict(res or {})
+                            res['redial'] = {'ok': True, 'iface': iface}
+                    except Exception as ex:
+                        res = dict(res or {})
+                        res['redial'] = {'ok': False, 'error': str(ex)[:150]}
+                    return self._send_json(res)
                 if action == 'proxy':
                     return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
                 if action == 'enable':

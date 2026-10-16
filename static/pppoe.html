@@ -263,7 +263,6 @@ async function setProxy() {
 }
 async function delOne(preset) {
   const id = getId(preset); if (!id) { log('nhập ID phiên'); return; }
-  if (!confirm(`Xóa phiên #${id}?`)) return;
   try { const r = await api('delete', {ids:[id]}); log('xóa #' + id + ': ' + JSON.stringify(r).slice(0, 500)); }
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
