@@ -306,6 +306,8 @@
                   <select id="columnProxyType" onchange="applyColumnProxyType()" style="max-width:96px;">
                     <option value="socks5" selected>SOCKS5</option>
                     <option value="http">HTTP</option>
+                    <option value="vpn">VPN</option>
+                    <option value="pppoe">PPPOE</option>
                   </select>
                 </div>
               </th>
@@ -1168,6 +1170,9 @@
       const prevAcc = row ? effVpnAccount(row) : '';
       if (row) row[el.dataset.field] = el.value;
       if (row && el.dataset.field === 'proxyType' && String(el.value).toLowerCase() === 'vpn' && !String(row.proxy || '').startsWith('vpn:')) {
+        row.proxy = '';
+      }
+      if (row && el.dataset.field === 'proxyType' && String(el.value).toLowerCase() === 'pppoe' && !String(row.proxy || '').startsWith('pppoe:')) {
         row.proxy = '';
       }
       persistDraft(currentSession);

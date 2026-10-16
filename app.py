@@ -33,6 +33,7 @@ DEV_GENRUNNER = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/core/genr
 STATIC_HOSTS_FILE = Path('/etc/shm/list_ip_static.json') if Path('/etc/shm/list_ip_static.json').exists() else Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json')
 LEASES_FILE = Path('/tmp/dhcp.leases')
 OLD_GUI_BASE = 'http://127.0.0.1:9000'
+PPPOE_SNAP_FILE = Path('/data/pppoe/sessions.json')
 STATIC_API_BASE = 'http://192.15.0.1:8000'
 if ROUTER_CONFIG_DIR.exists():
     CONFIG_DIR = ROUTER_CONFIG_DIR
@@ -2165,6 +2166,55 @@ def apply_ip_identity_config(data, text, session='1'):
     tag_to_ip_map = {row['tag']: row['ip'] for row in rows}
     rebuild_gencore_rules(data, tag_to_ip_map)
     return data
+
+def pppoe_snapshot_save():
+    """Luu danh sach phien PPPoE hien tai vao file snapshot (giu cau hinh khi tat/bat mode)."""
+    try:
+        PPPOE_SNAP_FILE.parent.mkdir(parents=True, exist_ok=True)
+        r = call_old_gui('/api/router/pppoe')
+        raw = (r or {}).get('data')
+        if isinstance(raw, dict):
+            raw = raw.get('data', raw)
+        lst = raw if isinstance(raw, list) else (raw.get('sessions') or raw.get('list') or [] if isinstance(raw, dict) else [])
+        sessions = []
+        for s in lst or []:
+            if not isinstance(s, dict):
+                continue
+            sessions.append({
+                'id': s.get('id', s.get('wan_id', '')),
+                'device': s.get('device') or s.get('ifname') or 'eth0',
+                'username': s.get('username', ''),
+                'password': s.get('password', ''),
+                'proxy_username': '',
+                'proxy_password': '',
+            })
+        snap = {'saved_at': time.strftime('%Y-%m-%d %H:%M:%S'), 'sessions': sessions}
+        PPPOE_SNAP_FILE.write_text(json.dumps(snap, ensure_ascii=False, indent=1), encoding='utf-8')
+        return {'ok': True, 'count': len(sessions)}
+    except Exception as ex:
+        return {'ok': False, 'error': str(ex)[:200]}
+
+def pppoe_snapshot_load():
+    try:
+        if not PPPOE_SNAP_FILE.exists():
+            return {'ok': False, 'error': 'chua co snapshot', 'sessions': []}
+        snap = json.loads(PPPOE_SNAP_FILE.read_text(encoding='utf-8'))
+        sessions = snap.get('sessions') if isinstance(snap, dict) else []
+        return {'ok': True, 'saved_at': (snap.get('saved_at') if isinstance(snap, dict) else ''), 'sessions': sessions or []}
+    except Exception as ex:
+        return {'ok': False, 'error': str(ex)[:200], 'sessions': []}
+
+def pppoe_wan_to_dhcp():
+    """Ep WAN chinh ve DHCP sau khi bat mode PPPoE (mode chi de tao phien/proxy, khong chiem WAN)."""
+    try:
+        subprocess.run(['uci', 'set', 'network.wan.proto=dhcp'], check=True, timeout=10)
+        subprocess.run(['uci', '-q', 'del', 'network.wan.username'], timeout=10)
+        subprocess.run(['uci', '-q', 'del', 'network.wan.password'], timeout=10)
+        subprocess.run(['uci', 'commit', 'network'], check=True, timeout=10)
+        subprocess.Popen(['/etc/init.d/network', 'reload'])
+        return {'ok': True, 'wan': 'dhcp'}
+    except Exception as ex:
+        return {'ok': False, 'error': str(ex)[:200]}
 
 def pppoe_session_proxies():
     """Doc proxy glider cua tung phien PPPoE tu server goc 9000.
@@ -4508,8 +4558,34 @@ class Handler(BaseHTTPRequestHandler):
                 if action == 'proxy':
                     return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
                 if action == 'enable':
-                    return self._send_json(call_old_gui('/api/router/enable_pppoe', method='POST', data=payload.get('data') or {}))
-                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|proxy|enable)'})
+                    edata = payload.get('data') or {}
+                    want_on = bool(edata.get('enable'))
+                    if not want_on:
+                        pppoe_snapshot_save()
+                    res = call_old_gui('/api/router/enable_pppoe', method='POST', data=edata)
+                    if want_on:
+                        wan = pppoe_wan_to_dhcp()
+                        res = dict(res or {})
+                        res['wan'] = wan
+                    return self._send_json(res)
+                if action == 'snap-save':
+                    return self._send_json(pppoe_snapshot_save())
+                if action == 'snap-load':
+                    return self._send_json(pppoe_snapshot_load())
+                if action == 'snap-restore':
+                    snap = pppoe_snapshot_load()
+                    restored, errors = 0, []
+                    for s in (snap.get('sessions') or []):
+                        try:
+                            sd = {'device': s.get('device') or 'eth0', 'number': 1, 'username': s.get('username', ''), 'password': s.get('password', ''), 'proxy_username': s.get('proxy_username') or '', 'proxy_password': s.get('proxy_password') or '', 'duration': 0, 'rotate': False}
+                            if not sd['username'] or not sd['password']:
+                                continue
+                            call_old_gui('/api/router/pppoe', method='POST', data=sd)
+                            restored += 1
+                        except Exception as ex:
+                            errors.append(str(ex)[:120])
+                    return self._send_json({'ok': True, 'restored': restored, 'saved_at': snap.get('saved_at', ''), 'errors': errors})
+                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|proxy|enable|snap-save|snap-load|snap-restore)'})
             if path == '/api/vpn/action':
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()

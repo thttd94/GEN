@@ -82,7 +82,7 @@
   <div class="card">
     <h2><span class="h-ico h-ico-green">➕</span>Tạo phiên mới</h2>
     <div class="grid2">
-      <div><label>Cổng WAN</label><select id="f-device" style="width:100%"><option value="eth0">eth0</option></select></div>
+      <div><label>Cổng WAN</label><select id="f-device" style="width:100%"><option value="eth0">eth0</option><option value="eth1">eth1</option><option value="eth2">eth2</option><option value="eth3">eth3</option><option value="eth4">eth4</option><option value="eth5">eth5</option></select></div>
       <div><label>Số phiên</label><input id="f-number" type="number" value="1" min="1" max="50" style="width:100%"></div>
     </div>
     <label>User PPPoE</label><input id="f-user" placeholder="username nhà mạng" style="width:100%">
@@ -139,10 +139,17 @@ async function loadStatus() {
     const en = d.enable;
     el.innerHTML = `Chế độ: <b>${en ? 'PPPoE' : 'DHCP'}</b> · User: <b>${esc(d.username || '—')}</b> · Cổng: <b>${esc(d.device || 'eth0')}</b> · Proxy: <b>${d.proxy_support ? 'hỗ trợ' : 'không'}</b>`;
     document.getElementById('enable-row').innerHTML =
-      (en ? `<button class="bad" onclick="setEnable(false)">Tắt PPPoE (về DHCP)</button>`
-          : `<button class="ok" onclick="setEnable(true)">Bật PPPoE</button>`)
-      + ` <span class="muted">Bật/tắt cần user+pass (lấy từ form tạo phiên hoặc nhập khi bấm).</span>`;
+      (en ? `<button class="bad" onclick="setEnable(false)">Tắt PPPoE (giữ cấu hình, về DHCP)</button>`
+          : `<button class="ok" onclick="setEnable(true)">Bật PPPoE (WAN giữ DHCP)</button>`)
+      + ` <button onclick="snapSave()">💾 Lưu cấu hình</button>`
+      + ` <button onclick="snapRestore()">♻ Khôi phục đã lưu</button>`
+      + ` <span class="muted" id="snap-info">Bật/tắt cần user+pass (lấy từ form tạo phiên hoặc nhập khi bấm). Tắt tự lưu snapshot; WAN chính luôn về DHCP.</span>`;
     window._pppoe_info = d;
+    try {
+      const s = await (await fetch('/api/pppoe/action', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'snap-load'})})).json();
+      const info = document.getElementById('snap-info');
+      if (info && s && s.ok && s.sessions) info.textContent = `Snapshot: ${s.sessions.length} phiên (${s.saved_at || '?'}) — Tắt tự lưu; WAN chính luôn về DHCP.`;
+    } catch(e){}
   } catch(e){ document.getElementById('pppoe-status').textContent = 'mất kết nối'; }
 }
 async function loadDevices() {
@@ -150,13 +157,12 @@ async function loadDevices() {
     const r = await (await fetch('/api/pppoe/devices')).json();
     const list = ((r && r.data && (r.data.data || r.data)) || []);
     const arr = Array.isArray(list) ? list : (list.devices || []);
-    if (arr.length) {
-      const sel = document.getElementById('f-device');
-      sel.innerHTML = arr.map(x => {
-        const v = (typeof x === 'string') ? x : (x.value || x.name || x.device || '');
-        return `<option value="${esc(v)}">${esc(v)}</option>`;
-      }).join('');
-    }
+    const sel = document.getElementById('f-device');
+    const cur = sel.value;
+    const base = ['eth0','eth1','eth2','eth3','eth4','eth5'];
+    const extra = arr.map(x => (typeof x === 'string') ? x : (x.value || x.name || x.device || '')).filter(v => v && !base.includes(v));
+    sel.innerHTML = base.concat(extra).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    if ([...base, ...extra].includes(cur)) sel.value = cur;
   } catch(e){}
 }
 
@@ -219,6 +225,19 @@ async function setEnable(on) {
   if (on && (!u || !p)) { log('bật PPPoE cần user+pass — nhập ở form tạo phiên trước'); return; }
   log(on ? 'đang bật PPPoE...' : 'đang tắt PPPoE...');
   try { const r = await api('enable', {data: on ? {enable:true, username:u, password:p} : {enable:false}}); log('enable: ' + JSON.stringify(r).slice(0, 500)); }
+  catch(e){ log('lỗi: ' + e.message); }
+  refresh();
+}
+async function snapSave() {
+  log('đang lưu snapshot...');
+  try { const r = await api('snap-save'); log('snapshot: ' + JSON.stringify(r).slice(0, 500)); }
+  catch(e){ log('lỗi: ' + e.message); }
+  refresh();
+}
+async function snapRestore() {
+  if (!confirm('Khôi phục các phiên đã lưu?')) return;
+  log('đang khôi phục snapshot...');
+  try { const r = await api('snap-restore'); log('khôi phục: ' + JSON.stringify(r).slice(0, 500)); }
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
 }

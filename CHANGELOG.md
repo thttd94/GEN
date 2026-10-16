@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## Ver 2.55 (2026-10-16) - PPPoE da cong + giu cau hinh + WAN DHCP
+
+- Tab `/pppoe`: dropdown cong WAN eth0-eth5 (giu lua chon cu khi load lai),
+  nut Luu/Khoi phuc snapshot, tat tu luu snapshot, bat ep WAN chinh ve DHCP.
+- Backend `app.py`: `pppoe_snapshot_save/load`, `pppoe_wan_to_dhcp`, action
+  `enable`/`snap-save`/`snap-load`/`snap-restore`.
+- GUI chinh: cot Proxy Type them VPN/PPPOE, doi type tu xoa proxy lech (vpn:/pppoe:).
+
 ## Ver 2.54 (2026-10-16) - tab PPPoE da phien + loai proxy PPPoE
 
 - Tab rieng `/pppoe` (`static/pppoe.html`): bang phien (ID/interface/user/WAN IP/
