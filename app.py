@@ -4586,6 +4586,26 @@ class Handler(BaseHTTPRequestHandler):
                 if action == 'create':
                     base_user = str(payload.get('username', '')).strip()
                     base_pass = str(payload.get('password', '') or '')
+                    try:
+                        vlan = int(str(payload.get('vlan', '') or '').strip() or 0)
+                    except Exception:
+                        vlan = 0
+                    if vlan < 0 or vlan > 4094:
+                        vlan = 0
+                    # VLAN tuy chon (vd Viettel 35): tao ethX.vlan 1 lan, phien chay tren do.
+                    # Trong = chay thang tren ethX nhu cu.
+                    dev = str(payload.get('device', '') or 'eth0').strip() or 'eth0'
+                    if vlan:
+                        vdev = f"{dev}.{vlan}"
+                        try:
+                            subprocess.run(['ip', 'link', 'add', 'link', dev, 'name', vdev, 'type', 'vlan', 'id', str(vlan)], timeout=10, capture_output=True)
+                        except Exception:
+                            pass
+                        try:
+                            subprocess.run(['ip', 'link', 'set', vdev, 'up'], timeout=10, capture_output=True)
+                        except Exception:
+                            pass
+                        dev = vdev
                     n = 1
                     try:
                         n = int(payload.get('number') or 1)
@@ -4603,7 +4623,7 @@ class Handler(BaseHTTPRequestHandler):
                     # Tao N phien: goi N lan voi DUNG user/pass goc (ISP chi cap 1 bo).
                     res = None
                     for k in range(n):
-                        data = {'device': payload.get('device', ''), 'number': 1, 'username': base_user, 'password': base_pass, 'proxy_username': payload.get('proxy_username', ''), 'proxy_password': payload.get('proxy_password', ''), 'duration': dur}
+                        data = {'device': dev, 'number': 1, 'username': base_user, 'password': base_pass, 'proxy_username': payload.get('proxy_username', ''), 'proxy_password': payload.get('proxy_password', ''), 'duration': dur}
                         data['rotate'] = bool(payload.get('rotate'))
                         res = call_old_gui('/api/router/pppoe', method='POST', data=data)
                     # Log tung phien de biet phien nao UP/down (N slots, ISP cho hay khong la viec cua line).
