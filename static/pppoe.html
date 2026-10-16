@@ -237,7 +237,7 @@ async function loadAccounts() {
 }
 async function saveAccount(u, p) {
   if (!u || !p) return;
-  try { await api('acc-save', {username: u, password: ***, device: document.getElementById('f-device').value || 'eth0', vlan: document.getElementById('f-vlan').value.trim() || ''}); } catch(e){}
+  try { await api('acc-save', {username: u, password: p, device: document.getElementById('f-device').value || 'eth0', vlan: document.getElementById('f-vlan').value.trim() || ''}); } catch(e){}
   loadAccounts();
 }
 async function delAccount(i) {
