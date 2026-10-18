@@ -603,12 +603,18 @@
       return false;
     }
     async function refreshConnectionStatus(silent=false) {
+      // Khong de endpoint probe WAN (co the timeout 20s khi PPPoE down)
+      // chan GUI. Badge chi la thong tin phu, timeout frontend <= 1s.
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1000);
       try {
-        const data = await fetchJSON('/api/pm/router-network');
+        const data = await fetchJSON('/api/pm/router-network', { signal: ctl.signal });
         setConnectionBadge(extractNetworkConnected(data));
       } catch (e) {
         setConnectionBadge(false);
-        if (!silent) setStatus('Lỗi mạng router: ' + e.message);
+        if (!silent && e.name !== 'AbortError') setStatus('Lỗi mạng router: ' + e.message);
+      } finally {
+        clearTimeout(timer);
       }
     }
     async function fetchJSON(url, options={}) {

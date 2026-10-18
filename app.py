@@ -4414,9 +4414,6 @@ def vpn_add_wg_text(name, text):
             pass
 
 class Handler(BaseHTTPRequestHandler):
-    # GUI mo nhieu request song song (HTML + API). HTTP/1.0 mac dinh dong
-    # connection sau moi response, backlog nho lam browser gap retransmit 1-15s.
-    protocol_version = 'HTTP/1.1'
 
     def _send_no_cache_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -4501,13 +4498,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
-            version_info = get_repo_version_info()
+            version_info = {'current_label': read_current_version_label(), 'latest_label': read_current_version_label(), 'has_update': False}
             active_session = ''
             try:
                 active_session = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '')
             except (OSError, ValueError):
                 pass
-            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session, 'health': wd_health_json()})
+            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
         if path == '/api/pm/health':
             return self._send_json(wd_health_json())
         if path == '/api/pm/sysinfo':
@@ -5137,9 +5134,4 @@ if __name__ == '__main__':
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
-    class GUIHTTPServer(ThreadingHTTPServer):
-        # Mac dinh socketserver backlog=5; trang GUI tao nhieu request dong thoi.
-        request_queue_size = 64
-    srv = GUIHTTPServer(('0.0.0.0', 9001), Handler)
-    srv.daemon_threads = True
-    srv.serve_forever()
+    ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()
