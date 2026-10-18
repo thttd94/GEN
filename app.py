@@ -35,6 +35,7 @@ LEASES_FILE = Path('/tmp/dhcp.leases')
 OLD_GUI_BASE = 'http://127.0.0.1:9000'
 PPPOE_SNAP_FILE = Path('/data/pppoe/sessions.json')
 PPPOE_ACCOUNTS_FILE = Path('/data/pppoe/accounts.json')
+PPPOE_PORT_STATE_FILE = Path('/data/pppoe/port_state.json')
 STATIC_API_BASE = 'http://192.15.0.1:8000'
 if ROUTER_CONFIG_DIR.exists():
     CONFIG_DIR = ROUTER_CONFIG_DIR
@@ -2253,6 +2254,43 @@ def pppoe_accounts_save(accs):
         return True
     except Exception:
         return False
+
+def pppoe_prepare_selected_port(device):
+    """Dua cong PPPoE ra khoi br-lan; tra cac cong PPPoE cu ve br-lan.
+
+    device co the la eth5.35, nhung bridge can thao tac tren cong vat ly eth5.
+    Luu state rieng de chi tra lai nhung cong ma PPPoE Manager da lay.
+    """
+    base = str(device or '').strip().split('.', 1)[0]
+    if not re.match(r'^eth[0-9]+$', base):
+        return {'ok': False, 'error': 'cong PPPoE khong hop le'}
+    try:
+        raw = subprocess.check_output(['uci', '-q', 'get', 'network.@device[0].ports'], text=True, timeout=8).strip()
+        lan_ports = [x for x in raw.split() if x]
+        state = {}
+        try:
+            if PPPOE_PORT_STATE_FILE.exists():
+                state = json.loads(PPPOE_PORT_STATE_FILE.read_text(encoding='utf-8')) or {}
+        except Exception:
+            state = {}
+        managed = [x for x in (state.get('managed_ports') or []) if re.match(r'^eth[0-9]+$', str(x))]
+        # Port da chon: thao khoi br-lan. Port cu do PPPoE Manager lay: tra lai.
+        wanted = [x for x in lan_ports if x != base]
+        for old in managed:
+            if old != base and old not in wanted:
+                wanted.append(old)
+        if wanted != lan_ports:
+            subprocess.run(['uci', '-q', 'del', 'network.@device[0].ports'], timeout=8)
+            for p in wanted:
+                subprocess.run(['uci', 'add_list', 'network.@device[0].ports=' + p], check=True, timeout=8)
+            subprocess.run(['uci', 'commit', 'network'], check=True, timeout=8)
+            subprocess.run(['/etc/init.d/network', 'reload'], timeout=20)
+        PPPOE_PORT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PPPOE_PORT_STATE_FILE.write_text(json.dumps({'managed_ports': [base], 'updated_at': int(time.time())}), encoding='utf-8')
+        return {'ok': True, 'selected': base, 'lan_ports': wanted, 'changed': wanted != lan_ports}
+    except Exception as ex:
+        return {'ok': False, 'error': str(ex)[:200]}
+
 
 def pppoe_wan_to_dhcp():
     """Ep WAN chinh ve DHCP sau khi bat mode PPPoE (mode chi de tao phien/proxy, khong chiem WAN)."""
@@ -4699,6 +4737,10 @@ class Handler(BaseHTTPRequestHandler):
                     # VLAN tuy chon (vd Viettel 35): tao ethX.vlan 1 lan, phien chay tren do.
                     # Trong = chay thang tren ethX nhu cu.
                     dev = str(payload.get('device', '') or 'eth0').strip() or 'eth0'
+                    # Chon cong PPPoE = thao cong do ra khoi br-lan; tra cong cu ve LAN.
+                    port_state = pppoe_prepare_selected_port(dev)
+                    if not port_state.get('ok'):
+                        return self._send_json({'ok': False, 'error': 'khong chuyen duoc cong WAN: ' + str(port_state.get('error') or '')})
                     if vlan:
                         vdev = f"{dev}.{vlan}"
                         try:
@@ -4730,6 +4772,8 @@ class Handler(BaseHTTPRequestHandler):
                         data = {'device': dev, 'number': 1, 'username': base_user, 'password': base_pass, 'proxy_username': payload.get('proxy_username', ''), 'proxy_password': payload.get('proxy_password', ''), 'duration': dur}
                         data['rotate'] = bool(payload.get('rotate'))
                         res = call_old_gui('/api/router/pppoe', method='POST', data=data)
+                    res = dict(res or {})
+                    res['port'] = port_state
                     # Log tung phien de biet phien nao UP/down (N slots, ISP cho hay khong la viec cua line).
                     try:
                         time.sleep(3)
