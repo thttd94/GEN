@@ -289,6 +289,7 @@
           </div>
                   </div>
         <div class="sub" id="countLabel" style="font-weight:800;">0 rows</div>
+        <div id="pager" style="display:flex;gap:6px;align-items:center;margin-left:12px;"></div>
       </div>
 
       <div class="grid">
@@ -785,6 +786,17 @@
       setStatus(viewMode === 'configured' ? ('Đang xem ĐÃ CẤU HÌNH của ' + sessionNameOf(currentSession)) : ('Đang xem CHƯA CẤU HÌNH của ' + sessionNameOf(currentSession)));
     }
 
+    let pageSize = 50;
+    let currentPage = 1;
+    function renderPager(total) {
+      const el = document.getElementById('pager');
+      if (!el) return;
+      const pages = Math.max(1, Math.ceil(total / pageSize));
+      currentPage = Math.max(1, Math.min(currentPage, pages));
+      if (pages <= 1) { el.innerHTML = ''; return; }
+      el.innerHTML = `<button class="btn small" ${currentPage <= 1 ? 'disabled' : ''} onclick="currentPage--;render()">‹</button><span class="sub">${currentPage}/${pages}</span><button class="btn small" ${currentPage >= pages ? 'disabled' : ''} onclick="currentPage++;render()">›</button>`;
+    }
+
     function render() {
       renderSessionTabs();
       renderProxyMachineNote();
@@ -796,10 +808,12 @@
       document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionTabLabel(currentSession).toUpperCase();
       const visibleRows = getVisibleRows();
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
+      renderPager(visibleRows.length);
+      const pageRows = visibleRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
       if (currentProjectTab !== 'proxy') return;
-      document.getElementById('rows').innerHTML = visibleRows.map((row, idx) => `
+      document.getElementById('rows').innerHTML = pageRows.map((row, idx) => `
         <tr>
-          <td>${idx + 1}</td>
+          <td>${(currentPage - 1) * pageSize + idx + 1}</td>
           <td class="mono">${esc(row.mac || '')}</td>
           <td class="mono">${esc(row.ip)}</td>
           <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
