@@ -1,1 +1,1 @@
-Ver 2.59 (PPPoE exclude CIDR + retry an toan phien moi; config rieng tung router giu nguyen)
+Ver 2.60 (GUI lag fix goc + stale PPPoE mapping; config rieng tung router giu nguyen)

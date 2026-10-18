@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## Ver 2.60 (2026-10-18) - fix goc GUI lag + stale PPPoE mapping
+
+- Loai hook `GENROUTER` trung trong `mangle PREROUTING`: LAN packet chi
+  qua 1 lan, giam retransmit/reset va lag GUI. `apply_xxtouch_bypass.sh`
+  tu dedup hook truoc khi them, khong hardcode LAN IP.
+- PPPoE mapping stale: session ID mat khong con fallback sang port/session
+  khac; outbound bi block de tranh client di nham proxy.
+- Verify LAN: `/pppoe` ~0.05s, `/api/pm/meta` ~0.05s; khong con spike
+  15-21s; khong dong Aruba/WAN/bridge.
+
 ## Ver 2.59 (2026-10-18) - Loai tru CIDR + retry an toan phien moi
 
 - `/pppoe`: luu dải CIDR loại trừ hệ thống; thêm nút `Xóa dải`; dải rỗng
