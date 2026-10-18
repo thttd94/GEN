@@ -80,9 +80,9 @@
 
 <div class="card">
   <h2>Loại trừ dải IP PPPoE</h2>
-  <div class="muted">Nhập CIDR, mỗi dòng một dải (ví dụ 172.16.0.0/12). Phiên khớp sẽ không hiện trong lựa chọn gán client.</div>
-  <textarea id="exclude-ranges" rows="3" placeholder="172.16.0.0/12" style="width:100%;margin-top:8px"></textarea>
-  <div style="margin-top:8px"><button onclick="saveExcludeRanges()">💾 Lưu dải loại trừ</button></div>
+  <div class="muted">Nhập CIDR, mỗi dòng một dải (ví dụ 172.16.0.0/12). Để trống và bấm Xóa dải để tắt loại trừ.</div>
+  <textarea id="exclude-ranges" rows="3" placeholder="Để trống = không loại trừ" style="width:100%;margin-top:8px"></textarea>
+  <div style="margin-top:8px"><button onclick="saveExcludeRanges()">💾 Lưu dải loại trừ</button><button class="bad" onclick="clearExcludeRanges()">✕ Xóa dải</button></div>
 </div>
 
 <div class="row">
@@ -222,6 +222,12 @@ async function loadExcludeRanges() {
 async function saveExcludeRanges() {
   try { const ranges = document.getElementById('exclude-ranges').value; const r = await api('exclude-save', {ranges}); document.getElementById('exclude-ranges').value = (r.ranges || []).join('\n'); log('đã lưu dải loại trừ'); refresh(); }
   catch(e){ log('lỗi lưu dải loại trừ: ' + e.message); }
+}
+
+async function clearExcludeRanges() {
+  if (!confirm('Tắt toàn bộ loại trừ IP PPPoE?')) return;
+  document.getElementById('exclude-ranges').value = '';
+  await saveExcludeRanges();
 }
 
 async function createSession() {
