@@ -2323,6 +2323,86 @@ def pppoe_ip_excluded(ip):
         return any(addr in ipaddress.ip_network(str(x).strip(),strict=False) for x in pppoe_exclude_ranges_load())
     except Exception: return False
 
+# Dai loai tru chi dung de danh dau phien va an khoi lua chon client.
+# Khong auto-redial: reset nhieu phien cung luc lam netifd quay lai PPPoE,
+# co the anh huong WAN chinh eth0.
+
+def pppoe_new_session_ip(session_id):
+    """Doc IP runtime cua mot phien, khong goi vendor reset/network reload."""
+    try:
+        sid = int(session_id)
+        st = json.loads(subprocess.check_output(['ifstatus', 'if_%03d' % sid], text=True, timeout=5))
+        ips = st.get('ipv4-address') or []
+        return str(ips[0].get('address') or '') if st.get('up') and ips else ''
+    except Exception:
+        return ''
+
+def pppoe_redial_new_session(session_id):
+    """Quay lai DUY NHAT phien moi: khong vendor reset, khong reload network."""
+    try:
+        sid = int(session_id)
+        iface = 'if_%03d' % sid
+        subprocess.run(['ifdown', iface], timeout=15)
+        time.sleep(2)
+        subprocess.run(['ifup', iface], timeout=30)
+        # Netifd can thoi gian IPCP cap IP.
+        for _ in range(6):
+            time.sleep(3)
+            ip = pppoe_new_session_ip(sid)
+            if ip:
+                return {'ok': True, 'ip': ip}
+        return {'ok': False, 'ip': ''}
+    except Exception as ex:
+        return {'ok': False, 'error': str(ex)[:120], 'ip': ''}
+
+def pppoe_drop_new_session(session_id):
+    """Xoa DUY NHAT phien moi bi loai tru; khong reload network chung."""
+    try:
+        sid = int(session_id)
+        iface, dev, port = 'if_%03d' % sid, 'dev_%03d' % sid, 15000 + sid - 1
+        try:
+            call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': [sid]})
+        except Exception:
+            pass
+        # Firmware co the bo sot pppd/glider; don rieng ID nay, khong reload toan network.
+        cmd = ('ifdown {iface} 2>/dev/null; '
+               'for p in $(pgrep -f "ipparam {iface}" 2>/dev/null); do kill -9 $p 2>/dev/null; done; '
+               'for p in $(netstat -tlnp 2>/dev/null | grep ":{port} " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done; '
+               'ip link del {dev} 2>/dev/null; uci del network.{iface} 2>/dev/null; uci del network.{dev} 2>/dev/null; uci commit network 2>/dev/null; true').format(iface=iface, dev=dev, port=port)
+        subprocess.run(cmd, shell=True, timeout=25)
+        return {'ok': True}
+    except Exception as ex:
+        return {'ok': False, 'error': str(ex)[:120]}
+
+def pppoe_filter_new_session(session_id, max_redials=3):
+    """Chi loc phien MOI. Trung CIDR -> quay lai toi da 3, roi xoa."""
+    if not pppoe_exclude_ranges_load():
+        return {'id': int(session_id) if str(session_id).isdigit() else session_id, 'ok': True, 'ip': '', 'redials': 0, 'action': 'keep'}
+    try:
+        sid = int(session_id)
+    except Exception:
+        return {'id': session_id, 'ok': False, 'reason': 'id khong hop le'}
+    try:
+        max_redials = max(0, min(int(max_redials), 3))
+    except Exception:
+        max_redials = 3
+    ip = ''
+    for attempt in range(max_redials + 1):
+        # Cho initial dial/lan redial dung len toi 18s.
+        for _ in range(6):
+            ip = pppoe_new_session_ip(sid)
+            if ip:
+                break
+            time.sleep(3)
+        if ip and not pppoe_ip_excluded(ip):
+            return {'id': sid, 'ok': True, 'ip': ip, 'redials': attempt, 'action': 'keep'}
+        if attempt < max_redials:
+            pppoe_redial_new_session(sid)
+    dropped = pppoe_drop_new_session(sid)
+    return {'id': sid, 'ok': False, 'ip': ip, 'redials': max_redials,
+            'action': 'deleted', 'delete_ok': bool(dropped.get('ok')),
+            'reason': 'IP thuoc dai loai tru sau %d lan quay lai' % max_redials}
+
 def pppoe_runtime_enrich(raw):
     """Server 9000 giu status cache stale; doc runtime mot lan ubus call."""
     try:
@@ -4837,6 +4917,17 @@ class Handler(BaseHTTPRequestHandler):
                         res = call_old_gui('/api/router/pppoe', method='POST', data=data)
                     res = dict(res or {})
                     res['port'] = port_state
+                    # Chi loc CAC PHIEN VUA TAO; khong reset/xoa phien cu.
+                    try:
+                        latest = call_old_gui('/api/router/pppoe')
+                        lraw = (latest or {}).get('data')
+                        if isinstance(lraw, dict): lraw = lraw.get('data', lraw)
+                        new_ids = [int(x.get('id')) for x in (lraw or []) if isinstance(x, dict) and str(x.get('id','')).isdigit() and int(x.get('id')) > 0]
+                        # N phien moi duoc tao lien tiep o cuoi danh sach; lay n ID cuoi.
+                        new_ids = new_ids[-n:] if n else []
+                        res['exclude_results'] = [pppoe_filter_new_session(i, 3) for i in new_ids]
+                    except Exception as ex:
+                        res['exclude_results'] = [{'ok': False, 'reason': str(ex)[:120]}]
                     # Log tung phien de biet phien nao UP/down (N slots, ISP cho hay khong la viec cua line).
                     try:
                         time.sleep(3)
@@ -4851,6 +4942,7 @@ class Handler(BaseHTTPRequestHandler):
                         res['sessions_up'] = up
                     except Exception:
                         pass
+                    # Loai tru chi ap dung UI, khong reset cac phien moi/cu.
                     return self._send_json(res)
                 if action == 'delete':
                     ids = payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
