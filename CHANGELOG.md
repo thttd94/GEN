@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Ver 2.58 (2026-10-18) - PPPoE data-plane check + loai pool khong Internet
+
+- Danh dau phien `172.22.255.x`: PPPoE control UP nhung data-plane khong co
+  Internet; hien `no Internet`, khong cho gan client lam proxy.
+- `/api/pppoe/list` enrich runtime bang mot lan `ubus network.interface dump`
+  thay vi goi `ifstatus` tung phien; tranh timeout khi co nhieu phien.
+- Verify: toan bo 44 phien da probe; public IP TCP OK, pool `172.22.255.x`
+  TCP FAIL; API list sau toi uu ~1.07s thay vi ~15s.
+
 ## Ver 2.57 (2026-10-18) - PPPoE port-switch tu dong + GUI khong block
 
 - Tao PPPoE: cổng được chọn tự tháo khỏi `br-lan`; cổng PPPoE cũ tự trả

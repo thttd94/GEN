@@ -1,1 +1,1 @@
-Ver 2.57 (PPPoE port-switch tu dong + runtime status dung + GUI 9001 khong block; config rieng tung router giu nguyen)
+Ver 2.58 (PPPoE data-plane check + hide no-internet pool; config rieng tung router giu nguyen)
