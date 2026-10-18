@@ -4414,6 +4414,9 @@ def vpn_add_wg_text(name, text):
             pass
 
 class Handler(BaseHTTPRequestHandler):
+    # GUI mo nhieu request song song (HTML + API). HTTP/1.0 mac dinh dong
+    # connection sau moi response, backlog nho lam browser gap retransmit 1-15s.
+    protocol_version = 'HTTP/1.1'
 
     def _send_no_cache_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -5134,4 +5137,9 @@ if __name__ == '__main__':
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
-    ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()
+    class GUIHTTPServer(ThreadingHTTPServer):
+        # Mac dinh socketserver backlog=5; trang GUI tao nhieu request dong thoi.
+        request_queue_size = 64
+    srv = GUIHTTPServer(('0.0.0.0', 9001), Handler)
+    srv.daemon_threads = True
+    srv.serve_forever()
