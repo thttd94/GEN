@@ -2305,12 +2305,21 @@ def pppoe_wan_to_dhcp():
         return {'ok': False, 'error': str(ex)[:200]}
 
 def pppoe_runtime_enrich(raw):
-    """Server 9000 giu status cache stale; lay up/IP tu netifd ifstatus lam nguon su that."""
+    """Server 9000 giu status cache stale; doc runtime mot lan ubus call."""
     try:
         data = raw.get('data') if isinstance(raw, dict) else raw
         sessions = data.get('data') if isinstance(data, dict) and isinstance(data.get('data'), list) else data
         if not isinstance(sessions, list):
             return raw
+        runtime = {}
+        try:
+            dump = json.loads(subprocess.check_output(['ubus', 'call', 'network.interface', 'dump'], text=True, timeout=5))
+            for item in dump.get('interface', []) or []:
+                name = str(item.get('interface') or '')
+                if name.startswith('if_'):
+                    runtime[name] = item
+        except Exception:
+            runtime = {}
         for s in sessions:
             if not isinstance(s, dict):
                 continue
@@ -2318,8 +2327,9 @@ def pppoe_runtime_enrich(raw):
                 sid = int(s.get('id', s.get('wan_id', 0)) or 0)
                 if sid < 1:
                     continue
-                out = subprocess.check_output(['ifstatus', 'if_%03d' % sid], text=True, timeout=3)
-                st = json.loads(out)
+                st = runtime.get('if_%03d' % sid)
+                if st is None:
+                    continue
                 up = bool(st.get('up'))
                 s['status'] = 'online' if up else 'offline'
                 s['up'] = up
@@ -2328,8 +2338,6 @@ def pppoe_runtime_enrich(raw):
                 if up and ips and isinstance(ips[0], dict):
                     s['ip'] = str(ips[0].get('address') or s.get('ip') or '')
                 ip_now = str(s.get('ip') or '').strip()
-                # BRAS cap session co the cap IP pool 172.22.255.x: PPP up nhung
-                # data-plane Internet khong co. Dan dau de GUI khong coi la proxy LIVE.
                 s['data_plane'] = not ip_now.startswith('172.22.255.')
                 s['data_plane_status'] = 'no-internet-pool' if not s['data_plane'] else 'unknown'
             except Exception:
