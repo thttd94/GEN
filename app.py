@@ -36,6 +36,7 @@ OLD_GUI_BASE = 'http://127.0.0.1:9000'
 PPPOE_SNAP_FILE = Path('/data/pppoe/sessions.json')
 PPPOE_ACCOUNTS_FILE = Path('/data/pppoe/accounts.json')
 PPPOE_PORT_STATE_FILE = Path('/data/pppoe/port_state.json')
+PPPOE_EXCLUDE_FILE = Path('/data/pppoe/exclude_ranges.json')
 STATIC_API_BASE = 'http://192.15.0.1:8000'
 if ROUTER_CONFIG_DIR.exists():
     CONFIG_DIR = ROUTER_CONFIG_DIR
@@ -2304,6 +2305,24 @@ def pppoe_wan_to_dhcp():
     except Exception as ex:
         return {'ok': False, 'error': str(ex)[:200]}
 
+def pppoe_exclude_ranges_load():
+    try:
+        if not PPPOE_EXCLUDE_FILE.exists(): return []
+        d=json.loads(PPPOE_EXCLUDE_FILE.read_text(encoding='utf-8'))
+        return d if isinstance(d,list) else []
+    except Exception: return []
+
+def pppoe_exclude_ranges_save(ranges):
+    PPPOE_EXCLUDE_FILE.parent.mkdir(parents=True,exist_ok=True)
+    PPPOE_EXCLUDE_FILE.write_text(json.dumps(ranges,ensure_ascii=False,indent=1),encoding='utf-8')
+
+def pppoe_ip_excluded(ip):
+    try:
+        import ipaddress
+        addr=ipaddress.ip_address(str(ip).strip())
+        return any(addr in ipaddress.ip_network(str(x).strip(),strict=False) for x in pppoe_exclude_ranges_load())
+    except Exception: return False
+
 def pppoe_runtime_enrich(raw):
     """Server 9000 giu status cache stale; doc runtime mot lan ubus call."""
     try:
@@ -2339,7 +2358,8 @@ def pppoe_runtime_enrich(raw):
                     s['ip'] = str(ips[0].get('address') or s.get('ip') or '')
                 ip_now = str(s.get('ip') or '').strip()
                 s['data_plane'] = not ip_now.startswith('172.22.255.')
-                s['data_plane_status'] = 'no-internet-pool' if not s['data_plane'] else 'unknown'
+                s['excluded'] = pppoe_ip_excluded(ip_now)
+                s['data_plane_status'] = 'excluded-range' if s['excluded'] else ('no-internet-pool' if not s['data_plane'] else 'unknown')
             except Exception:
                 pass
         return raw
@@ -5001,6 +5021,19 @@ class Handler(BaseHTTPRequestHandler):
                     accs = [a for a in pppoe_accounts_load() if not (isinstance(a, dict) and a.get('u') == u)]
                     pppoe_accounts_save(accs)
                     return self._send_json({'ok': True, 'accounts': accs})
+                if action == 'exclude-list':
+                    return self._send_json({'ok': True, 'ranges': pppoe_exclude_ranges_load()})
+                if action == 'exclude-save':
+                    import ipaddress
+                    raw = payload.get('ranges') or []
+                    if isinstance(raw, str): raw = [x.strip() for x in raw.replace(',', '\n').splitlines() if x.strip()]
+                    clean = []
+                    for x in raw if isinstance(raw, list) else []:
+                        try: clean.append(str(ipaddress.ip_network(str(x).strip(), strict=False)))
+                        except Exception: pass
+                    clean = list(dict.fromkeys(clean))[:64]
+                    pppoe_exclude_ranges_save(clean)
+                    return self._send_json({'ok': True, 'ranges': clean})
                 return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|proxy|enable|snap-save|snap-load|snap-restore|acc-list|acc-save|acc-del)'})
             if path == '/api/vpn/action':
                 action = str(payload.get('action', '')).strip()

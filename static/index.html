@@ -915,7 +915,7 @@
       if (!el || el.dataset.filled === '1') return;
       el.dataset.filled = '1';
       const cur = String(el.value || '');
-      const html = PPPOE_SESSIONS.filter(s => String(s.data_plane_status || '') !== 'no-internet-pool').map(s => {
+      const html = PPPOE_SESSIONS.filter(s => !['no-internet-pool','excluded-range'].includes(String(s.data_plane_status || ''))).map(s => {
         const id = s.id ?? s.wan_id ?? '';
         const val = 'pppoe:' + id;
         return `<option value="${esc(val)}"${val === cur ? ' selected' : ''}>${esc(pppoeLabelOf(s))}</option>`;

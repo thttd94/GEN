@@ -78,6 +78,13 @@
   </table>
 </div>
 
+<div class="card">
+  <h2>Loại trừ dải IP PPPoE</h2>
+  <div class="muted">Nhập CIDR, mỗi dòng một dải (ví dụ 172.16.0.0/12). Phiên khớp sẽ không hiện trong lựa chọn gán client.</div>
+  <textarea id="exclude-ranges" rows="3" placeholder="172.16.0.0/12" style="width:100%;margin-top:8px"></textarea>
+  <div style="margin-top:8px"><button onclick="saveExcludeRanges()">💾 Lưu dải loại trừ</button></div>
+</div>
+
 <div class="row">
   <div class="card">
     <h2><span class="h-ico h-ico-green">➕</span>Tạo phiên mới</h2>
@@ -209,6 +216,14 @@ async function refresh() {
 function fillId(id){ if (id !== undefined) document.getElementById('o-id').value = id; }
 function getId(preset){ return preset !== undefined ? preset : document.getElementById('o-id').value.trim(); }
 
+async function loadExcludeRanges() {
+  try { const r = await api('exclude-list'); document.getElementById('exclude-ranges').value = (r.ranges || []).join('\n'); } catch(e){}
+}
+async function saveExcludeRanges() {
+  try { const ranges = document.getElementById('exclude-ranges').value; const r = await api('exclude-save', {ranges}); document.getElementById('exclude-ranges').value = (r.ranges || []).join('\n'); log('đã lưu dải loại trừ'); refresh(); }
+  catch(e){ log('lỗi lưu dải loại trừ: ' + e.message); }
+}
+
 async function createSession() {
   const data = {
     device: document.getElementById('f-device').value.trim() || 'eth0',
@@ -326,6 +341,7 @@ async function delAll() {
 }
 refresh();
 loadAccounts();
+loadExcludeRanges();
 setInterval(refresh, 30000);
 </script>
 <style>/* Widget thong so may thoi gian thuc (goc phai): nhiet do CPU, %CPU, RAM, disk, uptime. */
