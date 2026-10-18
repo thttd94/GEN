@@ -519,7 +519,9 @@
     }
     async function refreshVersionInfo(silent=false) {
       try {
-        const data = await fetchJSON('/api/pm/meta');
+        // [Ver 2.56 perf] /api/pm/meta mat ~0.5s va da co san trong
+        // BOOT_META tu bootstrap -> doc tu do, khong goi lai moi 60s.
+        const data = BOOT_META || {};
         appTitlePrefix = data.app_title_prefix || appTitlePrefix || 'Genrouter';
         if (data.version) setVersionInfo(data.version);
         renderAppTitle();
@@ -816,7 +818,7 @@
                  ${vpnOptionsHtml(row.proxy)}
                </select></td>`
             : (String(row.proxyType || 'socks5').toLowerCase()==='pppoe')
-            ? `<td><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="max-width:200px;">
+            ? `<td><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" onmousedown="pppoeFill(this)" style="max-width:200px;">
                  <option value="" ${(!String(row.proxy || '').startsWith('pppoe:')) ? 'selected' : ''}>— chọn PPPoE —</option>
                  ${pppoeOptionsHtml(row.proxy)}
                </select> <a class="muted" style="cursor:pointer;font-size:11px" href="/pppoe" target="_blank" title="Mở quản lý PPPoE">⚙</a></td>`
@@ -854,6 +856,7 @@
     var VPN_ACCOUNTS = [];
     // ---- PPPoE Manager tich hop vao Proxy Type / Proxy ----
     var PPPOE_SESSIONS = [];
+    var BOOT_META = null;
     var PPPOE_OPTS_CACHE = '';
     async function refreshPppoeSessions() {
       try {
@@ -869,23 +872,37 @@
         }
       } catch(e){}
     }
-    function pppoeOptionsInner() {
-      if (PPPOE_OPTS_CACHE) return PPPOE_OPTS_CACHE;
-      PPPOE_OPTS_CACHE = PPPOE_SESSIONS.map(s => {
-        const id = s.id ?? s.wan_id ?? '';
-        const ip = s.ip || s.wan_ip || s.public_ip || '';
-        const up = (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true);
-        const label = `PPPoE #${id}${ip ? ' (' + ip + ')' : (up ? '' : ' (down)')}`;
-        const val = 'pppoe:' + id;
-        return {v: val, l: label};
-      }).map(o => `<option value="${esc(o.v)}">${esc(o.l)}</option>`).join('');
-      return PPPOE_OPTS_CACHE;
+    // [Ver 2.56 perf] Truoc day moi lan render build 42 <option> cho 165 dong
+    // => ~7.100 node DOM, phai do lai ca bang. Bay gio chi render 1 option
+    // (da chon), bam vao select moi nap day du (pppoeFill). Render giam ~165x.
+    function pppoeLabelOf(s) {
+      const id = s.id ?? s.wan_id ?? '';
+      const ip = s.ip || s.wan_ip || s.public_ip || '';
+      const up = (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true);
+      return `PPPoE #${id}${ip ? ' (' + ip + ')' : (up ? '' : ' (down)')}`;
     }
     function pppoeOptionsHtml(cur) {
-      const inner = pppoeOptionsInner();
-      if (!cur) return inner;
+      if (!cur) return '';
       const cv = String(cur);
-      return inner.replace('value="' + cv.replace(/"/g, '&quot;') + '"', 'value="' + cv.replace(/"/g, '&quot;') + '" selected');
+      const id = cv.startsWith('pppoe:') ? cv.slice(6) : cv;
+      const hit = PPPOE_SESSIONS.find(s => String(s.id ?? s.wan_id ?? '') === id);
+      const label = hit ? pppoeLabelOf(hit) : `PPPoE #${id}`;
+      return `<option value="${esc(cv)}" selected>${esc(label)}</option>`;
+    }
+    // Nap day du lua chon PPPoE vao select, 1 lan cho moi select.
+    function pppoeFill(el) {
+      if (!el || el.dataset.filled === '1') return;
+      el.dataset.filled = '1';
+      const cur = String(el.value || '');
+      const html = PPPOE_SESSIONS.map(s => {
+        const id = s.id ?? s.wan_id ?? '';
+        const val = 'pppoe:' + id;
+        return `<option value="${esc(val)}"${val === cur ? ' selected' : ''}>${esc(pppoeLabelOf(s))}</option>`;
+      }).join('');
+      const blank = `<option value=""${cur ? '' : ' selected'}>chon PPPoE</option>`;
+      el.innerHTML = blank + html;
+      // refreshPppoeSessions doi danh sach -> mo lai cho lan chon moi
+      setTimeout(() => { if (el) el.dataset.filled = '0'; }, 30000);
     }
     async function refreshVpnAccounts() {
       try {
@@ -1653,9 +1670,16 @@
 
     async function bootstrap() {
       try {
+        // [Ver 2.56 perf] Meta mat ~0.5s nen phai goi 1 lan duy nhat,
+        // truoc day bootstrap goi 2 lan => tre them ~0.5s moi lan mo trang.
         const meta = await fetchJSON('/api/pm/meta');
+        BOOT_META = meta;
         appTitlePrefix = meta.app_title_prefix || 'Genrouter';
         if (meta.version) setVersionInfo(meta.version);
+        try {
+          const act = String((meta && meta.active_session) || '').trim();
+          if (act && allSessions.includes(act)) startSession = act;
+        } catch {}
       } catch {}
       renderAppTitle();
       setConnectionBadge(false);
@@ -1668,11 +1692,6 @@
       await fetchSessionsList(false);
       await fetchSessionsList(true);
       let startSession = '1';
-      try {
-        const m = await fetchJSON('/api/pm/meta');
-        const act = String((m && m.active_session) || '').trim();
-        if (act && allSessions.includes(act)) startSession = act;
-      } catch {}
       loadSession(startSession, true);
     }
 
