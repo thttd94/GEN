@@ -2304,6 +2304,36 @@ def pppoe_wan_to_dhcp():
     except Exception as ex:
         return {'ok': False, 'error': str(ex)[:200]}
 
+def pppoe_runtime_enrich(raw):
+    """Server 9000 giu status cache stale; lay up/IP tu netifd ifstatus lam nguon su that."""
+    try:
+        data = raw.get('data') if isinstance(raw, dict) else raw
+        sessions = data.get('data') if isinstance(data, dict) and isinstance(data.get('data'), list) else data
+        if not isinstance(sessions, list):
+            return raw
+        for s in sessions:
+            if not isinstance(s, dict):
+                continue
+            try:
+                sid = int(s.get('id', s.get('wan_id', 0)) or 0)
+                if sid < 1:
+                    continue
+                out = subprocess.check_output(['ifstatus', 'if_%03d' % sid], text=True, timeout=3)
+                st = json.loads(out)
+                up = bool(st.get('up'))
+                s['status'] = 'online' if up else 'offline'
+                s['up'] = up
+                s['online'] = up
+                ips = st.get('ipv4-address') or []
+                if up and ips and isinstance(ips[0], dict):
+                    s['ip'] = str(ips[0].get('address') or s.get('ip') or '')
+            except Exception:
+                pass
+        return raw
+    except Exception:
+        return raw
+
+
 def pppoe_session_proxies():
     """Doc proxy glider cua tung phien PPPoE tu server goc 9000.
     Tra ve {id: {socks, http}} — best effort, cache 60s."""
@@ -4553,7 +4583,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_file(STATIC_DIR / 'pppoe.html')
         if path == '/api/pppoe/list':
             try:
-                return self._send_json(call_old_gui('/api/router/pppoe'))
+                return self._send_json(pppoe_runtime_enrich(call_old_gui('/api/router/pppoe')))
             except Exception as ex:
                 return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
         if path == '/api/pppoe/status':
