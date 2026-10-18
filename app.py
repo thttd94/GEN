@@ -2327,6 +2327,11 @@ def pppoe_runtime_enrich(raw):
                 ips = st.get('ipv4-address') or []
                 if up and ips and isinstance(ips[0], dict):
                     s['ip'] = str(ips[0].get('address') or s.get('ip') or '')
+                ip_now = str(s.get('ip') or '').strip()
+                # BRAS cap session co the cap IP pool 172.22.255.x: PPP up nhung
+                # data-plane Internet khong co. Dan dau de GUI khong coi la proxy LIVE.
+                s['data_plane'] = not ip_now.startswith('172.22.255.')
+                s['data_plane_status'] = 'no-internet-pool' if not s['data_plane'] else 'unknown'
             except Exception:
                 pass
         return raw

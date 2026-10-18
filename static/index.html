@@ -883,8 +883,8 @@
         const d = await (await fetch('/api/pppoe/list')).json();
         const raw = (d && d.data && (d.data.data || d.data));
         const lst = Array.isArray(raw) ? raw : (raw ? (raw.sessions || raw.list || []) : []);
-        const sig = JSON.stringify(lst.map(s => [s.id ?? s.wan_id, s.ip || '', s.status]));
-        const oldSig = JSON.stringify(PPPOE_SESSIONS.map(s => [s.id ?? s.wan_id, s.ip || '', s.status]));
+        const sig = JSON.stringify(lst.map(s => [s.id ?? s.wan_id, s.ip || '', s.status, s.data_plane_status || '']));
+        const oldSig = JSON.stringify(PPPOE_SESSIONS.map(s => [s.id ?? s.wan_id, s.ip || '', s.status, s.data_plane_status || '']));
         PPPOE_SESSIONS = lst;
         if (sig !== oldSig) {
           PPPOE_OPTS_CACHE = '';
@@ -899,7 +899,8 @@
       const id = s.id ?? s.wan_id ?? '';
       const ip = s.ip || s.wan_ip || s.public_ip || '';
       const up = (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true);
-      return `PPPoE #${id}${ip ? ' (' + ip + ')' : (up ? '' : ' (down)')}`;
+      const bad = String(s.data_plane_status || '') === 'no-internet-pool';
+      return `PPPoE #${id}${ip ? ' (' + ip + ')' : (up ? '' : ' (down)')}${bad ? ' ⚠ no Internet' : ''}`;
     }
     function pppoeOptionsHtml(cur) {
       if (!cur) return '';
