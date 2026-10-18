@@ -1837,8 +1837,10 @@
         + ' | Uptime: ' + fmtUp(d.uptime_s || 0);
     } catch (e) { bar.textContent = 'máy: ?'; }
   }
+  // Polling sysinfo tat tam: endpoint co the block khi router dang qua tai;
+  // khong de widget lam lag/treo toan bo GUI. Cac API chuc nang khong phu thuoc.
   tick();
-  setInterval(tick, 5000);
+  // setInterval(tick, 5000);
 })();
 </script>
 </body>

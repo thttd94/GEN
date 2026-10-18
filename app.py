@@ -1916,39 +1916,24 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
         outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
     if normalized_type == 'pppoe' or str(proxy).startswith('pppoe:'):
-        # pppoe:<id> -> socks5 glider that cua phien (khong de direct).
+        # Resolve theo ID hien tai; stale/mat ID => block, khong giu port cu.
         sid = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
-        try:
-            pmap = pppoe_session_proxies()
-            info = pmap.get(sid, {}) if sid else {}
-            raw_px = info.get('socks') or info.get('http') or ''
-            if raw_px:
-                import urllib.parse as _up
-                u = _up.urlparse(raw_px if '://' in raw_px else 'socks5://' + raw_px)
-                server = (u.hostname or '').strip() or '127.0.0.1'
-                # Glider bind 0.0.0.0 (all if) nhung gencore chay tren router:
-                # client LAN phai di qua LAN IP, khong phai 0.0.0.0/127.0.0.1.
-                if server in ('0.0.0.0', '127.0.0.1', 'localhost', ''):
-                    try:
-                        lan = subprocess.check_output(['uci', '-q', 'get', 'network.lan.ipaddr'], text=True, timeout=5).strip()
-                        if lan:
-                            server = lan
-                    except Exception:
-                        pass
-                    if server in ('0.0.0.0', '127.0.0.1', 'localhost', ''):
-                        server = '192.15.0.1'
-                port = int(u.port or 0)
-                user = _up.unquote(u.username or '')
-                password = _up.unquote(u.password or '')
-                if port:
-                    if info.get('http') and raw_px == info.get('http'):
-                        outbounds[idx] = {'tag': tag, 'type': 'http', 'server': server, 'server_port': port, 'username': user, 'password': password}
-                    else:
-                        outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': server, 'server_port': port, 'username': user, 'password': password, 'version': '5'}
-                    return
-        except Exception:
-            pass
-        outbounds[idx] = {'tag': tag, 'type': 'direct'}
+        pmap = pppoe_session_proxies()
+        info = pmap.get(sid, {}) if sid else {}
+        raw_px = info.get('socks') or ''
+        if raw_px:
+            import urllib.parse as _up
+            u = _up.urlparse(raw_px if '://' in raw_px else 'socks5://' + raw_px)
+            server = (u.hostname or '').strip()
+            if server in ('0.0.0.0', '127.0.0.1', 'localhost', ''):
+                server = '192.15.0.1'
+            port = int(u.port or 0)
+            user = _up.unquote(u.username or '')
+            password = _up.unquote(u.password or '')
+            if port and user and password:
+                outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': server, 'server_port': port, 'username': user, 'password': password, 'version': '5'}
+                return
+        outbounds[idx] = {'tag': tag, 'type': 'block'}
         return
     server, port, user, password = parse_proxy(proxy)
     if normalized_type == 'http':
@@ -2402,6 +2387,27 @@ def pppoe_filter_new_session(session_id, max_redials=3):
     return {'id': sid, 'ok': False, 'ip': ip, 'redials': max_redials,
             'action': 'deleted', 'delete_ok': bool(dropped.get('ok')),
             'reason': 'IP thuoc dai loai tru sau %d lan quay lai' % max_redials}
+
+PPPOE_RUNTIME_CACHE = {'ts': 0.0, 'raw': {'ok': True, 'data': {'data': [], 'success': True}}}
+PPPOE_RUNTIME_LOCK = threading.Lock()
+
+def pppoe_runtime_cache_read():
+    with PPPOE_RUNTIME_LOCK:
+        return json.loads(json.dumps(PPPOE_RUNTIME_CACHE['raw']))
+
+def pppoe_runtime_refresh_once():
+    try:
+        raw = pppoe_runtime_enrich(call_old_gui('/api/router/pppoe'))
+        with PPPOE_RUNTIME_LOCK:
+            PPPOE_RUNTIME_CACHE['raw'] = raw
+            PPPOE_RUNTIME_CACHE['ts'] = time.time()
+    except Exception:
+        pass
+
+def pppoe_runtime_loop():
+    while True:
+        pppoe_runtime_refresh_once()
+        time.sleep(5)
 
 def pppoe_runtime_enrich(raw):
     """Server 9000 giu status cache stale; doc runtime mot lan ubus call."""
@@ -4658,24 +4664,13 @@ class Handler(BaseHTTPRequestHandler):
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                 return self._send_json({'session': session_id, 'name': get_session_display_name(session_id), 'source': str(SESSION_FILES[session_id]), 'rows': extract_rows(load_json(SESSION_FILES[session_id]), session=session_id)})
         if path == '/api/pm/router-network':
-            probes = [('https://api.ipify.org', 'wan_ip'), ('https://ifconfig.me/ip', 'wan_ip')]
-            errors = []
-            for url, field in probes:
-                try:
-                    probe = urllib.request.Request(url, headers={'User-Agent': 'pm-network-check'})
-                    with urllib.request.urlopen(probe, timeout=8) as resp:
-                        value = resp.read().decode('utf-8', 'replace').strip()
-                    if value:
-                        return self._send_json({'ok': True, 'connected': True, field: value, 'probe': url})
-                except Exception as e:
-                    errors.append(f'{url}: {e}')
+            # Badge thong tin phu; khong probe Internet dong bo. Probe WAN co the
+            # block 20s khi PPPoE down va lam GUI lag. Chi tra runtime route nhanh.
             try:
-                ping = subprocess.run(['ping', '-c', '1', '1.1.1.1'], capture_output=True, text=True, timeout=10)
-                if ping.returncode == 0:
-                    return self._send_json({'ok': True, 'connected': True, 'probe': 'ping'})
-            except Exception as e:
-                errors.append(f'ping: {e}')
-            return self._send_json({'ok': False, 'connected': False, 'error': ' | '.join(errors)})
+                connected = bool(subprocess.run(['ip', 'route', 'get', '1.1.1.1'], timeout=1, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0)
+            except Exception:
+                connected = False
+            return self._send_json({'ok': True, 'connected': connected, 'probe': 'local-route'})
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
@@ -4695,10 +4690,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/pppoe':
             return self._send_file(STATIC_DIR / 'pppoe.html')
         if path == '/api/pppoe/list':
-            try:
-                return self._send_json(pppoe_runtime_enrich(call_old_gui('/api/router/pppoe')))
-            except Exception as ex:
-                return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
+            return self._send_json(pppoe_runtime_cache_read())
         if path == '/api/pppoe/status':
             try:
                 return self._send_json(call_old_gui('/api/router/status_pppoe'))
@@ -5346,4 +5338,5 @@ if __name__ == '__main__':
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
+    threading.Thread(target=pppoe_runtime_loop, daemon=True).start()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()

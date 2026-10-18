@@ -494,7 +494,8 @@ async function setIsolate(mode) {
     } catch (e) { bar.textContent = 'máy: ?'; }
   }
   tick();
-  setInterval(tick, 5000);
+  // Polling sysinfo tat tam de endpoint cham khong lam lag GUI.
+  // setInterval(tick, 5000);
 })();
 </script>
 </body>
