@@ -1,1 +1,1 @@
-Ver 2.56 (widget thong so may realtime + TK PPPoE luu he thong; config rieng tung router giu nguyen)
+Ver 2.57 (PPPoE port-switch tu dong + runtime status dung + GUI 9001 khong block; config rieng tung router giu nguyen)

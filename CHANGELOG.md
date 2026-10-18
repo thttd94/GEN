@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## Ver 2.57 (2026-10-18) - PPPoE port-switch tu dong + GUI khong block
+
+- Tao PPPoE: cổng được chọn tự tháo khỏi `br-lan`; cổng PPPoE cũ tự trả
+  về LAN. Hỗ trợ VLAN trên cổng chọn (`eth5` + VLAN 35 -> `eth5.35`).
+  Lưu state port riêng, không trả nhầm cổng khác.
+- `/api/pppoe/list`: lấy trạng thái/IP thật từ `ifstatus if_XXX`, sửa server
+  gốc 9000 báo offline giả khi PPPoE runtime đang UP.
+- GUI 9001: bỏ hai blocker làm trang đơ khi WAN down: probe WAN 20 giây chỉ
+  được chờ tối đa 1 giây ở badge; meta đọc VERSION local, không gọi Git/GitHub
+  10 giây trong lúc bootstrap. Giữ phân trang 50 dòng + lazy PPPoE option.
+- Runtime smoke Gen15: `/`, `/vpn`, `/pppoe` 200 trong 0.03-0.06s;
+  `/api/pppoe/list` 0.113s; 44 PPPoE, 37 online qua eth0/eth5.35.
+
 ## Ver 2.56 (2026-10-16) - widget may realtime + TK he thong + xoa sach pppd
 
 - Widget goc phai 3 trang (chinh/VPN/PPPoE): nhiet do CPU, %CPU, RAM,
