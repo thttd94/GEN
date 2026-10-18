@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## Ver 2.59 (2026-10-18) - Loai tru CIDR + retry an toan phien moi
+
+- `/pppoe`: luu dải CIDR loại trừ hệ thống; thêm nút `Xóa dải`; dải rỗng
+  = tắt loại trừ.
+- Chỉ áp dụng dải loại trừ cho phiên vừa tạo: IP khớp dải -> quay lại
+  đúng interface phiên mới tối đa 3 lần; vẫn khớp -> xóa đúng phiên mới.
+  Không reset phiên cũ, không reload network chung, không ảnh hưởng WAN eth0.
+- Pool `172.22.255.x` được đánh dấu `no Internet`, không cho gán client.
+
 ## Ver 2.58 (2026-10-18) - PPPoE data-plane check + loai pool khong Internet
 
 - Danh dau phien `172.22.255.x`: PPPoE control UP nhung data-plane khong co
