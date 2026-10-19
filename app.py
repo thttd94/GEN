@@ -71,6 +71,39 @@ REPO_REMOTE_URL = 'https://github.com/thttd94/GEN.git'
 REPO_BRANCH = 'main'
 DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
 DEFAULT_PER_VERSION_CODE_COUNT = 5
+PPPOE_ACCOUNTS_FILE = Path('/data/pppoe/accounts.json')
+
+def pppoe_accounts_load():
+    try:
+        if not PPPOE_ACCOUNTS_FILE.exists(): return []
+        d=json.loads(PPPOE_ACCOUNTS_FILE.read_text(encoding='utf-8'))
+        return d if isinstance(d,list) else []
+    except Exception: return []
+
+def pppoe_accounts_save(items):
+    PPPOE_ACCOUNTS_FILE.parent.mkdir(parents=True,exist_ok=True)
+    PPPOE_ACCOUNTS_FILE.write_text(json.dumps(items,ensure_ascii=False,indent=1),encoding='utf-8')
+
+def pppoe_runtime_enrich(raw):
+    try:
+        data=raw.get('data') if isinstance(raw,dict) else raw
+        sessions=data.get('data') if isinstance(data,dict) else data
+        if not isinstance(sessions,list): return raw
+        dump=json.loads(subprocess.check_output(['ubus','call','network.interface','dump'],text=True,timeout=5))
+        rt={str(x.get('interface')):x for x in dump.get('interface',[]) if str(x.get('interface','')).startswith('if_')}
+        for x in sessions:
+            try:
+                sid=int(x.get('id',x.get('wan_id',0)))
+                st=rt.get('if_%03d'%sid)
+                if not st: continue
+                x['up']=bool(st.get('up')); x['online']=bool(st.get('up'))
+                x['status']='online' if st.get('up') else 'offline'
+                ips=st.get('ipv4-address') or []
+                if ips: x['ip']=ips[0].get('address','')
+            except Exception: pass
+        return raw
+    except Exception: return raw
+
 
 def random_update_code(length=12):
     alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -1912,8 +1945,20 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
         outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
     if normalized_type == 'pppoe' or str(proxy).startswith('pppoe:'):
-        # Giu direct tam, resolve sang proxy glider that khi apply (pppoe:<id> -> socks5 that).
-        outbounds[idx] = {'tag': tag, 'type': 'direct'}
+        # pppoe:<id> -> SOCKS glider that cua phien khi Apply.
+        sid = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
+        info = pppoe_session_proxies().get(sid, {}) if sid else {}
+        raw = str(info.get('socks') or '').strip()
+        if raw:
+            import urllib.parse as _u
+            u = _u.urlparse(raw if '://' in raw else 'socks5://' + raw)
+            host = (u.hostname or '').strip()
+            if host in ('0.0.0.0', '127.0.0.1', 'localhost', ''): host = '192.15.0.1'
+            user = _u.unquote(u.username or ''); pw = _u.unquote(u.password or ''); port = int(u.port or 0)
+            if host and port and user and pw:
+                outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': host, 'server_port': port, 'username': user, 'password': pw, 'version': '5'}
+                return
+        outbounds[idx] = {'tag': tag, 'type': 'block'}
         return
     server, port, user, password = parse_proxy(proxy)
     if normalized_type == 'http':
@@ -2814,6 +2859,40 @@ def check_proxy_batch(items, session='1', max_workers=64):
             except Exception as e:
                 results[tag] = {'ok': False, 'status': 'dead', 'message': 'DEAD', 'error': str(e)}
     return results
+
+def pppoe_prepare_port(device):
+    base=(str(device or '').split('.',1)[0] or '').strip()
+    if not re.match(r'^eth[0-9]+$',base): return {'ok':False,'error':('port PPPoE khong hop le: '+base)}
+    port_state={'ok':True,'port':base,'changed':False}
+    try:
+        cur=subprocess.check_output(['uci','-q','get','network.@device[0].ports'],text=True,timeout=5).strip()
+        cur=[x for x in cur.split() if x]
+        if base in cur:
+            keep=[x for x in cur if x!=base]
+            subprocess.run(['uci','-q','del','network.@device[0].ports'],check=True,timeout=5)
+            for x in keep: subprocess.run(['uci','add_list','network.@device[0].ports='+x],check=True,timeout=5)
+            subprocess.run(['uci','commit','network'],check=True,timeout=5)
+            port_state.update({'changed':True,'lan_ports':keep})
+    except Exception as e:
+        port_state.update({'ok':False,'error':str(e)[:160]})
+    return port_state
+
+def pppoe_return_port(base):
+    port=(str(base or '').split('.',1)[0] or '').strip()
+    port_state={'ok':True,'port':port,'changed':False}
+    if not re.match(r'^eth[0-9]+$',port): return port_state
+    try:
+        cur=subprocess.check_output(['uci','-q','get','network.@device[0].ports'],text=True,timeout=5).strip()
+        ports=[x for x in cur.split() if x]
+        if port in ports: return port_state
+        ports.append(port)
+        subprocess.run(['uci','-q','del','network.@device[0].ports'],check=True,timeout=5)
+        for x in ports: subprocess.run(['uci','add_list','network.@device[0].ports='+x],check=True,timeout=5)
+        subprocess.run(['uci','commit','network'],check=True,timeout=5)
+        port_state.update({'changed':True,'lan_ports':ports})
+    except Exception as e:
+        port_state.update({'ok':False,'error':str(e)[:160]})
+    return port_state
 
 def call_old_gui(path, method='GET', data=None):
     body = None
@@ -4314,7 +4393,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_file(STATIC_DIR / 'pppoe.html')
         if path == '/api/pppoe/list':
             try:
-                return self._send_json(call_old_gui('/api/router/pppoe'))
+                return self._send_json(pppoe_runtime_enrich(call_old_gui('/api/router/pppoe')))
             except Exception as ex:
                 return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
         if path == '/api/pppoe/status':
@@ -4487,30 +4566,93 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pppoe/action':
                 action = str(payload.get('action', '')).strip()
                 if action == 'create':
-                    data = {k: payload.get(k, '') for k in ('device', 'number', 'username', 'password', 'proxy_username', 'proxy_password', 'duration')}
-                    try:
-                        data['number'] = int(data.get('number') or 1)
-                    except Exception:
-                        data['number'] = 1
-                    try:
-                        data['duration'] = int(data.get('duration') or 0)
-                    except Exception:
-                        data['duration'] = 0
-                    data['rotate'] = bool(payload.get('rotate'))
-                    vlan = str(payload.get('vlan', '') or '').strip()
-                    if vlan.isdigit() and 1 <= int(vlan) <= 4094:
-                        vdev = str(data.get('device') or 'eth0') + '.' + vlan
+                    data={k:payload.get(k,'') for k in ('device','number','username','password','proxy_username','proxy_password','duration')}
+                    try:data['number']=max(1,min(64,int(data.get('number') or 1)))
+                    except Exception:data['number']=1
+                    try:data['duration']=int(data.get('duration') or 0)
+                    except Exception:data['duration']=0
+                    data['rotate']=bool(payload.get('rotate'))
+                    vlan=str(payload.get('vlan','') or '').strip()
+                    if 1<=int(vlan)<=4094 if vlan.isdigit() else False:
+                        vdev=(str(data.get('device') or 'eth0')+'.'+vlan)
                         subprocess.run(['ip','link','add','link',str(data.get('device') or 'eth0'),'name',vdev,'type','vlan','id',vlan],timeout=10,capture_output=True)
                         subprocess.run(['ip','link','set',vdev,'up'],timeout=10,capture_output=True)
-                        data['device'] = vdev
-                    return self._send_json(call_old_gui('/api/router/pppoe', method='POST', data=data))
+                        data['device']=vdev
+                    # choc den port khong nam trong bridge nua khong bi tranh
+                    port_state=pppoe_prepare_port(data.get('device') or 'eth0')
+                    # khong tai bridge khi tao nhieu phien
+                    out=[]; last=None
+                    for _ in range(data['number']):
+                        one=dict(data); one['number']=1
+                        last=call_old_gui('/api/router/pppoe',method='POST',data=one)
+                        out.append(last)
+                    result=dict(last or {})
+                    result['created_requested']=data['number']
+                    result['create_attempts']=len(out)
+                    result['port']=port_state
+                    result.setdefault('ok',result.get('ok',False))
+                    return self._send_json(result)
+                if action == 'acc-list': return self._send_json({'ok':True,'accounts':pppoe_accounts_load()})
+                if action == 'acc-save':
+                    u=str(payload.get('username','')).strip(); pw=str(payload.get('password',''))
+                    if not u or not pw: return self._send_json({'ok':False,'error':'thieu user/pass'})
+                    a_=pppoe_accounts_load(); row={'u':u,'p':pw,'d':str(payload.get('device','eth0')),'v':str(payload.get('vlan',''))}
+                    old=next((z for z in a_ if z.get('u')==u),None)
+                    if old: old.update(row)
+                    else: a_.append(row)
+                    pppoe_accounts_save(a_); return self._send_json({'ok':True,'accounts':a_})
+                if action == 'acc-del':
+                    u=str(payload.get('username','')).strip(); a_=[z for z in pppoe_accounts_load() if z.get('u')!=u]
+                    pppoe_accounts_save(a_); return self._send_json({'ok':True,'accounts':a_})
                 if action == 'delete':
-                    ids = payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
-                    return self._send_json(call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': ids}))
+                    ids=payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
+                    fixed=[]; ports=set()
+                    try:
+                        old=call_old_gui('/api/router/pppoe'); raw=(old or {}).get('data')
+                        if isinstance(raw,dict): raw=raw.get('data',raw)
+                        wanted={int(str(x).strip()) for x in (ids if isinstance(ids,list) else [ids]) if str(x).strip().isdigit()}
+                        for x in raw or []:
+                            if int(x.get('id',-1)) in wanted: ports.add(str(x.get('device') or '').split('.',1)[0])
+                    except Exception: pass
+                    for x in (ids if isinstance(ids,list) else [ids]):
+                        try: fixed.append(int(str(x).strip()))
+                        except Exception: pass
+                    res=call_old_gui('/api/router/pppoe',method='DELETE',data={'ids':fixed})
+                    res=dict(res or {}); res['delete_requested']=fixed
+                    res['ports_returned']=[pppoe_return_port(x) for x in sorted(ports)]
+                    return self._send_json(res)
                 if action == 'reset':
                     return self._send_json(call_old_gui('/api/router/pppoe/reset', method='PUT', data=payload.get('data') or {}))
                 if action == 'rotate':
-                    return self._send_json(call_old_gui('/api/router/pppoe/rotate', method='PUT', data=payload.get('data') or {}))
+                    rd=payload.get('data') or {}
+                    if isinstance(rd,str): rd={'id':rd}
+                    rd=dict(rd)
+                    try: sid=int(str(rd.get('id')).strip())
+                    except Exception: return self._send_json({'ok':False,'error':'id khong hop le'})
+                    res=call_old_gui('/api/router/pppoe/rotate',method='PUT',data=rd)
+                    result=dict(res or {})
+                    try:
+                        subprocess.run(['/etc/init.d/network','stop'],capture_output=True)
+                        subprocess.run(['pppoeline-down'],capture_output=True)
+                    except Exception: pass
+                    try:
+                        iface='if_%03d'%sid
+                        subprocess.run(['ifdown',iface],timeout=10,capture_output=True)
+                        subprocess.run(['sleep','2'],capture_output=True)
+                        subprocess.run(['ifup',iface],timeout=10,capture_output=True)
+                        again=call_old_gui('/api/router/pppoe/rotate',method='PUT',data=rd)
+                        # neu vendor tra id khac thi redial lai cai cu da duoc quay
+                        result['rotate']=again
+                        lines=[]
+                        try:
+                            st=json.loads(subprocess.check_output(['ifstatus',iface],text=True,timeout=5))
+                            lines=st.get('ipv4-address') or []
+                        except Exception: pass
+                        result['wan_ip']=lines[0].get('address') if lines else ''
+                        result['up']=bool(lines)
+                        return self._send_json(result)
+                    except Exception as e:
+                        return self._send_json(dict(result,redial={'ok':False,'error':str(e)[:160]}))
                 if action == 'proxy':
                     return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
                 if action == 'enable':
