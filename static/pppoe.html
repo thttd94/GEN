@@ -84,6 +84,7 @@
     <div class="grid2">
       <div><label>Cổng WAN</label><select id="f-device" style="width:100%"><option value="eth0">eth0</option></select></div>
       <div><label>Số phiên</label><input id="f-number" type="number" value="1" min="1" max="50" style="width:100%"></div>
+      <div><label>VLAN tùy chọn (trống = tắt)</label><input id="f-vlan" type="number" min="1" max="4094" placeholder="Ví dụ 35" style="width:100%"></div>
     </div>
     <label>Tài khoản PPPoE đã lưu</label><select id="f-saved" onchange="fillSaved()" style="width:100%"><option value="">— chọn —</option></select><div id="acc-list" class="muted"></div>
     <label>User PPPoE</label><input id="f-user" placeholder="username nhà mạng" style="width:100%">
@@ -198,13 +199,14 @@ function fillId(id){ if (id !== undefined) document.getElementById('o-id').value
 function getId(preset){ return preset !== undefined ? preset : document.getElementById('o-id').value.trim(); }
 
 async function loadAccounts(){try{const r=await api('acc-list');const a=r.accounts||[];const s=document.getElementById('f-saved');s.innerHTML='<option value="">— chọn —</option>'+a.map((x,i)=>`<option value="${i}">${esc(x.u)}</option>`).join('');s.dataset.accounts=JSON.stringify(a);document.getElementById('acc-list').innerHTML=a.map((x,i)=>`${esc(x.u)} <a href="#" onclick="delAccount(${i});return false">✕</a>`).join(' · ')}catch(e){}}
-function fillSaved(){const s=document.getElementById('f-saved');const a=JSON.parse(s.dataset.accounts||'[]')[+s.value];if(a){document.getElementById('f-user').value=a.u;document.getElementById('f-pass').value=a.p;}}
+function fillSaved(){const s=document.getElementById('f-saved');const a=JSON.parse(s.dataset.accounts||'[]')[+s.value];if(a){document.getElementById('f-user').value=a.u;document.getElementById('f-vlan').value=a.v||'';}
 async function delAccount(i){const s=document.getElementById('f-saved');const a=JSON.parse(s.dataset.accounts||'[]')[i];if(a&&confirm('Xóa TK này?')){await api('acc-del',{username:a.u});loadAccounts();}}
 
 async function createSession() {
   const data = {
     device: document.getElementById('f-device').value.trim() || 'eth0',
     number: parseInt(document.getElementById('f-number').value, 10) || 1,
+    vlan: document.getElementById('f-vlan').value.trim(),
     username: document.getElementById('f-user').value.trim(),
     password: document.getElementById('f-pass').value,
     proxy_username: document.getElementById('f-puser').value.trim(),
@@ -217,7 +219,7 @@ async function createSession() {
   try {
     const r = await api('create', data);
     log('tạo phiên: ' + JSON.stringify(r).slice(0, 800));
-    await api('acc-save', {username:data.username, password:data.password, device:data.device});
+    await api('acc-save', {username:data.username, password:data.password, device:data.device, vlan:data.vlan});
     loadAccounts();
   } catch(e){ log('lỗi: ' + e.message); }
   refresh();
