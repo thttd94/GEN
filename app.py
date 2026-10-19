@@ -71,6 +71,8 @@ REPO_REMOTE_URL = 'https://github.com/thttd94/GEN.git'
 REPO_BRANCH = 'main'
 DEFAULT_ADMIN_UPDATE_CODE = 'ADMIN2026GEN'
 DEFAULT_PER_VERSION_CODE_COUNT = 5
+PPPOE_ACCOUNTS_FILE = Path('/data/pppoe/accounts.json')
+
 
 def random_update_code(length=12):
     alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -2815,6 +2817,16 @@ def check_proxy_batch(items, session='1', max_workers=64):
                 results[tag] = {'ok': False, 'status': 'dead', 'message': 'DEAD', 'error': str(e)}
     return results
 
+def pppoe_accounts_load():
+    try:
+        if not PPPOE_ACCOUNTS_FILE.exists(): return []
+        d=json.loads(PPPOE_ACCOUNTS_FILE.read_text(encoding='utf-8'))
+        return d if isinstance(d,list) else []
+    except Exception: return []
+def pppoe_accounts_save(items):
+    PPPOE_ACCOUNTS_FILE.parent.mkdir(parents=True,exist_ok=True)
+    PPPOE_ACCOUNTS_FILE.write_text(json.dumps(items,ensure_ascii=False,indent=1),encoding='utf-8')
+
 def call_old_gui(path, method='GET', data=None):
     body = None
     # Server goc 9000 check header trinh duyet voi 1 so API (pppoe list tra 400/ngat neu thieu).
@@ -4488,16 +4500,30 @@ class Handler(BaseHTTPRequestHandler):
                 action = str(payload.get('action', '')).strip()
                 if action == 'create':
                     data = {k: payload.get(k, '') for k in ('device', 'number', 'username', 'password', 'proxy_username', 'proxy_password', 'duration')}
-                    try:
-                        data['number'] = int(data.get('number') or 1)
-                    except Exception:
-                        data['number'] = 1
-                    try:
-                        data['duration'] = int(data.get('duration') or 0)
-                    except Exception:
-                        data['duration'] = 0
+                    try: data['number'] = max(1, min(64, int(data.get('number') or 1)))
+                    except Exception: data['number'] = 1
+                    try: data['duration'] = int(data.get('duration') or 0)
+                    except Exception: data['duration'] = 0
                     data['rotate'] = bool(payload.get('rotate'))
-                    return self._send_json(call_old_gui('/api/router/pppoe', method='POST', data=data))
+                    res = None
+                    # Firmware vendor chi tao 1 slot cho cung user trong moi POST;
+                    # goi N lan cung credential, khong doi user/pass, khong retry.
+                    for _ in range(data['number']):
+                        res = call_old_gui('/api/router/pppoe', method='POST', data={**data, 'number': 1})
+                    return self._send_json(res or {'ok': False, 'error': 'tao phien that bai'})
+                if action == 'acc-list':
+                    return self._send_json({'ok': True, 'accounts': pppoe_accounts_load()})
+                if action == 'acc-save':
+                    u=str(payload.get('username','')).strip(); p=str(payload.get('password',''))
+                    if not u or not p: return self._send_json({'ok':False,'error':'thieu user/pass'})
+                    a=pppoe_accounts_load(); row={'u':u,'p':p,'d':str(payload.get('device','eth0')),'v':str(payload.get('vlan',''))}
+                    old=next((x for x in a if isinstance(x,dict) and x.get('u')==u),None)
+                    if old: old.update(row)
+                    else: a.append(row)
+                    pppoe_accounts_save(a); return self._send_json({'ok':True,'accounts':a})
+                if action == 'acc-del':
+                    u=str(payload.get('username','')).strip(); a=[x for x in pppoe_accounts_load() if x.get('u')!=u]
+                    pppoe_accounts_save(a); return self._send_json({'ok':True,'accounts':a})
                 if action == 'delete':
                     ids = payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
                     return self._send_json(call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': ids}))
