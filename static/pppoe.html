@@ -286,7 +286,10 @@ async function resetOne(preset) {
 }
 async function rotateOne(preset) {
   const id = getId(preset); if (!id) { log('nhập ID phiên'); return; }
-  try { const r = await api('rotate', {data:{id}}); log('rotate #' + id + ': ' + JSON.stringify(r).slice(0, 500)); }
+  const sid = parseInt(String(id).replace(/[^0-9]/g,''), 10);
+  if (!Number.isInteger(sid) || sid < 1) { log('ID phiên không hợp lệ'); return; }
+  log('đang xoay IP phiên #' + sid + '...');
+  try { const r = await api('rotate', {data:{id:sid}}); log('rotate #' + sid + ': ' + JSON.stringify(r).slice(0, 500)); }
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
 }
@@ -314,7 +317,7 @@ async function resetAll() {
 async function rotateAll() {
   if (!SESSIONS.length) { log('chưa có phiên nào'); return; }
   if (!confirm(`Xoay IP ${SESSIONS.length} phiên?`)) return;
-  for (const s of SESSIONS) { const id = s.id ?? s.wan_id; try { await api('rotate', {data:{id}}); } catch(e){} }
+  for (const s of SESSIONS) { const raw = s.id ?? s.wan_id; const sid = parseInt(String(raw).replace(/[^0-9]/g,''), 10); if (!sid) continue; try { await api('rotate', {data:{id:sid}}); } catch(e){} }
   refresh();
 }
 async function delAll() {

@@ -4631,28 +4631,23 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception: return self._send_json({'ok':False,'error':'id khong hop le'})
                     res=call_old_gui('/api/router/pppoe/rotate',method='PUT',data=rd)
                     result=dict(res or {})
+                    result['rotate_id']=sid
+                    iface='if_%03d'%sid
                     try:
-                        subprocess.run(['/etc/init.d/network','stop'],capture_output=True)
-                        subprocess.run(['pppoeline-down'],capture_output=True)
-                    except Exception: pass
-                    try:
-                        iface='if_%03d'%sid
-                        subprocess.run(['ifdown',iface],timeout=10,capture_output=True)
-                        subprocess.run(['sleep','2'],capture_output=True)
-                        subprocess.run(['ifup',iface],timeout=10,capture_output=True)
-                        again=call_old_gui('/api/router/pppoe/rotate',method='PUT',data=rd)
-                        # neu vendor tra id khac thi redial lai cai cu da duoc quay
-                        result['rotate']=again
-                        lines=[]
-                        try:
+                        subprocess.run(['ifdown',iface],timeout=20,capture_output=True)
+                        time.sleep(2)
+                        subprocess.run(['ifup',iface],timeout=45,capture_output=True)
+                        for _ in range(12):
+                            time.sleep(2)
                             st=json.loads(subprocess.check_output(['ifstatus',iface],text=True,timeout=5))
-                            lines=st.get('ipv4-address') or []
-                        except Exception: pass
-                        result['wan_ip']=lines[0].get('address') if lines else ''
-                        result['up']=bool(lines)
-                        return self._send_json(result)
+                            ips=st.get('ipv4-address') or []
+                            if ips: break
+                        result['redial']={'ok':True,'iface':iface}
+                        result['wan_ip']=ips[0].get('address','') if ips else ''
+                        result['up']=bool(ips)
                     except Exception as e:
-                        return self._send_json(dict(result,redial={'ok':False,'error':str(e)[:160]}))
+                        result['redial']={'ok':False,'iface':iface,'error':str(e)[:160]}
+                    return self._send_json(result)
                 if action == 'proxy':
                     return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
                 if action == 'enable':
