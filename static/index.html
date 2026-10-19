@@ -598,13 +598,15 @@
       return false;
     }
     async function refreshConnectionStatus(silent=false) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 1000);
       try {
-        const data = await fetchJSON('/api/pm/router-network');
+        const data = await fetchJSON('/api/pm/router-network', {signal: ctl.signal});
         setConnectionBadge(extractNetworkConnected(data));
       } catch (e) {
         setConnectionBadge(false);
-        if (!silent) setStatus('Lỗi mạng router: ' + e.message);
-      }
+        if (!silent && e.name !== 'AbortError') setStatus('Lỗi mạng router: ' + e.message);
+      } finally { clearTimeout(timer); }
     }
     async function fetchJSON(url, options={}) {
       const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...options });
@@ -1630,9 +1632,11 @@
       }
     }
 
+    let BOOT_META = null;
     async function bootstrap() {
       try {
         const meta = await fetchJSON('/api/pm/meta');
+        BOOT_META = meta;
         appTitlePrefix = meta.app_title_prefix || 'Genrouter';
         if (meta.version) setVersionInfo(meta.version);
       } catch {}
@@ -1648,8 +1652,7 @@
       await fetchSessionsList(true);
       let startSession = '1';
       try {
-        const m = await fetchJSON('/api/pm/meta');
-        const act = String((m && m.active_session) || '').trim();
+        const act = String((BOOT_META && BOOT_META.active_session) || '').trim();
         if (act && allSessions.includes(act)) startSession = act;
       } catch {}
       loadSession(startSession, true);
