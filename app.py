@@ -4488,36 +4488,22 @@ class Handler(BaseHTTPRequestHandler):
                 action = str(payload.get('action', '')).strip()
                 if action == 'create':
                     data = {k: payload.get(k, '') for k in ('device', 'number', 'username', 'password', 'proxy_username', 'proxy_password', 'duration')}
-                    try: data['number'] = max(1,min(64,int(data.get('number') or 1)))
-                    except Exception: data['number']=1
-                    try: data['duration'] = int(data.get('duration') or 0)
-                    except Exception: data['duration']=0
-                    data['rotate']=bool(payload.get('rotate'))
-                    if str(data.get('device') or '').split('.',1)[0] == 'eth0':
-                        return self._send_json({'ok':False,'error':'eth0 la WAN chinh; chon eth1-eth5 cho PPPoE phu'})
-                    vlan=str(payload.get('vlan','') or '').strip()
+                    try:
+                        data['number'] = int(data.get('number') or 1)
+                    except Exception:
+                        data['number'] = 1
+                    try:
+                        data['duration'] = int(data.get('duration') or 0)
+                    except Exception:
+                        data['duration'] = 0
+                    data['rotate'] = bool(payload.get('rotate'))
+                    vlan = str(payload.get('vlan', '') or '').strip()
                     if vlan.isdigit() and 1 <= int(vlan) <= 4094:
-                        vdev=str(data.get('device') or 'eth0')+'.'+vlan
+                        vdev = str(data.get('device') or 'eth0') + '.' + vlan
                         subprocess.run(['ip','link','add','link',str(data.get('device') or 'eth0'),'name',vdev,'type','vlan','id',vlan],timeout=10,capture_output=True)
                         subprocess.run(['ip','link','set',vdev,'up'],timeout=10,capture_output=True)
-                        data['device']=vdev
-                    result=None
-                    for _ in range(data['number']):
-                        one=dict(data); one['number']=1
-                        result=call_old_gui('/api/router/pppoe',method='POST',data=one)
-                    return self._send_json(result or {'ok':False,'error':'tao phien that bai'})
-                if action == 'acc-list': return self._send_json({'ok':True,'accounts':pppoe_accounts_load()})
-                if action == 'acc-save':
-                    u=str(payload.get('username','')).strip(); p=str(payload.get('password',''))
-                    if not u or not p: return self._send_json({'ok':False,'error':'thieu user/pass'})
-                    a=pppoe_accounts_load(); row={'u':u,'p':p,'d':str(payload.get('device','eth0')),'v':str(payload.get('vlan',''))}
-                    old=next((x for x in a if x.get('u')==u),None)
-                    if old: old.update(row)
-                    else: a.append(row)
-                    pppoe_accounts_save(a); return self._send_json({'ok':True,'accounts':a})
-                if action == 'acc-del':
-                    u=str(payload.get('username','')).strip(); a=[x for x in pppoe_accounts_load() if x.get('u')!=u]
-                    pppoe_accounts_save(a); return self._send_json({'ok':True,'accounts':a})
+                        data['device'] = vdev
+                    return self._send_json(call_old_gui('/api/router/pppoe', method='POST', data=data))
                 if action == 'delete':
                     ids = payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
                     return self._send_json(call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': ids}))

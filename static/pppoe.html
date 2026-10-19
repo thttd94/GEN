@@ -21,7 +21,7 @@
   .h-ico-green { background:linear-gradient(135deg,#34d399,#0f9d6a); }
   .h-ico-amber { background:linear-gradient(135deg,#fbbf24,#ea580c); }
   table { width:100%; border-collapse:collapse; }
-  th,td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; font-size:13px; }
+  th,td { text-align:left; padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:top; font-size:13px; }
   tbody tr:hover td { background:rgba(56,189,248,.07); }
   th { color:#a8d8ec; font-weight:700; white-space:nowrap; text-transform:uppercase; font-size:11px; letter-spacing:.6px; }
   tr:last-child td { border-bottom:none; }
@@ -73,7 +73,7 @@
     <button class="bad" onclick="delAll()">🗑 Xóa tất cả phiên</button>
   </div>
   <table>
-    <thead><tr><th>ID</th><th>Port</th><th>Interface</th><th>User PPPoE</th><th>WAN IP</th><th>Status</th><th>Proxy</th><th style="width:240px">Hành động</th></tr></thead>
+    <thead><tr><th>ID</th><th>Interface</th><th>User PPPoE</th><th title="IP công cộng của phiên">WAN IP</th><th>Trạng thái</th><th>Proxy</th><th style="width:320px">Hành động</th></tr></thead>
     <tbody id="tb"><tr><td colspan="7" class="muted">…</td></tr></tbody>
   </table>
 </div>
@@ -86,8 +86,6 @@
       <div><label>Số phiên</label><input id="f-number" type="number" value="1" min="1" max="50" style="width:100%"></div>
       <div><label>VLAN tùy chọn</label><input id="f-vlan" type="number" min="1" max="4094" placeholder="Để trống = tắt" style="width:100%"></div>
     </div>
-    <label>Tài khoản đã lưu</label><select id="f-saved" onchange="fillSaved()" style="width:100%"><option value="">— chọn tài khoản —</option></select>
-    <div id="acc-list" class="muted"></div>
     <label>User PPPoE</label><input id="f-user" placeholder="username nhà mạng" style="width:100%">
     <label>Pass PPPoE</label><input id="f-pass" type="password" placeholder="password nhà mạng" autocomplete="new-password" style="width:100%">
     <div class="grid2">
@@ -181,27 +179,23 @@ async function refresh() {
   }
   tb.innerHTML = list.map(s => {
     const id = s.id ?? s.wan_id ?? '';
-    const port = String(s.device || '').split('.')[0] || '—';
     const iface = s.interface || s.iface || (id !== '' ? `if_${String(id).padStart(3,'0')}` : '—');
     const up = (s.up ?? s.status === 'up' ?? s.online);
     const st = up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
     const ip = s.ip || s.wan_ip || s.public_ip || '';
     const proxy = s.socks5 || s.socks_proxy || s.proxy || '';
-    return `<tr><td><b>${esc(id)}</b></td><td>${esc(port)}</td><td class="muted">${esc(iface)}</td>`
+    return `<tr><td><b>${esc(id)}</b></td><td class="muted">${esc(iface)}</td>`
       + `<td>${esc(s.username || '')}</td>`
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
-      + `<td>${st}</td><td class="muted" style="font-size:10.5px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(proxy)}</td>`
-      + `<td><button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
+      + `<td>${st}</td><td class="muted" style="font-size:11.5px">${esc(proxy)}</td>`
+      + `<td><button onclick="fillId('${esc(id)}');resetOne()">🔁 Quay số</button>`
+      + `<button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
       + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;
   }).join('');
 }
 
 function fillId(id){ if (id !== undefined) document.getElementById('o-id').value = id; }
 function getId(preset){ return preset !== undefined ? preset : document.getElementById('o-id').value.trim(); }
-
-async function loadAccounts(){try{const r=await api('acc-list');const a=r.accounts||[];const s=document.getElementById('f-saved');s.innerHTML='<option value="">— chọn tài khoản —</option>'+a.map((x,i)=>`<option value="${i}">${esc(x.u)} (${esc(x.d||'eth0')}${x.v?', VLAN '+esc(x.v):''})</option>`).join('');s.dataset.accounts=JSON.stringify(a);document.getElementById('acc-list').innerHTML=a.map((x,i)=>`${esc(x.u)} <a href="#" onclick="delAccount(${i});return false">✕</a>`).join(' · ')}catch(e){}}
-function fillSaved(){const s=document.getElementById('f-saved');const a=JSON.parse(s.dataset.accounts||'[]')[+s.value];if(a){document.getElementById('f-user').value=a.u;document.getElementById('f-pass').value=a.p;document.getElementById('f-device').value=a.d||'eth0';document.getElementById('f-vlan').value=a.v||'';}}
-async function delAccount(i){const s=document.getElementById('f-saved');const a=JSON.parse(s.dataset.accounts||'[]')[i];if(a&&confirm('Xóa tài khoản đã lưu?')){await api('acc-del',{username:a.u});loadAccounts();}}
 
 async function createSession() {
   const data = {
@@ -216,7 +210,7 @@ async function createSession() {
   };
   if (!data.username || !data.password) { log('thiếu user/pass PPPoE'); return; }
   log('đang tạo phiên...');
-  try { const r = await api('create', data); log('tạo phiên: ' + JSON.stringify(r).slice(0, 800)); await api('acc-save',{username:data.username,password:data.password,device:data.device,vlan:data.vlan||''}); loadAccounts(); }
+  try { const r = await api('create', data); log('tạo phiên: ' + JSON.stringify(r).slice(0, 800)); }
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
 }
@@ -276,7 +270,6 @@ async function delAll() {
   refresh();
 }
 refresh();
-loadAccounts();
 setInterval(refresh, 30000);
 </script>
 </body>
