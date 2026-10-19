@@ -4570,7 +4570,15 @@ class Handler(BaseHTTPRequestHandler):
                         subprocess.run(['ip','link','add','link',str(data.get('device') or 'eth0'),'name',vdev,'type','vlan','id',vlan],timeout=10,capture_output=True)
                         subprocess.run(['ip','link','set',vdev,'up'],timeout=10,capture_output=True)
                         data['device'] = vdev
-                    return self._send_json(dict(call_old_gui('/api/router/pppoe', method='POST', data=data), port=port_state))
+                    n = max(1, min(64, int(data.get('number') or 1)))
+                    result = None
+                    for _ in range(n):
+                        one = dict(data); one['number'] = 1
+                        result = call_old_gui('/api/router/pppoe', method='POST', data=one)
+                    result = dict(result or {})
+                    result['created_requested'] = n
+                    result['port'] = port_state
+                    return self._send_json(result)
                 if action == 'acc-list': return self._send_json({'ok':True,'accounts':pppoe_accounts_load()})
                 if action == 'acc-save':
                     u=str(payload.get('username','')).strip(); p=str(payload.get('password',''))

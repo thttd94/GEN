@@ -21,7 +21,7 @@
   .h-ico-green { background:linear-gradient(135deg,#34d399,#0f9d6a); }
   .h-ico-amber { background:linear-gradient(135deg,#fbbf24,#ea580c); }
   table { width:100%; border-collapse:collapse; }
-  th,td { text-align:left; padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:top; font-size:13px; }
+  th,td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; font-size:13px; }
   tbody tr:hover td { background:rgba(56,189,248,.07); }
   th { color:#a8d8ec; font-weight:700; white-space:nowrap; text-transform:uppercase; font-size:11px; letter-spacing:.6px; }
   tr:last-child td { border-bottom:none; }
@@ -73,7 +73,7 @@
     <button class="bad" onclick="delAll()">🗑 Xóa tất cả phiên</button>
   </div>
   <table>
-    <thead><tr><th>ID</th><th>Interface</th><th>User PPPoE</th><th title="IP công cộng của phiên">WAN IP</th><th>Trạng thái</th><th>Proxy</th><th style="width:320px">Hành động</th></tr></thead>
+    <thead><tr><th>ID</th><th>Port</th><th>Interface</th><th>User PPPoE</th><th>WAN IP</th><th>Status</th><th>Proxy</th><th style="width:240px">Hành động</th></tr></thead>
     <tbody id="tb"><tr><td colspan="7" class="muted">…</td></tr></tbody>
   </table>
 </div>
@@ -179,17 +179,17 @@ async function refresh() {
   }
   tb.innerHTML = list.map(s => {
     const id = s.id ?? s.wan_id ?? '';
+    const port = String(s.device || '').split('.')[0] || '—';
     const iface = s.interface || s.iface || (id !== '' ? `if_${String(id).padStart(3,'0')}` : '—');
     const up = (s.up ?? s.status === 'up' ?? s.online);
     const st = up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
     const ip = s.ip || s.wan_ip || s.public_ip || '';
     const proxy = s.socks5 || s.socks_proxy || s.proxy || '';
-    return `<tr><td><b>${esc(id)}</b></td><td class="muted">${esc(iface)}</td>`
+    return `<tr><td><b>${esc(id)}</b></td><td>${esc(port)}</td><td class="muted">${esc(iface)}</td>`
       + `<td>${esc(s.username || '')}</td>`
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
-      + `<td>${st}</td><td class="muted" style="font-size:11.5px">${esc(proxy)}</td>`
-      + `<td><button onclick="fillId('${esc(id)}');resetOne()">🔁 Quay số</button>`
-      + `<button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
+      + `<td>${st}</td><td class="muted" style="font-size:10.5px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(proxy)}</td>`
+      + `<td><button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
       + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;
   }).join('');
 }
