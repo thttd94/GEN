@@ -78,23 +78,13 @@
   </table>
 </div>
 
-<div class="card">
-  <h2>Loại trừ dải IP PPPoE</h2>
-  <div class="muted">Nhập CIDR, mỗi dòng một dải (ví dụ 172.16.0.0/12). Để trống và bấm Xóa dải để tắt loại trừ.</div>
-  <textarea id="exclude-ranges" rows="3" placeholder="Để trống = không loại trừ" style="width:100%;margin-top:8px"></textarea>
-  <div style="margin-top:8px"><button onclick="saveExcludeRanges()">💾 Lưu dải loại trừ</button><button class="bad" onclick="clearExcludeRanges()">✕ Xóa dải</button></div>
-</div>
-
 <div class="row">
   <div class="card">
     <h2><span class="h-ico h-ico-green">➕</span>Tạo phiên mới</h2>
     <div class="grid2">
-      <div><label>Cổng WAN</label><select id="f-device" style="width:100%"><option value="eth0">eth0</option><option value="eth1">eth1</option><option value="eth2">eth2</option><option value="eth3">eth3</option><option value="eth4">eth4</option><option value="eth5">eth5</option></select></div>
+      <div><label>Cổng WAN</label><select id="f-device" style="width:100%"><option value="eth0">eth0</option></select></div>
       <div><label>Số phiên</label><input id="f-number" type="number" value="1" min="1" max="50" style="width:100%"></div>
-      <div><label>VLAN (trống = không dùng, Viettel = 35)</label><input id="f-vlan" type="number" value="" min="1" max="4094" placeholder="vd 35" style="width:100%"></div>
     </div>
-    <label>Tài khoản đã lưu (trên hệ thống)</label><select id="f-saved" onchange="fillSaved()" style="width:100%"><option value="">— chọn để điền nhanh —</option></select>
-    <div id="acc-list" class="muted" style="margin-top:6px"></div>
     <label>User PPPoE</label><input id="f-user" placeholder="username nhà mạng" style="width:100%">
     <label>Pass PPPoE</label><input id="f-pass" type="password" placeholder="password nhà mạng" autocomplete="new-password" style="width:100%">
     <div class="grid2">
@@ -132,7 +122,7 @@
 </div>
 
 <script>
-let SESSIONS = [], BUSY = false, ACCS = [];
+let SESSIONS = [], BUSY = false;
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function log(msg){ document.getElementById('log').textContent = msg; }
@@ -149,17 +139,10 @@ async function loadStatus() {
     const en = d.enable;
     el.innerHTML = `Chế độ: <b>${en ? 'PPPoE' : 'DHCP'}</b> · User: <b>${esc(d.username || '—')}</b> · Cổng: <b>${esc(d.device || 'eth0')}</b> · Proxy: <b>${d.proxy_support ? 'hỗ trợ' : 'không'}</b>`;
     document.getElementById('enable-row').innerHTML =
-      (en ? `<button class="bad" onclick="setEnable(false)">Tắt PPPoE (giữ cấu hình, về DHCP)</button>`
-          : `<button class="ok" onclick="setEnable(true)">Bật PPPoE (WAN giữ DHCP)</button>`)
-      + ` <button onclick="snapSave()">💾 Lưu cấu hình</button>`
-      + ` <button onclick="snapRestore()">♻ Khôi phục đã lưu</button>`
-      + ` <span class="muted" id="snap-info">Bật/tắt cần user+pass (lấy từ form tạo phiên hoặc nhập khi bấm). Tắt tự lưu snapshot; WAN chính luôn về DHCP.</span>`;
+      (en ? `<button class="bad" onclick="setEnable(false)">Tắt PPPoE (về DHCP)</button>`
+          : `<button class="ok" onclick="setEnable(true)">Bật PPPoE</button>`)
+      + ` <span class="muted">Bật/tắt cần user+pass (lấy từ form tạo phiên hoặc nhập khi bấm).</span>`;
     window._pppoe_info = d;
-    try {
-      const s = await (await fetch('/api/pppoe/action', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'snap-load'})})).json();
-      const info = document.getElementById('snap-info');
-      if (info && s && s.ok && s.sessions) info.textContent = `Snapshot: ${s.sessions.length} phiên (${s.saved_at || '?'}) — Tắt tự lưu; WAN chính luôn về DHCP.`;
-    } catch(e){}
   } catch(e){ document.getElementById('pppoe-status').textContent = 'mất kết nối'; }
 }
 async function loadDevices() {
@@ -167,12 +150,13 @@ async function loadDevices() {
     const r = await (await fetch('/api/pppoe/devices')).json();
     const list = ((r && r.data && (r.data.data || r.data)) || []);
     const arr = Array.isArray(list) ? list : (list.devices || []);
-    const sel = document.getElementById('f-device');
-    const cur = sel.value;
-    const base = ['eth0','eth1','eth2','eth3','eth4','eth5'];
-    const extra = arr.map(x => (typeof x === 'string') ? x : (x.value || x.name || x.device || '')).filter(v => v && !base.includes(v));
-    sel.innerHTML = base.concat(extra).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
-    if ([...base, ...extra].includes(cur)) sel.value = cur;
+    if (arr.length) {
+      const sel = document.getElementById('f-device');
+      sel.innerHTML = arr.map(x => {
+        const v = (typeof x === 'string') ? x : (x.value || x.name || x.device || '');
+        return `<option value="${esc(v)}">${esc(v)}</option>`;
+      }).join('');
+    }
   } catch(e){}
 }
 
@@ -186,8 +170,7 @@ async function refresh() {
     list = Array.isArray(d) ? d : (d ? (d.sessions || d.list || []) : []);
   } catch(e){ document.getElementById('upd').textContent = 'mất kết nối'; return; }
   SESSIONS = list;
-  const upN = list.filter(s => (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true)).length;
-  document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()} · ${list.length} phiên (${upN} UP)`;
+  document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()}`;
   const tb = document.getElementById('tb');
   if (!list.length) {
     tb.innerHTML = '<tr><td colspan="7" class="muted">Chưa có phiên nào — tạo bằng form bên dưới.</td></tr>';
@@ -196,17 +179,14 @@ async function refresh() {
   tb.innerHTML = list.map(s => {
     const id = s.id ?? s.wan_id ?? '';
     const iface = s.interface || s.iface || (id !== '' ? `if_${String(id).padStart(3,'0')}` : '—');
-    const up = (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true);
-    const noInternetPool = String(s.data_plane_status || '') === 'no-internet-pool';
-    const st = noInternetPool ? '<span class="st-down" title="PPPoE UP nhưng pool không có Internet">⚠ no Internet</span>' : (up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>');
+    const up = (s.up ?? s.status === 'up' ?? s.online);
+    const st = up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
     const ip = s.ip || s.wan_ip || s.public_ip || '';
     const proxy = s.socks5 || s.socks_proxy || s.proxy || '';
-    const dur = parseInt(s.duration, 10) || 0;
-    const sched = dur > 0 ? `<div class="muted" style="font-size:11px">🔁 ${dur} phút</div>` : '';
     return `<tr><td><b>${esc(id)}</b></td><td class="muted">${esc(iface)}</td>`
       + `<td>${esc(s.username || '')}</td>`
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
-      + `<td>${st}${sched}</td><td class="muted" style="font-size:11.5px">${esc(proxy)}</td>`
+      + `<td>${st}</td><td class="muted" style="font-size:11.5px">${esc(proxy)}</td>`
       + `<td><button onclick="fillId('${esc(id)}');resetOne()">🔁 Quay số</button>`
       + `<button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
       + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;
@@ -216,25 +196,10 @@ async function refresh() {
 function fillId(id){ if (id !== undefined) document.getElementById('o-id').value = id; }
 function getId(preset){ return preset !== undefined ? preset : document.getElementById('o-id').value.trim(); }
 
-async function loadExcludeRanges() {
-  try { const r = await api('exclude-list'); document.getElementById('exclude-ranges').value = (r.ranges || []).join('\n'); } catch(e){}
-}
-async function saveExcludeRanges() {
-  try { const ranges = document.getElementById('exclude-ranges').value; const r = await api('exclude-save', {ranges}); document.getElementById('exclude-ranges').value = (r.ranges || []).join('\n'); log('đã lưu dải loại trừ'); refresh(); }
-  catch(e){ log('lỗi lưu dải loại trừ: ' + e.message); }
-}
-
-async function clearExcludeRanges() {
-  if (!confirm('Tắt toàn bộ loại trừ IP PPPoE?')) return;
-  document.getElementById('exclude-ranges').value = '';
-  await saveExcludeRanges();
-}
-
 async function createSession() {
   const data = {
     device: document.getElementById('f-device').value.trim() || 'eth0',
     number: parseInt(document.getElementById('f-number').value, 10) || 1,
-    vlan: document.getElementById('f-vlan').value.trim(),
     username: document.getElementById('f-user').value.trim(),
     password: document.getElementById('f-pass').value,
     proxy_username: document.getElementById('f-puser').value.trim(),
@@ -244,39 +209,9 @@ async function createSession() {
   };
   if (!data.username || !data.password) { log('thiếu user/pass PPPoE'); return; }
   log('đang tạo phiên...');
-  try { const r = await api('create', data); log('tạo phiên: ' + JSON.stringify(r).slice(0, 800)); saveAccount(data.username, data.password); }
+  try { const r = await api('create', data); log('tạo phiên: ' + JSON.stringify(r).slice(0, 800)); }
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
-}
-async function loadAccounts() {
-  let accs = [];
-  try { const r = await api('acc-list'); accs = (r && r.accounts) || []; } catch(e){}
-  ACCS = accs;
-  const sel = document.getElementById('f-saved');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">— chọn để điền nhanh —</option>' + accs.map((a, i) => `<option value="${i}">${esc(a.u)} (${esc(a.d || 'eth0')}${a.v ? ', VLAN ' + esc(a.v) : ''})</option>`).join('');
-  document.getElementById('acc-list').innerHTML = accs.map((a, i) => `<span class="chip">${esc(a.u)} <a href="#" onclick="delAccount(${i});return false" title="xóa TK này" style="color:#ff8aa5;text-decoration:none;font-weight:800">✕</a></span>`).join('') || '<span class="muted">chưa lưu TK nào</span>';
-}
-async function saveAccount(u, p) {
-  if (!u || !p) return;
-  try { await api('acc-save', {username: u, password: p, device: document.getElementById('f-device').value || 'eth0', vlan: document.getElementById('f-vlan').value.trim() || ''}); } catch(e){}
-  loadAccounts();
-}
-async function delAccount(i) {
-  const a = ACCS[i];
-  if (!a) return;
-  if (!confirm(`Xóa TK ${a.u}?`)) return;
-  try { await api('acc-del', {username: a.u}); } catch(e){}
-  loadAccounts();
-}
-function fillSaved() {
-  const sel = document.getElementById('f-saved');
-  if (!sel || sel.value === '') return;
-  const a = ACCS[parseInt(sel.value, 10)];
-  if (!a) return;
-  document.getElementById('f-user').value = a.u || '';
-  document.getElementById('f-pass').value = a.p || '';
-  document.getElementById('f-vlan').value = a.v || '';
 }
 async function setEnable(on) {
   const u = (window._pppoe_info || {}).username || document.getElementById('f-user').value.trim();
@@ -284,19 +219,6 @@ async function setEnable(on) {
   if (on && (!u || !p)) { log('bật PPPoE cần user+pass — nhập ở form tạo phiên trước'); return; }
   log(on ? 'đang bật PPPoE...' : 'đang tắt PPPoE...');
   try { const r = await api('enable', {data: on ? {enable:true, username:u, password:p} : {enable:false}}); log('enable: ' + JSON.stringify(r).slice(0, 500)); }
-  catch(e){ log('lỗi: ' + e.message); }
-  refresh();
-}
-async function snapSave() {
-  log('đang lưu snapshot...');
-  try { const r = await api('snap-save'); log('snapshot: ' + JSON.stringify(r).slice(0, 500)); }
-  catch(e){ log('lỗi: ' + e.message); }
-  refresh();
-}
-async function snapRestore() {
-  if (!confirm('Khôi phục các phiên đã lưu?')) return;
-  log('đang khôi phục snapshot...');
-  try { const r = await api('snap-restore'); log('khôi phục: ' + JSON.stringify(r).slice(0, 500)); }
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
 }
@@ -322,6 +244,7 @@ async function setProxy() {
 }
 async function delOne(preset) {
   const id = getId(preset); if (!id) { log('nhập ID phiên'); return; }
+  if (!confirm(`Xóa phiên #${id}?`)) return;
   try { const r = await api('delete', {ids:[id]}); log('xóa #' + id + ': ' + JSON.stringify(r).slice(0, 500)); }
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
@@ -346,56 +269,7 @@ async function delAll() {
   refresh();
 }
 refresh();
-loadAccounts();
-loadExcludeRanges();
 setInterval(refresh, 30000);
-</script>
-<style>/* Widget thong so may thoi gian thuc (goc phai): nhiet do CPU, %CPU, RAM, disk, uptime. */
-.sysbar{position:fixed;top:10px;right:12px;z-index:9999;display:flex;gap:6px;align-items:center;background:rgba(8,19,31,.88);border:1px solid #1f4255;border-radius:999px;padding:5px 12px;font-size:11.5px;color:#bde7fa;font-family:'Segoe UI',system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.45);white-space:nowrap}
-.sysbar b{color:#fff;font-weight:700}
-.sysbar .hot{color:#ff8aa5}
-.sysbar .warm{color:#ffc94d}
-.sysbar .ok{color:#4ff0bd}
-.sysbar .sep{opacity:.35}
-@media (max-width:640px){.sysbar{font-size:10px;padding:4px 9px;top:auto;bottom:10px}}
-</style>
-<script>// Widget thong so may: fetch /api/pm/sysinfo moi 5s, hien goc phai.
-(function () {
-  if (document.getElementById('sysbar')) return;
-  var bar = document.createElement('div');
-  bar.id = 'sysbar'; bar.className = 'sysbar';
-  bar.textContent = '…';
-  document.body.appendChild(bar);
-  function fmtUp(s) {
-    s = s | 0;
-    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
-    return (d ? d + 'd' : '') + (h ? h + 'h' : '') + m + 'm';
-  }
-  async function tick() {
-    try {
-      var r = await fetch('/api/pm/sysinfo', {cache: 'no-store'});
-      var d = await r.json();
-      if (!d || !d.ok) { bar.textContent = 'máy: ?'; return; }
-      var t = d.temp_c, tc = t == null ? '—' : (t >= 75 ? 'hot' : t >= 60 ? 'warm' : 'ok');
-      var c = d.cpu_pct, cc = c == null ? '—' : (c >= 85 ? 'hot' : c >= 60 ? 'warm' : 'ok');
-      var m = (d.mem || {}).pct, mc = m == null ? '—' : (m >= 90 ? 'hot' : m >= 75 ? 'warm' : 'ok');
-      var dk = (d.disks && d.disks[0]) || {}, dp = dk.pct, dc = dp == null ? '—' : (dp >= 90 ? 'hot' : dp >= 80 ? 'warm' : 'ok');
-      bar.innerHTML = '🌡 <b class="' + tc + '">' + (t == null ? '—' : t + '°C') + '</b><span class="sep">|</span>'
-        + 'CPU <b class="' + cc + '">' + (c == null ? '—' : c + '%') + '</b><span class="sep">|</span>'
-        + 'RAM <b class="' + mc + '">' + (m == null ? '—' : m + '%') + '</b><span class="sep">|</span>'
-        + 'Disk <b class="' + dc + '">' + (dp == null ? '—' : dp + '%') + '</b><span class="sep">|</span>'
-        + '⏱ ' + fmtUp(d.uptime_s || 0);
-      bar.title = 'CPU: ' + (c == null ? '—' : c + '% x' + (d.cpu_count || '?'))
-        + ' | RAM: ' + ((d.mem || {}).used_mb || '?') + '/' + ((d.mem || {}).total_mb || '?') + 'MB'
-        + ' | Disk: ' + (dk.used_gb != null ? dk.used_gb + '/' + dk.total_gb + 'GB (' + dk.mount + ')' : '—')
-        + ' | Load: ' + ((d.load || []).join(' ') || '—')
-        + ' | Uptime: ' + fmtUp(d.uptime_s || 0);
-    } catch (e) { bar.textContent = 'máy: ?'; }
-  }
-  tick();
-  // Polling sysinfo tat tam de endpoint cham khong lam lag GUI.
-  // setInterval(tick, 5000);
-})();
 </script>
 </body>
 </html>

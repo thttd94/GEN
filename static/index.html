@@ -289,7 +289,6 @@
           </div>
                   </div>
         <div class="sub" id="countLabel" style="font-weight:800;">0 rows</div>
-        <div id="pager" style="display:flex;gap:6px;align-items:center;margin-left:12px;"></div>
       </div>
 
       <div class="grid">
@@ -307,8 +306,6 @@
                   <select id="columnProxyType" onchange="applyColumnProxyType()" style="max-width:96px;">
                     <option value="socks5" selected>SOCKS5</option>
                     <option value="http">HTTP</option>
-                    <option value="vpn">VPN</option>
-                    <option value="pppoe">PPPOE</option>
                   </select>
                 </div>
               </th>
@@ -520,9 +517,7 @@
     }
     async function refreshVersionInfo(silent=false) {
       try {
-        // [Ver 2.56 perf] /api/pm/meta mat ~0.5s va da co san trong
-        // BOOT_META tu bootstrap -> doc tu do, khong goi lai moi 60s.
-        const data = BOOT_META || {};
+        const data = await fetchJSON('/api/pm/meta');
         appTitlePrefix = data.app_title_prefix || appTitlePrefix || 'Genrouter';
         if (data.version) setVersionInfo(data.version);
         renderAppTitle();
@@ -603,18 +598,12 @@
       return false;
     }
     async function refreshConnectionStatus(silent=false) {
-      // Khong de endpoint probe WAN (co the timeout 20s khi PPPoE down)
-      // chan GUI. Badge chi la thong tin phu, timeout frontend <= 1s.
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 1000);
       try {
-        const data = await fetchJSON('/api/pm/router-network', { signal: ctl.signal });
+        const data = await fetchJSON('/api/pm/router-network');
         setConnectionBadge(extractNetworkConnected(data));
       } catch (e) {
         setConnectionBadge(false);
-        if (!silent && e.name !== 'AbortError') setStatus('Lỗi mạng router: ' + e.message);
-      } finally {
-        clearTimeout(timer);
+        if (!silent) setStatus('Lỗi mạng router: ' + e.message);
       }
     }
     async function fetchJSON(url, options={}) {
@@ -792,17 +781,6 @@
       setStatus(viewMode === 'configured' ? ('Đang xem ĐÃ CẤU HÌNH của ' + sessionNameOf(currentSession)) : ('Đang xem CHƯA CẤU HÌNH của ' + sessionNameOf(currentSession)));
     }
 
-    let pageSize = 50;
-    let currentPage = 1;
-    function renderPager(total) {
-      const el = document.getElementById('pager');
-      if (!el) return;
-      const pages = Math.max(1, Math.ceil(total / pageSize));
-      currentPage = Math.max(1, Math.min(currentPage, pages));
-      if (pages <= 1) { el.innerHTML = ''; return; }
-      el.innerHTML = `<button class="btn small" ${currentPage <= 1 ? 'disabled' : ''} onclick="currentPage--;render()">‹</button><span class="sub">${currentPage}/${pages}</span><button class="btn small" ${currentPage >= pages ? 'disabled' : ''} onclick="currentPage++;render()">›</button>`;
-    }
-
     function render() {
       renderSessionTabs();
       renderProxyMachineNote();
@@ -814,12 +792,10 @@
       document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionTabLabel(currentSession).toUpperCase();
       const visibleRows = getVisibleRows();
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
-      renderPager(visibleRows.length);
-      const pageRows = visibleRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
       if (currentProjectTab !== 'proxy') return;
-      document.getElementById('rows').innerHTML = pageRows.map((row, idx) => `
+      document.getElementById('rows').innerHTML = visibleRows.map((row, idx) => `
         <tr>
-          <td>${(currentPage - 1) * pageSize + idx + 1}</td>
+          <td>${idx + 1}</td>
           <td class="mono">${esc(row.mac || '')}</td>
           <td class="mono">${esc(row.ip)}</td>
           <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
@@ -838,7 +814,7 @@
                  ${vpnOptionsHtml(row.proxy)}
                </select></td>`
             : (String(row.proxyType || 'socks5').toLowerCase()==='pppoe')
-            ? `<td><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" onmousedown="pppoeFill(this)" style="max-width:200px;">
+            ? `<td><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="max-width:200px;">
                  <option value="" ${(!String(row.proxy || '').startsWith('pppoe:')) ? 'selected' : ''}>— chọn PPPoE —</option>
                  ${pppoeOptionsHtml(row.proxy)}
                </select> <a class="muted" style="cursor:pointer;font-size:11px" href="/pppoe" target="_blank" title="Mở quản lý PPPoE">⚙</a></td>`
@@ -876,54 +852,22 @@
     var VPN_ACCOUNTS = [];
     // ---- PPPoE Manager tich hop vao Proxy Type / Proxy ----
     var PPPOE_SESSIONS = [];
-    var BOOT_META = null;
-    var PPPOE_OPTS_CACHE = '';
     async function refreshPppoeSessions() {
       try {
         const d = await (await fetch('/api/pppoe/list')).json();
         const raw = (d && d.data && (d.data.data || d.data));
-        const lst = Array.isArray(raw) ? raw : (raw ? (raw.sessions || raw.list || []) : []);
-        const sig = JSON.stringify(lst.map(s => [s.id ?? s.wan_id, s.ip || '', s.status, s.data_plane_status || '']));
-        const oldSig = JSON.stringify(PPPOE_SESSIONS.map(s => [s.id ?? s.wan_id, s.ip || '', s.status, s.data_plane_status || '']));
-        PPPOE_SESSIONS = lst;
-        if (sig !== oldSig) {
-          PPPOE_OPTS_CACHE = '';
-          if (typeof currentRows !== 'undefined' && typeof render === 'function') render();
-        }
+        PPPOE_SESSIONS = Array.isArray(raw) ? raw : (raw ? (raw.sessions || raw.list || []) : []);
+        if (typeof currentRows !== 'undefined' && typeof render === 'function') render();
       } catch(e){}
     }
-    // [Ver 2.56 perf] Truoc day moi lan render build 42 <option> cho 165 dong
-    // => ~7.100 node DOM, phai do lai ca bang. Bay gio chi render 1 option
-    // (da chon), bam vao select moi nap day du (pppoeFill). Render giam ~165x.
-    function pppoeLabelOf(s) {
-      const id = s.id ?? s.wan_id ?? '';
-      const ip = s.ip || s.wan_ip || s.public_ip || '';
-      const up = (s.up === true || s.online === true || s.status === 'up' || s.status === 'online' || s.status === true);
-      const bad = String(s.data_plane_status || '') === 'no-internet-pool';
-      return `PPPoE #${id}${ip ? ' (' + ip + ')' : (up ? '' : ' (down)')}${bad ? ' ⚠ no Internet' : ''}`;
-    }
     function pppoeOptionsHtml(cur) {
-      if (!cur) return '';
-      const cv = String(cur);
-      const id = cv.startsWith('pppoe:') ? cv.slice(6) : cv;
-      const hit = PPPOE_SESSIONS.find(s => String(s.id ?? s.wan_id ?? '') === id);
-      const label = hit ? pppoeLabelOf(hit) : `PPPoE #${id}`;
-      return `<option value="${esc(cv)}" selected>${esc(label)}</option>`;
-    }
-    // Nap day du lua chon PPPoE vao select, 1 lan cho moi select.
-    function pppoeFill(el) {
-      if (!el || el.dataset.filled === '1') return;
-      el.dataset.filled = '1';
-      const cur = String(el.value || '');
-      const html = PPPOE_SESSIONS.filter(s => !['no-internet-pool','excluded-range'].includes(String(s.data_plane_status || ''))).map(s => {
+      return PPPOE_SESSIONS.map(s => {
         const id = s.id ?? s.wan_id ?? '';
+        const ip = s.ip || s.wan_ip || s.public_ip || '';
+        const label = `PPPoE #${id}${ip ? ' (' + ip + ')' : ''}`;
         const val = 'pppoe:' + id;
-        return `<option value="${esc(val)}"${val === cur ? ' selected' : ''}>${esc(pppoeLabelOf(s))}</option>`;
+        return `<option value="${esc(val)}" ${(String(cur||'')===val)?'selected':''}>${esc(label)}</option>`;
       }).join('');
-      const blank = `<option value=""${cur ? '' : ' selected'}>chon PPPoE</option>`;
-      el.innerHTML = blank + html;
-      // refreshPppoeSessions doi danh sach -> mo lai cho lan chon moi
-      setTimeout(() => { if (el) el.dataset.filled = '0'; }, 30000);
     }
     async function refreshVpnAccounts() {
       try {
@@ -1224,9 +1168,6 @@
       const prevAcc = row ? effVpnAccount(row) : '';
       if (row) row[el.dataset.field] = el.value;
       if (row && el.dataset.field === 'proxyType' && String(el.value).toLowerCase() === 'vpn' && !String(row.proxy || '').startsWith('vpn:')) {
-        row.proxy = '';
-      }
-      if (row && el.dataset.field === 'proxyType' && String(el.value).toLowerCase() === 'pppoe' && !String(row.proxy || '').startsWith('pppoe:')) {
         row.proxy = '';
       }
       persistDraft(currentSession);
@@ -1691,16 +1632,9 @@
 
     async function bootstrap() {
       try {
-        // [Ver 2.56 perf] Meta mat ~0.5s nen phai goi 1 lan duy nhat,
-        // truoc day bootstrap goi 2 lan => tre them ~0.5s moi lan mo trang.
         const meta = await fetchJSON('/api/pm/meta');
-        BOOT_META = meta;
         appTitlePrefix = meta.app_title_prefix || 'Genrouter';
         if (meta.version) setVersionInfo(meta.version);
-        try {
-          const act = String((meta && meta.active_session) || '').trim();
-          if (act && allSessions.includes(act)) startSession = act;
-        } catch {}
       } catch {}
       renderAppTitle();
       setConnectionBadge(false);
@@ -1713,6 +1647,11 @@
       await fetchSessionsList(false);
       await fetchSessionsList(true);
       let startSession = '1';
+      try {
+        const m = await fetchJSON('/api/pm/meta');
+        const act = String((m && m.active_session) || '').trim();
+        if (act && allSessions.includes(act)) startSession = act;
+      } catch {}
       loadSession(startSession, true);
     }
 
@@ -1794,54 +1733,6 @@
   setInterval(() => refreshVpnAccounts(), 30000);
   refreshPppoeSessions();
   setInterval(() => refreshPppoeSessions(), 30000);
-</script>
-<style>/* Widget thong so may thoi gian thuc (goc phai): nhiet do CPU, %CPU, RAM, disk, uptime. */
-.sysbar{position:fixed;top:10px;right:12px;z-index:9999;display:flex;gap:6px;align-items:center;background:rgba(8,19,31,.88);border:1px solid #1f4255;border-radius:999px;padding:5px 12px;font-size:11.5px;color:#bde7fa;font-family:'Segoe UI',system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.45);white-space:nowrap}
-.sysbar b{color:#fff;font-weight:700}
-.sysbar .hot{color:#ff8aa5}
-.sysbar .warm{color:#ffc94d}
-.sysbar .ok{color:#4ff0bd}
-.sysbar .sep{opacity:.35}
-@media (max-width:640px){.sysbar{font-size:10px;padding:4px 9px;top:auto;bottom:10px}}
-</style>
-<script>// Widget thong so may: fetch /api/pm/sysinfo moi 5s, hien goc phai.
-(function () {
-  if (document.getElementById('sysbar')) return;
-  var bar = document.createElement('div');
-  bar.id = 'sysbar'; bar.className = 'sysbar';
-  bar.textContent = '…';
-  document.body.appendChild(bar);
-  function fmtUp(s) {
-    s = s | 0;
-    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
-    return (d ? d + 'd' : '') + (h ? h + 'h' : '') + m + 'm';
-  }
-  async function tick() {
-    try {
-      var r = await fetch('/api/pm/sysinfo', {cache: 'no-store'});
-      var d = await r.json();
-      if (!d || !d.ok) { bar.textContent = 'máy: ?'; return; }
-      var t = d.temp_c, tc = t == null ? '—' : (t >= 75 ? 'hot' : t >= 60 ? 'warm' : 'ok');
-      var c = d.cpu_pct, cc = c == null ? '—' : (c >= 85 ? 'hot' : c >= 60 ? 'warm' : 'ok');
-      var m = (d.mem || {}).pct, mc = m == null ? '—' : (m >= 90 ? 'hot' : m >= 75 ? 'warm' : 'ok');
-      var dk = (d.disks && d.disks[0]) || {}, dp = dk.pct, dc = dp == null ? '—' : (dp >= 90 ? 'hot' : dp >= 80 ? 'warm' : 'ok');
-      bar.innerHTML = '🌡 <b class="' + tc + '">' + (t == null ? '—' : t + '°C') + '</b><span class="sep">|</span>'
-        + 'CPU <b class="' + cc + '">' + (c == null ? '—' : c + '%') + '</b><span class="sep">|</span>'
-        + 'RAM <b class="' + mc + '">' + (m == null ? '—' : m + '%') + '</b><span class="sep">|</span>'
-        + 'Disk <b class="' + dc + '">' + (dp == null ? '—' : dp + '%') + '</b><span class="sep">|</span>'
-        + '⏱ ' + fmtUp(d.uptime_s || 0);
-      bar.title = 'CPU: ' + (c == null ? '—' : c + '% x' + (d.cpu_count || '?'))
-        + ' | RAM: ' + ((d.mem || {}).used_mb || '?') + '/' + ((d.mem || {}).total_mb || '?') + 'MB'
-        + ' | Disk: ' + (dk.used_gb != null ? dk.used_gb + '/' + dk.total_gb + 'GB (' + dk.mount + ')' : '—')
-        + ' | Load: ' + ((d.load || []).join(' ') || '—')
-        + ' | Uptime: ' + fmtUp(d.uptime_s || 0);
-    } catch (e) { bar.textContent = 'máy: ?'; }
-  }
-  // Polling sysinfo tat tam: endpoint co the block khi router dang qua tai;
-  // khong de widget lam lag/treo toan bo GUI. Cac API chuc nang khong phu thuoc.
-  tick();
-  // setInterval(tick, 5000);
-})();
 </script>
 </body>
 </html>

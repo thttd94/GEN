@@ -33,10 +33,6 @@ DEV_GENRUNNER = Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/genrouter/core/genr
 STATIC_HOSTS_FILE = Path('/etc/shm/list_ip_static.json') if Path('/etc/shm/list_ip_static.json').exists() else Path('/mnt/e/OpenClaw/Genrouter_jobs/GEN/etc/shm/list_ip_static.json')
 LEASES_FILE = Path('/tmp/dhcp.leases')
 OLD_GUI_BASE = 'http://127.0.0.1:9000'
-PPPOE_SNAP_FILE = Path('/data/pppoe/sessions.json')
-PPPOE_ACCOUNTS_FILE = Path('/data/pppoe/accounts.json')
-PPPOE_PORT_STATE_FILE = Path('/data/pppoe/port_state.json')
-PPPOE_EXCLUDE_FILE = Path('/data/pppoe/exclude_ranges.json')
 STATIC_API_BASE = 'http://192.15.0.1:8000'
 if ROUTER_CONFIG_DIR.exists():
     CONFIG_DIR = ROUTER_CONFIG_DIR
@@ -1916,24 +1912,8 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
         outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
     if normalized_type == 'pppoe' or str(proxy).startswith('pppoe:'):
-        # Resolve theo ID hien tai; stale/mat ID => block, khong giu port cu.
-        sid = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
-        pmap = pppoe_session_proxies()
-        info = pmap.get(sid, {}) if sid else {}
-        raw_px = info.get('socks') or ''
-        if raw_px:
-            import urllib.parse as _up
-            u = _up.urlparse(raw_px if '://' in raw_px else 'socks5://' + raw_px)
-            server = (u.hostname or '').strip()
-            if server in ('0.0.0.0', '127.0.0.1', 'localhost', ''):
-                server = '192.15.0.1'
-            port = int(u.port or 0)
-            user = _up.unquote(u.username or '')
-            password = _up.unquote(u.password or '')
-            if port and user and password:
-                outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': server, 'server_port': port, 'username': user, 'password': password, 'version': '5'}
-                return
-        outbounds[idx] = {'tag': tag, 'type': 'block'}
+        # Giu direct tam, resolve sang proxy glider that khi apply (pppoe:<id> -> socks5 that).
+        outbounds[idx] = {'tag': tag, 'type': 'direct'}
         return
     server, port, user, password = parse_proxy(proxy)
     if normalized_type == 'http':
@@ -2185,273 +2165,6 @@ def apply_ip_identity_config(data, text, session='1'):
     tag_to_ip_map = {row['tag']: row['ip'] for row in rows}
     rebuild_gencore_rules(data, tag_to_ip_map)
     return data
-
-def pppoe_snapshot_save():
-    """Luu danh sach phien PPPoE hien tai vao file snapshot (giu cau hinh khi tat/bat mode)."""
-    try:
-        PPPOE_SNAP_FILE.parent.mkdir(parents=True, exist_ok=True)
-        r = call_old_gui('/api/router/pppoe')
-        raw = (r or {}).get('data')
-        if isinstance(raw, dict):
-            raw = raw.get('data', raw)
-        lst = raw if isinstance(raw, list) else (raw.get('sessions') or raw.get('list') or [] if isinstance(raw, dict) else [])
-        sessions = []
-        for s in lst or []:
-            if not isinstance(s, dict):
-                continue
-            sessions.append({
-                'id': s.get('id', s.get('wan_id', '')),
-                'device': s.get('device') or s.get('ifname') or 'eth0',
-                'username': s.get('username', ''),
-                'password': s.get('password', ''),
-                'proxy_username': '',
-                'proxy_password': '',
-            })
-        snap = {'saved_at': time.strftime('%Y-%m-%d %H:%M:%S'), 'sessions': sessions}
-        PPPOE_SNAP_FILE.write_text(json.dumps(snap, ensure_ascii=False, indent=1), encoding='utf-8')
-        return {'ok': True, 'count': len(sessions)}
-    except Exception as ex:
-        return {'ok': False, 'error': str(ex)[:200]}
-
-def pppoe_snapshot_load():
-    try:
-        if not PPPOE_SNAP_FILE.exists():
-            return {'ok': False, 'error': 'chua co snapshot', 'sessions': []}
-        snap = json.loads(PPPOE_SNAP_FILE.read_text(encoding='utf-8'))
-        sessions = snap.get('sessions') if isinstance(snap, dict) else []
-        return {'ok': True, 'saved_at': (snap.get('saved_at') if isinstance(snap, dict) else ''), 'sessions': sessions or []}
-    except Exception as ex:
-        return {'ok': False, 'error': str(ex)[:200], 'sessions': []}
-
-def pppoe_accounts_load():
-    # TK PPPoE luu tren HE THONG (/data/pppoe) - doi may nao cung thay, khong phu thuoc trinh duyet.
-    try:
-        if not PPPOE_ACCOUNTS_FILE.exists():
-            return []
-        d = json.loads(PPPOE_ACCOUNTS_FILE.read_text(encoding='utf-8'))
-        return d if isinstance(d, list) else []
-    except Exception:
-        return []
-
-def pppoe_accounts_save(accs):
-    try:
-        PPPOE_ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PPPOE_ACCOUNTS_FILE.write_text(json.dumps(accs, ensure_ascii=False, indent=1), encoding='utf-8')
-        return True
-    except Exception:
-        return False
-
-def pppoe_prepare_selected_port(device):
-    """Dua cong PPPoE ra khoi br-lan; tra cac cong PPPoE cu ve br-lan.
-
-    device co the la eth5.35, nhung bridge can thao tac tren cong vat ly eth5.
-    Luu state rieng de chi tra lai nhung cong ma PPPoE Manager da lay.
-    """
-    base = str(device or '').strip().split('.', 1)[0]
-    if not re.match(r'^eth[0-9]+$', base):
-        return {'ok': False, 'error': 'cong PPPoE khong hop le'}
-    try:
-        raw = subprocess.check_output(['uci', '-q', 'get', 'network.@device[0].ports'], text=True, timeout=8).strip()
-        lan_ports = [x for x in raw.split() if x]
-        state = {}
-        try:
-            if PPPOE_PORT_STATE_FILE.exists():
-                state = json.loads(PPPOE_PORT_STATE_FILE.read_text(encoding='utf-8')) or {}
-        except Exception:
-            state = {}
-        managed = [x for x in (state.get('managed_ports') or []) if re.match(r'^eth[0-9]+$', str(x))]
-        # Port da chon: thao khoi br-lan. Port cu do PPPoE Manager lay: tra lai.
-        wanted = [x for x in lan_ports if x != base]
-        for old in managed:
-            if old != base and old not in wanted:
-                wanted.append(old)
-        if wanted != lan_ports:
-            subprocess.run(['uci', '-q', 'del', 'network.@device[0].ports'], timeout=8)
-            for p in wanted:
-                subprocess.run(['uci', 'add_list', 'network.@device[0].ports=' + p], check=True, timeout=8)
-            subprocess.run(['uci', 'commit', 'network'], check=True, timeout=8)
-            subprocess.run(['/etc/init.d/network', 'reload'], timeout=20)
-        PPPOE_PORT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        PPPOE_PORT_STATE_FILE.write_text(json.dumps({'managed_ports': [base], 'updated_at': int(time.time())}), encoding='utf-8')
-        return {'ok': True, 'selected': base, 'lan_ports': wanted, 'changed': wanted != lan_ports}
-    except Exception as ex:
-        return {'ok': False, 'error': str(ex)[:200]}
-
-
-def pppoe_wan_to_dhcp():
-    """Ep WAN chinh ve DHCP sau khi bat mode PPPoE (mode chi de tao phien/proxy, khong chiem WAN)."""
-    try:
-        subprocess.run(['uci', 'set', 'network.wan.proto=dhcp'], check=True, timeout=10)
-        subprocess.run(['uci', '-q', 'del', 'network.wan.username'], timeout=10)
-        subprocess.run(['uci', '-q', 'del', 'network.wan.password'], timeout=10)
-        subprocess.run(['uci', 'commit', 'network'], check=True, timeout=10)
-        subprocess.Popen(['/etc/init.d/network', 'reload'])
-        return {'ok': True, 'wan': 'dhcp'}
-    except Exception as ex:
-        return {'ok': False, 'error': str(ex)[:200]}
-
-def pppoe_exclude_ranges_load():
-    try:
-        if not PPPOE_EXCLUDE_FILE.exists(): return []
-        d=json.loads(PPPOE_EXCLUDE_FILE.read_text(encoding='utf-8'))
-        return d if isinstance(d,list) else []
-    except Exception: return []
-
-def pppoe_exclude_ranges_save(ranges):
-    PPPOE_EXCLUDE_FILE.parent.mkdir(parents=True,exist_ok=True)
-    PPPOE_EXCLUDE_FILE.write_text(json.dumps(ranges,ensure_ascii=False,indent=1),encoding='utf-8')
-
-def pppoe_ip_excluded(ip):
-    try:
-        import ipaddress
-        addr=ipaddress.ip_address(str(ip).strip())
-        return any(addr in ipaddress.ip_network(str(x).strip(),strict=False) for x in pppoe_exclude_ranges_load())
-    except Exception: return False
-
-# Dai loai tru chi dung de danh dau phien va an khoi lua chon client.
-# Khong auto-redial: reset nhieu phien cung luc lam netifd quay lai PPPoE,
-# co the anh huong WAN chinh eth0.
-
-def pppoe_new_session_ip(session_id):
-    """Doc IP runtime cua mot phien, khong goi vendor reset/network reload."""
-    try:
-        sid = int(session_id)
-        st = json.loads(subprocess.check_output(['ifstatus', 'if_%03d' % sid], text=True, timeout=5))
-        ips = st.get('ipv4-address') or []
-        return str(ips[0].get('address') or '') if st.get('up') and ips else ''
-    except Exception:
-        return ''
-
-def pppoe_redial_new_session(session_id):
-    """Quay lai DUY NHAT phien moi: khong vendor reset, khong reload network."""
-    try:
-        sid = int(session_id)
-        iface = 'if_%03d' % sid
-        subprocess.run(['ifdown', iface], timeout=15)
-        time.sleep(2)
-        subprocess.run(['ifup', iface], timeout=30)
-        # Netifd can thoi gian IPCP cap IP.
-        for _ in range(6):
-            time.sleep(3)
-            ip = pppoe_new_session_ip(sid)
-            if ip:
-                return {'ok': True, 'ip': ip}
-        return {'ok': False, 'ip': ''}
-    except Exception as ex:
-        return {'ok': False, 'error': str(ex)[:120], 'ip': ''}
-
-def pppoe_drop_new_session(session_id):
-    """Xoa DUY NHAT phien moi bi loai tru; khong reload network chung."""
-    try:
-        sid = int(session_id)
-        iface, dev, port = 'if_%03d' % sid, 'dev_%03d' % sid, 15000 + sid - 1
-        try:
-            call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': [sid]})
-        except Exception:
-            pass
-        # Firmware co the bo sot pppd/glider; don rieng ID nay, khong reload toan network.
-        cmd = ('ifdown {iface} 2>/dev/null; '
-               'for p in $(pgrep -f "ipparam {iface}" 2>/dev/null); do kill -9 $p 2>/dev/null; done; '
-               'for p in $(netstat -tlnp 2>/dev/null | grep ":{port} " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done; '
-               'ip link del {dev} 2>/dev/null; uci del network.{iface} 2>/dev/null; uci del network.{dev} 2>/dev/null; uci commit network 2>/dev/null; true').format(iface=iface, dev=dev, port=port)
-        subprocess.run(cmd, shell=True, timeout=25)
-        return {'ok': True}
-    except Exception as ex:
-        return {'ok': False, 'error': str(ex)[:120]}
-
-def pppoe_filter_new_session(session_id, max_redials=3):
-    """Chi loc phien MOI. Trung CIDR -> quay lai toi da 3, roi xoa."""
-    if not pppoe_exclude_ranges_load():
-        return {'id': int(session_id) if str(session_id).isdigit() else session_id, 'ok': True, 'ip': '', 'redials': 0, 'action': 'keep'}
-    try:
-        sid = int(session_id)
-    except Exception:
-        return {'id': session_id, 'ok': False, 'reason': 'id khong hop le'}
-    try:
-        max_redials = max(0, min(int(max_redials), 3))
-    except Exception:
-        max_redials = 3
-    ip = ''
-    for attempt in range(max_redials + 1):
-        # Cho initial dial/lan redial dung len toi 18s.
-        for _ in range(6):
-            ip = pppoe_new_session_ip(sid)
-            if ip:
-                break
-            time.sleep(3)
-        if ip and not pppoe_ip_excluded(ip):
-            return {'id': sid, 'ok': True, 'ip': ip, 'redials': attempt, 'action': 'keep'}
-        if attempt < max_redials:
-            pppoe_redial_new_session(sid)
-    dropped = pppoe_drop_new_session(sid)
-    return {'id': sid, 'ok': False, 'ip': ip, 'redials': max_redials,
-            'action': 'deleted', 'delete_ok': bool(dropped.get('ok')),
-            'reason': 'IP thuoc dai loai tru sau %d lan quay lai' % max_redials}
-
-PPPOE_RUNTIME_CACHE = {'ts': 0.0, 'raw': {'ok': True, 'data': {'data': [], 'success': True}}}
-PPPOE_RUNTIME_LOCK = threading.Lock()
-
-def pppoe_runtime_cache_read():
-    with PPPOE_RUNTIME_LOCK:
-        return json.loads(json.dumps(PPPOE_RUNTIME_CACHE['raw']))
-
-def pppoe_runtime_refresh_once():
-    try:
-        raw = pppoe_runtime_enrich(call_old_gui('/api/router/pppoe'))
-        with PPPOE_RUNTIME_LOCK:
-            PPPOE_RUNTIME_CACHE['raw'] = raw
-            PPPOE_RUNTIME_CACHE['ts'] = time.time()
-    except Exception:
-        pass
-
-def pppoe_runtime_loop():
-    while True:
-        pppoe_runtime_refresh_once()
-        time.sleep(5)
-
-def pppoe_runtime_enrich(raw):
-    """Server 9000 giu status cache stale; doc runtime mot lan ubus call."""
-    try:
-        data = raw.get('data') if isinstance(raw, dict) else raw
-        sessions = data.get('data') if isinstance(data, dict) and isinstance(data.get('data'), list) else data
-        if not isinstance(sessions, list):
-            return raw
-        runtime = {}
-        try:
-            dump = json.loads(subprocess.check_output(['ubus', 'call', 'network.interface', 'dump'], text=True, timeout=5))
-            for item in dump.get('interface', []) or []:
-                name = str(item.get('interface') or '')
-                if name.startswith('if_'):
-                    runtime[name] = item
-        except Exception:
-            runtime = {}
-        for s in sessions:
-            if not isinstance(s, dict):
-                continue
-            try:
-                sid = int(s.get('id', s.get('wan_id', 0)) or 0)
-                if sid < 1:
-                    continue
-                st = runtime.get('if_%03d' % sid)
-                if st is None:
-                    continue
-                up = bool(st.get('up'))
-                s['status'] = 'online' if up else 'offline'
-                s['up'] = up
-                s['online'] = up
-                ips = st.get('ipv4-address') or []
-                if up and ips and isinstance(ips[0], dict):
-                    s['ip'] = str(ips[0].get('address') or s.get('ip') or '')
-                ip_now = str(s.get('ip') or '').strip()
-                s['data_plane'] = not ip_now.startswith('172.22.255.')
-                s['excluded'] = pppoe_ip_excluded(ip_now)
-                s['data_plane_status'] = 'excluded-range' if s['excluded'] else ('no-internet-pool' if not s['data_plane'] else 'unknown')
-            except Exception:
-                pass
-        return raw
-    except Exception:
-        return raw
-
 
 def pppoe_session_proxies():
     """Doc proxy glider cua tung phien PPPoE tu server goc 9000.
@@ -3063,23 +2776,7 @@ def check_proxy(proxy: str, session='1'):
     if not proxy.strip():
         return {'ok': False, 'status': 'empty', 'message': 'DEAD'}
     try:
-        pstr = str(proxy).strip()
-        if pstr.lower().startswith('pppoe:'):
-            # pppoe:<id> -> resolve sang socks glider that truoc khi probe.
-            sid = pstr.split(':', 1)[1].strip() if ':' in pstr else ''
-            pmap = pppoe_session_proxies()
-            info = pmap.get(sid, {}) if sid else {}
-            raw_px = info.get('socks') or info.get('http') or ''
-            if not raw_px:
-                return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
-            import urllib.parse as _up
-            u = _up.urlparse(raw_px if '://' in raw_px else 'socks5://' + raw_px)
-            server = (u.hostname or '').strip() or '127.0.0.1'
-            if server in ('0.0.0.0', '127.0.0.1', 'localhost', ''):
-                server = '192.15.0.1'
-            server, port, user, password = server, int(u.port or 0), _up.unquote(u.username or ''), _up.unquote(u.password or '')
-        else:
-            server, port, user, password = parse_proxy(proxy)
+        server, port, user, password = parse_proxy(proxy)
         ok, _probe_host, _probe_port = socks5_probe_multi(server, port, user, password)
         if not ok:
             return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
@@ -4287,89 +3984,6 @@ def _wd_check_vpn_integrity(thr):
     _wd_log('VPN-INTEGRITY buoc bao ve: ' + '; '.join(steps))
     return False
 
-_SYSINFO_PREV = {'cpu': None, 'ts': 0}
-
-def sysinfo_json():
-    # Thong so may thoi gian thuc: nhiet do CPU, %CPU, RAM, disk, uptime, load.
-    # Doc truc tiep /proc + /sys (khong phu thuoc lenh ngoai, chay duoc BusyBox).
-    out = {'ok': True, 'ts': int(time.time())}
-    # 1) Nhiet do: lay max cac thermal_zone (mC -> C).
-    try:
-        temps = []
-        for z in sorted(Path('/sys/class/thermal').glob('thermal_zone*')):
-            try:
-                v = int((z / 'temp').read_text().strip())
-                if 0 < v < 1000000:
-                    temps.append(v / 1000.0)
-            except Exception:
-                continue
-        out['temp_c'] = round(max(temps), 1) if temps else None
-    except Exception:
-        out['temp_c'] = None
-    # 2) %CPU: delta /proc/stat tu lan goi truoc (lan dau tra None).
-    try:
-        parts = Path('/proc/stat').read_text().split()
-        vals = [int(x) for x in parts[1:9]]
-        total = sum(vals)
-        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)
-        prev = _SYSINFO_PREV.get('cpu')
-        now = time.time()
-        if prev:
-            dt = total - prev[0]
-            di = idle - prev[1]
-            out['cpu_pct'] = round(max(0.0, min(100.0, (1 - di / dt) * 100)) if dt > 0 else 0.0) if dt > 0 else 0.0
-        else:
-            out['cpu_pct'] = None
-        _SYSINFO_PREV['cpu'] = (total, idle)
-        _SYSINFO_PREV['ts'] = now
-        try:
-            out['cpu_count'] = sum(1 for l in Path('/proc/cpuinfo').read_text().splitlines() if l.startswith('processor')) or 1
-        except Exception:
-            out['cpu_count'] = 1
-    except Exception:
-        out['cpu_pct'] = None
-        out['cpu_count'] = 0
-    # 3) RAM.
-    try:
-        mem = {}
-        for l in Path('/proc/meminfo').read_text().splitlines():
-            k, _, v = l.partition(':')
-            try:
-                mem[k.strip()] = int(v.strip().split()[0])
-            except Exception:
-                pass
-        total = mem.get('MemTotal', 0)
-        avail = mem.get('MemAvailable', mem.get('MemFree', 0))
-        used = max(0, total - avail)
-        out['mem'] = {'total_mb': round(total / 1024), 'used_mb': round(used / 1024), 'pct': round(used * 100.0 / total, 1) if total else 0}
-    except Exception:
-        out['mem'] = {}
-    # 4) Disk goc + /data.
-    try:
-        disks = []
-        for mp in ('/', '/data'):
-            try:
-                st = os.statvfs(mp)
-                t = st.f_blocks * st.f_frsize
-                f = st.f_bavail * st.f_frsize
-                u = t - f
-                disks.append({'mount': mp, 'total_gb': round(t / 1073741824, 1), 'used_gb': round(u / 1073741824, 1), 'pct': round(u * 100.0 / t, 1) if t else 0})
-            except Exception:
-                continue
-        out['disks'] = disks
-    except Exception:
-        out['disks'] = []
-    # 5) Uptime + load.
-    try:
-        out['uptime_s'] = int(float(Path('/proc/uptime').read_text().split()[0]))
-    except Exception:
-        out['uptime_s'] = 0
-    try:
-        out['load'] = [float(x) for x in Path('/proc/loadavg').read_text().split()[:3]]
-    except Exception:
-        out['load'] = []
-    return out
-
 def wd_health_json():
     """Ver 2.47: mot cho duy nhat de GUI/nguoi doc biet HE THONG CO DANG DUNG khong.
 
@@ -4664,33 +4278,45 @@ class Handler(BaseHTTPRequestHandler):
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                 return self._send_json({'session': session_id, 'name': get_session_display_name(session_id), 'source': str(SESSION_FILES[session_id]), 'rows': extract_rows(load_json(SESSION_FILES[session_id]), session=session_id)})
         if path == '/api/pm/router-network':
-            # Badge thong tin phu; khong probe Internet dong bo. Probe WAN co the
-            # block 20s khi PPPoE down va lam GUI lag. Chi tra runtime route nhanh.
+            probes = [('https://api.ipify.org', 'wan_ip'), ('https://ifconfig.me/ip', 'wan_ip')]
+            errors = []
+            for url, field in probes:
+                try:
+                    probe = urllib.request.Request(url, headers={'User-Agent': 'pm-network-check'})
+                    with urllib.request.urlopen(probe, timeout=8) as resp:
+                        value = resp.read().decode('utf-8', 'replace').strip()
+                    if value:
+                        return self._send_json({'ok': True, 'connected': True, field: value, 'probe': url})
+                except Exception as e:
+                    errors.append(f'{url}: {e}')
             try:
-                connected = bool(subprocess.run(['ip', 'route', 'get', '1.1.1.1'], timeout=1, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0)
-            except Exception:
-                connected = False
-            return self._send_json({'ok': True, 'connected': connected, 'probe': 'local-route'})
+                ping = subprocess.run(['ping', '-c', '1', '1.1.1.1'], capture_output=True, text=True, timeout=10)
+                if ping.returncode == 0:
+                    return self._send_json({'ok': True, 'connected': True, 'probe': 'ping'})
+            except Exception as e:
+                errors.append(f'ping: {e}')
+            return self._send_json({'ok': False, 'connected': False, 'error': ' | '.join(errors)})
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
-            version_info = {'current_label': read_current_version_label(), 'latest_label': read_current_version_label(), 'has_update': False}
+            version_info = get_repo_version_info()
             active_session = ''
             try:
                 active_session = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '')
             except (OSError, ValueError):
                 pass
-            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
+            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session, 'health': wd_health_json()})
         if path == '/api/pm/health':
             return self._send_json(wd_health_json())
-        if path == '/api/pm/sysinfo':
-            return self._send_json(sysinfo_json())
         if path == '/vpn':
             return self._send_file(STATIC_DIR / 'vpn.html')
         if path == '/pppoe':
             return self._send_file(STATIC_DIR / 'pppoe.html')
         if path == '/api/pppoe/list':
-            return self._send_json(pppoe_runtime_cache_read())
+            try:
+                return self._send_json(call_old_gui('/api/router/pppoe'))
+            except Exception as ex:
+                return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
         if path == '/api/pppoe/status':
             try:
                 return self._send_json(call_old_gui('/api/router/status_pppoe'))
@@ -4861,264 +4487,29 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pppoe/action':
                 action = str(payload.get('action', '')).strip()
                 if action == 'create':
-                    base_user = str(payload.get('username', '')).strip()
-                    base_pass = str(payload.get('password', '') or '')
+                    data = {k: payload.get(k, '') for k in ('device', 'number', 'username', 'password', 'proxy_username', 'proxy_password', 'duration')}
                     try:
-                        vlan = int(str(payload.get('vlan', '') or '').strip() or 0)
+                        data['number'] = int(data.get('number') or 1)
                     except Exception:
-                        vlan = 0
-                    if vlan < 0 or vlan > 4094:
-                        vlan = 0
-                    # VLAN tuy chon (vd Viettel 35): tao ethX.vlan 1 lan, phien chay tren do.
-                    # Trong = chay thang tren ethX nhu cu.
-                    dev = str(payload.get('device', '') or 'eth0').strip() or 'eth0'
-                    # Chon cong PPPoE = thao cong do ra khoi br-lan; tra cong cu ve LAN.
-                    port_state = pppoe_prepare_selected_port(dev)
-                    if not port_state.get('ok'):
-                        return self._send_json({'ok': False, 'error': 'khong chuyen duoc cong WAN: ' + str(port_state.get('error') or '')})
-                    if vlan:
-                        vdev = f"{dev}.{vlan}"
-                        try:
-                            subprocess.run(['ip', 'link', 'add', 'link', dev, 'name', vdev, 'type', 'vlan', 'id', str(vlan)], timeout=10, capture_output=True)
-                        except Exception:
-                            pass
-                        try:
-                            subprocess.run(['ip', 'link', 'set', vdev, 'up'], timeout=10, capture_output=True)
-                        except Exception:
-                            pass
-                        dev = vdev
-                    n = 1
+                        data['number'] = 1
                     try:
-                        n = int(payload.get('number') or 1)
+                        data['duration'] = int(data.get('duration') or 0)
                     except Exception:
-                        n = 1
-                    if n < 1:
-                        n = 1
-                    if n > 64:
-                        n = 64
-                    dur = 0
-                    try:
-                        dur = int(payload.get('duration') or 0)
-                    except Exception:
-                        dur = 0
-                    # Tao N phien: goi N lan voi DUNG user/pass goc (ISP chi cap 1 bo).
-                    res = None
-                    for k in range(n):
-                        data = {'device': dev, 'number': 1, 'username': base_user, 'password': base_pass, 'proxy_username': payload.get('proxy_username', ''), 'proxy_password': payload.get('proxy_password', ''), 'duration': dur}
-                        data['rotate'] = bool(payload.get('rotate'))
-                        res = call_old_gui('/api/router/pppoe', method='POST', data=data)
-                    res = dict(res or {})
-                    res['port'] = port_state
-                    # Chi loc CAC PHIEN VUA TAO; khong reset/xoa phien cu.
-                    try:
-                        latest = call_old_gui('/api/router/pppoe')
-                        lraw = (latest or {}).get('data')
-                        if isinstance(lraw, dict): lraw = lraw.get('data', lraw)
-                        new_ids = [int(x.get('id')) for x in (lraw or []) if isinstance(x, dict) and str(x.get('id','')).isdigit() and int(x.get('id')) > 0]
-                        # N phien moi duoc tao lien tiep o cuoi danh sach; lay n ID cuoi.
-                        new_ids = new_ids[-n:] if n else []
-                        res['exclude_results'] = [pppoe_filter_new_session(i, 3) for i in new_ids]
-                    except Exception as ex:
-                        res['exclude_results'] = [{'ok': False, 'reason': str(ex)[:120]}]
-                    # Log tung phien de biet phien nao UP/down (N slots, ISP cho hay khong la viec cua line).
-                    try:
-                        time.sleep(3)
-                        lr = call_old_gui('/api/router/pppoe')
-                        raw = (lr or {}).get('data')
-                        if isinstance(raw, dict):
-                            raw = raw.get('data', raw)
-                        lst = raw if isinstance(raw, list) else (raw.get('sessions') or raw.get('list') or [] if isinstance(raw, dict) else [])
-                        up = sum(1 for s in (lst or []) if isinstance(s, dict) and (s.get('status') in ('up', 'online', True) or s.get('up') is True or s.get('online') is True))
-                        res = dict(res or {})
-                        res['sessions_total'] = len(lst or [])
-                        res['sessions_up'] = up
-                    except Exception:
-                        pass
-                    # Loai tru chi ap dung UI, khong reset cac phien moi/cu.
-                    return self._send_json(res)
+                        data['duration'] = 0
+                    data['rotate'] = bool(payload.get('rotate'))
+                    return self._send_json(call_old_gui('/api/router/pppoe', method='POST', data=data))
                 if action == 'delete':
                     ids = payload.get('ids') or ([payload.get('id')] if payload.get('id') is not None else [])
-                    fixed = []
-                    for x in (ids if isinstance(ids, list) else [ids]):
-                        try:
-                            fixed.append(int(str(x).strip()))
-                        except Exception:
-                            fixed.append(x)
-                    res = call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': fixed})
-                    # Server goc xoa UCI/interface nhung KHONG kill pppd -> pppd song
-                    # van giu session ISP, chiem slot (gioi han 32). Don sach o day.
-                    # Xoa nhieu: don nhanh tung phien (khong reload giua chung), reload 1 lan cuoi.
-                    try:
-                        for x in fixed:
-                            try:
-                                num = int(str(x).strip())
-                            except Exception:
-                                continue
-                            iface = 'if_%03d' % num
-                            dev = 'dev_%03d' % num
-                            pt = 15000 + num - 1
-                            subprocess.run('ifdown %s 2>/dev/null; for p in $(pgrep -f "ipparam %s" 2>/dev/null); do kill -9 $p 2>/dev/null; done; for p in $(netstat -tlnp 2>/dev/null | grep ":%d " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done; ip link del %s 2>/dev/null; uci del network.%s 2>/dev/null; uci del network.%s 2>/dev/null; uci commit network 2>/dev/null; true' % (iface, iface, pt, dev, iface, dev), shell=True, timeout=15)
-                        subprocess.run('/etc/init.d/network reload 2>/dev/null; sleep 2; for i in $(pgrep -f "ipparam if_0" 2>/dev/null); do c=$(tr "\\0" " " < /proc/$i/cmdline 2>/dev/null | grep -oE "ipparam (if_[0-9]+)"); n=$(echo "$c" | grep -oE "[0-9]+"); echo "$n" | grep -q . || continue; echo "%s" | tr "," "\\n" | grep -qx "$n" && kill -9 $i 2>/dev/null; done; true' % ','.join(str(v) for v in fixed), shell=True, timeout=30)
-                        res = dict(res or {})
-                        res['cleaned'] = {'ok': True, 'ids': fixed}
-                    except Exception as ex:
-                        res = dict(res or {})
-                        res['cleaned'] = {'ok': False, 'error': str(ex)[:150]}
-                    return self._send_json(res)
+                    return self._send_json(call_old_gui('/api/router/pppoe', method='DELETE', data={'ids': ids}))
                 if action == 'reset':
-                    rd = dict(payload.get('data') or {})
-                    if 'id' in rd:
-                        try:
-                            rd['id'] = int(str(rd['id']).strip())
-                        except Exception:
-                            pass
-                    if 'ids' in rd and isinstance(rd['ids'], list):
-                        fixed = []
-                        for x in rd['ids']:
-                            try:
-                                fixed.append(int(str(x).strip()))
-                            except Exception:
-                                fixed.append(x)
-                        rd['ids'] = fixed
-                    return self._send_json(call_old_gui('/api/router/pppoe/reset', method='PUT', data=rd))
+                    return self._send_json(call_old_gui('/api/router/pppoe/reset', method='PUT', data=payload.get('data') or {}))
                 if action == 'rotate':
-                    rd = dict(payload.get('data') or {})
-                    if 'id' in rd:
-                        try:
-                            rd['id'] = int(str(rd['id']).strip())
-                        except Exception:
-                            pass
-                    if 'ids' in rd and isinstance(rd['ids'], list):
-                        fixed = []
-                        for x in rd['ids']:
-                            try:
-                                fixed.append(int(str(x).strip()))
-                            except Exception:
-                                fixed.append(x)
-                        rd['ids'] = fixed
-                    res = call_old_gui('/api/router/pppoe/rotate', method='PUT', data=rd)
-                    # Firmware goc chi doi MAC macvlan, khong quay so lai -> tu ifdown/ifup de IP moi ve.
-                    # Glider cu bam interface da down (CONNECT OK nhung data EOF) -> restart glider sau ifup.
-                    try:
-                        sid = rd.get('id', '')
-                        if sid != '' and str(sid).strip().isdigit():
-                            iface = 'if_%03d' % int(str(sid).strip())
-                            subprocess.run(['ifdown', iface], timeout=15)
-                            time.sleep(2)
-                            subprocess.run(['ifup', iface], timeout=30)
-                            time.sleep(12)
-                            # Restart glider cua interface nay de forward qua IP WAN moi.
-                            # Kill PID dang giu port proxy cua phien (cmdline glider khong chua ten iface).
-                            try:
-                                pt_kill = 15000 + int(str(sid).strip()) - 1
-                                subprocess.run('for p in $(netstat -tlnp 2>/dev/null | grep ":%d " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done' % pt_kill, shell=True, timeout=10)
-                            except Exception:
-                                pass
-                            time.sleep(3)
-                            try:
-                                lr2 = call_old_gui('/api/router/pppoe')
-                                raw2 = (lr2 or {}).get('data')
-                                if isinstance(raw2, dict):
-                                    raw2 = raw2.get('data', raw2)
-                                lst2 = raw2 if isinstance(raw2, list) else (raw2.get('sessions') or [] if isinstance(raw2, dict) else [])
-                                for s in (lst2 or []):
-                                    try:
-                                        if int(s.get('id')) == int(str(sid).strip()):
-                                            import urllib.parse as _up2
-                                            for key in ('socks5', 'http'):
-                                                px = s.get(key) or ''
-                                                if px:
-                                                    break
-                                            u2 = _up2.urlparse(px if '://' in px else 'socks5://' + px)
-                                            su = _up2.unquote(u2.username or '')
-                                            sp = _up2.unquote(u2.password or '')
-                                            pt = u2.port or (15000 + int(str(sid).strip()) - 1)
-                                            scheme = 'http' if (s.get('http') or '') == px else 'socks5'
-                                            spx = '%s://%s:%s@0.0.0.0:%d' % (scheme, su, sp, pt)
-                                            hpx = s.get('http') or ''
-                                            subprocess.Popen(['/etc/genrouter/core/run_glider.sh', spx if scheme == 'socks5' else (s.get('socks5') or spx), hpx or spx, 'pppoe-%s' % iface], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                                            break
-                                    except Exception:
-                                        continue
-                            except Exception:
-                                pass
-                            res = dict(res or {})
-                            res['redial'] = {'ok': True, 'iface': iface, 'glider_restarted': True}
-                    except Exception as ex:
-                        res = dict(res or {})
-                        res['redial'] = {'ok': False, 'error': str(ex)[:150]}
-                    return self._send_json(res)
+                    return self._send_json(call_old_gui('/api/router/pppoe/rotate', method='PUT', data=payload.get('data') or {}))
                 if action == 'proxy':
-                    pd = dict(payload.get('data') or {})
-                    if 'id' in pd:
-                        try:
-                            pd['id'] = int(str(pd['id']).strip())
-                        except Exception:
-                            pass
-                    return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=pd))
+                    return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
                 if action == 'enable':
-                    edata = payload.get('data') or {}
-                    want_on = bool(edata.get('enable'))
-                    if not want_on:
-                        pppoe_snapshot_save()
-                    res = call_old_gui('/api/router/enable_pppoe', method='POST', data=edata)
-                    if want_on:
-                        wan = pppoe_wan_to_dhcp()
-                        res = dict(res or {})
-                        res['wan'] = wan
-                    return self._send_json(res)
-                if action == 'snap-save':
-                    return self._send_json(pppoe_snapshot_save())
-                if action == 'snap-load':
-                    return self._send_json(pppoe_snapshot_load())
-                if action == 'snap-restore':
-                    snap = pppoe_snapshot_load()
-                    restored, errors = 0, []
-                    for s in (snap.get('sessions') or []):
-                        try:
-                            sd = {'device': s.get('device') or 'eth0', 'number': 1, 'username': s.get('username', ''), 'password': s.get('password', ''), 'proxy_username': s.get('proxy_username') or '', 'proxy_password': s.get('proxy_password') or '', 'duration': 0, 'rotate': False}
-                            if not sd['username'] or not sd['password']:
-                                continue
-                            call_old_gui('/api/router/pppoe', method='POST', data=sd)
-                            restored += 1
-                        except Exception as ex:
-                            errors.append(str(ex)[:120])
-                    return self._send_json({'ok': True, 'restored': restored, 'saved_at': snap.get('saved_at', ''), 'errors': errors})
-                if action == 'acc-list':
-                    return self._send_json({'ok': True, 'accounts': pppoe_accounts_load()})
-                if action == 'acc-save':
-                    u = str(payload.get('username', '')).strip()
-                    p = str(payload.get('password', '') or '')
-                    if not u or not p:
-                        return self._send_json({'ok': False, 'error': 'thieu user/pass'})
-                    accs = pppoe_accounts_load()
-                    ex = next((a for a in accs if isinstance(a, dict) and a.get('u') == u), None)
-                    nd = {'u': u, 'p': p, 'd': str(payload.get('device', '') or 'eth0'), 'v': str(payload.get('vlan', '') or '')}
-                    if ex:
-                        ex.update(nd)
-                    else:
-                        accs.append(nd)
-                    pppoe_accounts_save(accs)
-                    return self._send_json({'ok': True, 'accounts': accs})
-                if action == 'acc-del':
-                    u = str(payload.get('username', '')).strip()
-                    accs = [a for a in pppoe_accounts_load() if not (isinstance(a, dict) and a.get('u') == u)]
-                    pppoe_accounts_save(accs)
-                    return self._send_json({'ok': True, 'accounts': accs})
-                if action == 'exclude-list':
-                    return self._send_json({'ok': True, 'ranges': pppoe_exclude_ranges_load()})
-                if action == 'exclude-save':
-                    import ipaddress
-                    raw = payload.get('ranges') or []
-                    if isinstance(raw, str): raw = [x.strip() for x in raw.replace(',', '\n').splitlines() if x.strip()]
-                    clean = []
-                    for x in raw if isinstance(raw, list) else []:
-                        try: clean.append(str(ipaddress.ip_network(str(x).strip(), strict=False)))
-                        except Exception: pass
-                    clean = list(dict.fromkeys(clean))[:64]
-                    pppoe_exclude_ranges_save(clean)
-                    return self._send_json({'ok': True, 'ranges': clean})
-                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|proxy|enable|snap-save|snap-load|snap-restore|acc-list|acc-save|acc-del)'})
+                    return self._send_json(call_old_gui('/api/router/enable_pppoe', method='POST', data=payload.get('data') or {}))
+                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|proxy|enable)'})
             if path == '/api/vpn/action':
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()
@@ -5338,5 +4729,4 @@ if __name__ == '__main__':
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
-    threading.Thread(target=pppoe_runtime_loop, daemon=True).start()
     ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()
