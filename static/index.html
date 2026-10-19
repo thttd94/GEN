@@ -1647,7 +1647,7 @@
       versionCheckTimer = setInterval(() => refreshVersionInfo(true), 60000);
       await fetchSessionsList(false);
       let startSession = '1';
-      loadSession(startSession, true);
+      await loadSession(startSession, true);
       // Hidden sessions refresh nền, không chặn giao diện.
       fetchSessionsList(true).catch(()=>{});
     }
