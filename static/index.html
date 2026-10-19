@@ -1634,12 +1634,9 @@
 
     let BOOT_META = null;
     async function bootstrap() {
-      try {
-        const meta = await fetchJSON('/api/pm/meta');
-        BOOT_META = meta;
-        appTitlePrefix = meta.app_title_prefix || 'Genrouter';
-        if (meta.version) setVersionInfo(meta.version);
-      } catch {}
+      // Chi cho session list + session hien tai chan bootstrap. Meta/network/license
+      // la thong tin phu, timeout ngan va chay nen de khong treo GUI 60s.
+      fetchJSON('/api/pm/meta').then(meta => { BOOT_META=meta; appTitlePrefix=meta.app_title_prefix||'Genrouter'; if(meta.version)setVersionInfo(meta.version); renderAppTitle(); }).catch(()=>{});
       renderAppTitle();
       setConnectionBadge(false);
       setStatus('Đang mở ' + sessionNameOf(currentSession));
@@ -1649,13 +1646,10 @@
       if (versionCheckTimer) clearInterval(versionCheckTimer);
       versionCheckTimer = setInterval(() => refreshVersionInfo(true), 60000);
       await fetchSessionsList(false);
-      await fetchSessionsList(true);
       let startSession = '1';
-      try {
-        const act = String((BOOT_META && BOOT_META.active_session) || '').trim();
-        if (act && allSessions.includes(act)) startSession = act;
-      } catch {}
       loadSession(startSession, true);
+      // Hidden sessions refresh nền, không chặn giao diện.
+      fetchSessionsList(true).catch(()=>{});
     }
 
     bootstrap();
