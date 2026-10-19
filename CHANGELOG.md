@@ -1,3 +1,17 @@
+
+## Ver 2.62 (2026-10-19) - glider watchdog tu thuong + sua nhan phien ban
+
+- Glider treo forward: SOCKS greet/auth/CONNECT van tra OK, nhung TLS/HTTP bi EOF
+  => may gan PPPoE khong co mang trong khi ping interface van thong. WiFi/da phien
+  biet truoc do chi la ket qua cua viec nham mau thong tin (proxy "song").
+- pppoe_glider_forward_alive(): probe SOCKS xong bat tay TLS that su, khong chi
+  dung CONNECT. Gia tri tra ve la fact cua bang tay TLS.
+- pppoe_glider_watchdog_check(): quet cac phien dang up va co IPv4; phien nao glider
+  treo thi kill PID giu port va chay lai wrapper goc voi credential cua phien do.
+  Chi restart phien chac chan hong, khong ra soat toan bo glider.
+- Gan vao vong watchdog 60s hien co, chay moi 3 vong (~3 phut) de khong gay them tai.
+- Fix VERSION.txt ve dung Ver 2.62 (truoc do ghi lech Ver 2.52 sau khi khoi phuc tu
+  baseline) nen router khac pull ve se khong con hien sai nhan phien ban.
 # CHANGELOG
 
 ## Ver 2.52 (2026-10-05) - DHCP server LAN + don interface WG chet

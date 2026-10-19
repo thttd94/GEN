@@ -4179,6 +4179,140 @@ def wd_health_json():
     out['ok'] = not out['problems']
     return out
 
+def pppoe_glider_port(sid):
+    # Port proxy cua phien: 15000 + id - 1 (khớp run_glider.sh). ID lệch thì vẫn
+    # lấy theo danh sách vendor là chính, port này chỉ là fallback.
+    try:
+        return 15000 + int(sid) - 1
+    except Exception:
+        return 0
+
+def pppoe_session_credentials(sid):
+    # Lấy user/pass proxy của 1 phiên từ server gốc 9000.
+    try:
+        r = call_old_gui('/api/router/pppoe')
+        raw = (r or {}).get('data')
+        if isinstance(raw, dict):
+            raw = raw.get('data', raw)
+        for item in raw or []:
+            if int(item.get('id', -1)) == int(sid):
+                import urllib.parse as _u
+                su = sr = hp = ''
+                for k in ('socks5', 'socks', 'socks_url'):
+                    v = str(item.get(k) or '').strip()
+                    if v:
+                        su = v; break
+                for k in ('http', 'http_proxy', 'http_url'):
+                    v = str(item.get(k) or '').strip()
+                    if v:
+                        hp = v; break
+                if su:
+                    u = _u.urlparse(su if '://' in su else 'socks5://' + su)
+                    return (su, hp, _u.unquote(u.username or ''), _u.unquote(u.password or ''), int(u.port or 0))
+                return (su, hp, '', '', 0)
+    except Exception:
+        pass
+    return ('', '', '', '', 0)
+
+def pppoe_glider_forward_alive(sid, port=None):
+    # Probe SOCKS 5 rồi bắt tay TLS. Glider treo forward vẫn trả lời greet/auth/
+    # CONNECT OK, chỉ rách ở bước đọc data TLS. Chỉ SOCKS CONNECT không đủ để phát hiện.
+    try:
+        import socket, struct, ssl
+        port = port or pppoe_glider_port(sid)
+        if not port:
+            return True
+        su, _hp, user, pw, sport = pppoe_session_credentials(sid)
+        host = '127.0.0.1'
+        s = socket.create_connection((host, port), timeout=6)
+        try:
+            s.settimeout(9)
+            s.sendall(bytes([5, 2, 0, 2]))
+            g = s.recv(2)
+            if g != b'\x05\x02':
+                return True
+            ub, pb = (user or '').encode(), (pw or '').encode()
+            s.sendall(bytes([1, len(ub)]) + ub + bytes([len(pb)]) + pb)
+            a = s.recv(2)
+            if a != b'\x01\x00':
+                return True
+            s.sendall(bytes([5, 1, 0, 1]) + bytes([1, 1, 1, 1]) + struct.pack('>H', 443))
+            r = s.recv(10)
+            if r[1] != 0:
+                return True
+            ctx = ssl.create_default_context()
+            t = ctx.wrap_socket(s, server_hostname='one.one.one.one')
+            try:
+                t.settimeout(9)
+                t.sendall(b'GET / HTTP/1.0\r\nHost: one.one.one.one\r\n\r\n')
+                d = t.recv(32)
+                return bool(d)
+            finally:
+                try: t.close()
+                except Exception: pass
+        finally:
+            try: s.close()
+            except Exception: pass
+    except Exception:
+        # Không probe được thì coi như chưa chắc chết; chỉ restart khi chắc EOF/reset.
+        return True
+
+def pppoe_glider_restart(sid):
+    # Khởi động lại glider của phien: kill PID đang giữ port rồi chạy lại wrapper gốc.
+    try:
+        port = pppoe_glider_port(sid)
+        iface = 'if_%03d' % int(sid)
+        iface = 'pppoe-%s' % iface
+        subprocess.run(
+            'for p in $(netstat -tlnp 2>/dev/null | grep ":%d " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done; sleep 1' % port,
+            shell=True, timeout=10)
+        su, hp, user, pw, sport = pppoe_session_credentials(sid)
+        if su:
+            subprocess.Popen(['/etc/genrouter/core/run_glider.sh', su, hp or su, iface],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return {'ok': True, 'sid': sid, 'port': port}
+        return {'ok': False, 'sid': sid, 'error': 'no credentials'}
+    except Exception as e:
+        return {'ok': False, 'sid': sid, 'error': str(e)[:160]}
+
+def pppoe_glider_watchdog_check():
+    # Quét các phiên đang online; phiên nào glider treo forward thì khởi động lại.
+    # Chỉ restart phiên chắc chắn hỏng, không rà soát toàn bộ glider.
+    try:
+        dump = json.loads(subprocess.check_output(
+            ['ubus', 'call', 'network.interface', 'dump'], text=True, timeout=5))
+        live = []
+        for x in dump.get('interface', []):
+            n = str(x.get('interface') or '')
+            if not n.startswith('if_') or n.endswith('_6'):
+                continue
+            if not x.get('up'):
+                continue
+            ips = x.get('ipv4-address') or []
+            if not ips:
+                continue
+            try:
+                live.append(int(n.split('_', 1)[1]))
+            except Exception:
+                pass
+        fixed = []
+        for sid in live:
+            if not pppoe_glider_forward_alive(sid):
+                r = pppoe_glider_restart(sid)
+                r['reason'] = 'forward eof/reset'
+                fixed.append(r)
+                _pppoe_wd_log('GLIDER-FIX phien %d: %s' % (sid, r))
+        return fixed
+    except Exception as e:
+        _pppoe_wd_log('glider watchdog loi: %s' % e)
+        return []
+
+def _pppoe_wd_log(msg):
+    try:
+        _wd_log('[Ver 2.62] ' + str(msg))
+    except Exception:
+        pass
+
 def gencore_watchdog_loop():
     # [Ver 2.48] Doc nhan tu VERSION.txt thay vi hardcode: ban 2.47 in "WATCHDOG start
     # (Ver 2.47...)" ngay ca khi may da len 2.48, lam log sai va gay chan doan lech.
@@ -4192,6 +4326,7 @@ def gencore_watchdog_loop():
         wd_boot_recover()
     except Exception:
         pass
+    _gl_tick = 0
     while True:
         try:
             time.sleep(60)
@@ -4219,6 +4354,16 @@ def gencore_watchdog_loop():
             if not pid:
                 if not Path('/usr/bin/gencore').exists():
                     continue
+
+            # [Ver 2.62] Glider watchdog: phát hiện glider treo forward
+            # (SOCKS CONNECT OK nhưng TLS/HTTP EOF) rồi tự khởi động lại đúng phiên.
+            _gl_tick += 1
+            if _gl_tick >= 3:
+                _gl_tick = 0
+                try:
+                    pppoe_glider_watchdog_check()
+                except Exception as e:
+                    _pppoe_wd_log('glider check error: %s' % e)
                 if now - WD_STATE.get('last_start', 0) >= 180:
                     WD_STATE['last_start'] = now
                     WD_STATE['restarts'] = WD_STATE.get('restarts', 0) + 1

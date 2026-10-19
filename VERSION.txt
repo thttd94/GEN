@@ -1,1 +1,1 @@
-Ver 2.52 (DHCP server LAN tu dong + don interface WG chet + disk_expand + bulk VPN + cach ly L2; config rieng tung router giu nguyen)
+Ver 2.62 (PPPoE da phien + VLAN + giu connect khi xoay IP + glider watchdog tu thuong; config rieng tung router giu nguyen)
