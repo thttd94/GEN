@@ -86,6 +86,90 @@ def pppoe_accounts_save(items):
 
 PPPOE_IP_LOG = Path('/data/pppoe/ip_log.json')
 
+_SYSINFO_PREV = {'total': 0, 'idle': 0, 'ts': 0.0}
+
+def sysinfo_json():
+    # Thong so may thoi gian thuc: nhiet do CPU, %CPU, RAM, disk, uptime, load.
+    # Doc truc tiep /proc + /sys (khong phu thuoc lenh ngoai, chay duoc BusyBox).
+    out = {'ok': True, 'ts': int(time.time())}
+    # 1) Nhiet do: lay max cac thermal_zone (mC -> C).
+    try:
+        temps = []
+        for z in sorted(Path('/sys/class/thermal').glob('thermal_zone*')):
+            try:
+                v = int((z / 'temp').read_text().strip())
+                if 0 < v < 1000000:
+                    temps.append(v / 1000.0)
+            except Exception:
+                continue
+        out['temp_c'] = round(max(temps), 1) if temps else None
+    except Exception:
+        out['temp_c'] = None
+    # 2) %CPU: delta /proc/stat tu lan goi truoc (lan dau tra None).
+    try:
+        p = Path('/proc/stat').read_text().split()
+        vals = [int(x) for x in p[1:9] if str(x).lstrip('-').isdigit()]
+        total = sum(vals)
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)
+        prev = _SYSINFO_PREV
+        if prev['ts'] and total > prev['total']:
+            dt = total - prev['total']
+            di = idle - prev['idle']
+            out['cpu_pct'] = round(max(0.0, min(100.0, (1 - di / dt) * 100))) if dt > 0 else 0.0
+        else:
+            out['cpu_pct'] = None
+        _SYSINFO_PREV.update({'total': total, 'idle': idle, 'ts': time.time()})
+        try:
+            out['cpu_count'] = int(subprocess.check_output(
+                "grep -c '^processor' /proc/cpuinfo", shell=True, text=True, timeout=3).strip() or 1)
+        except Exception:
+            out['cpu_count'] = 1
+    except Exception:
+        out['cpu_pct'] = None
+        out['cpu_count'] = 1
+    # 3) RAM.
+    try:
+        mem = {}
+        for line in Path('/proc/meminfo').read_text().splitlines():
+            k, _, v = line.partition(':')
+            try:
+                mem[k.strip()] = int(v.strip().split()[0])
+            except Exception:
+                pass
+        total_m = mem.get('MemTotal', 0)
+        avail_m = mem.get('MemAvailable', mem.get('MemFree', 0))
+        used_m = max(0, total_m - avail_m)
+        out['mem'] = {'total_mb': round(total_m / 1024), 'used_mb': round(used_m / 1024),
+                      'pct': round(used_m * 100.0 / total_m, 1) if total_m else 0}
+    except Exception:
+        out['mem'] = {}
+    # 4) Disk goc + /data.
+    try:
+        disks = []
+        for mp in ('/', '/data'):
+            try:
+                st = os.statvfs(mp)
+                t = st.f_blocks * st.f_frsize
+                f = st.f_bavail * st.f_frsize
+                u = t - f
+                disks.append({'mount': mp, 'total_gb': round(t / 1073741824, 1),
+                               'used_gb': round(u / 1073741824, 1),
+                              'pct': round(u * 100.0 / t, 1) if t else 0})
+            except Exception:
+                continue
+        out['disks'] = disks
+    except Exception:
+        out['disks'] = []
+    # 5) Uptime + load.
+    try:
+        out['uptime_s'] = int(float(Path('/proc/uptime').read_text().split()[0]))
+    except Exception:
+        out['uptime_s'] = 0
+    try:
+        out['load'] = [float(x) for x in Path('/proc/loadavg').read_text().split()[:3]]
+    except Exception:
+        out['load'] = []
+    return out
 def pppoe_runtime_enrich(raw):
     try:
         data=raw.get('data') if isinstance(raw,dict) else raw
@@ -4592,6 +4676,8 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, ValueError):
                 pass
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
+        if path == '/api/pm/sysinfo':
+            return self._send_json(sysinfo_json())
         if path == '/api/pm/version-check':
             # Endpoint rieng cho nut Kiem tra phien ban (chi goi khi nguoi dung bam).
             return self._send_json(get_repo_version_info())
