@@ -4809,24 +4809,45 @@ class Handler(BaseHTTPRequestHandler):
                     rd=dict(rd)
                     try: sid=int(str(rd.get('id')).strip())
                     except Exception: return self._send_json({'ok':False,'error':'id khong hop le'})
-                    res=call_old_gui('/api/router/pppoe/rotate',method='PUT',data=rd)
-                    result=dict(res or {})
-                    result['rotate_id']=sid
                     iface='if_%03d'%sid
+                    result={'ok':True,'rotate_id':sid,'redial':{'ok':False,'iface':iface}}
+                    # 1) goi rotate cua server goc (doi MAC macvlan)
+                    try:
+                        res=call_old_gui('/api/router/pppoe/rotate',method='PUT',data=rd)
+                        result.update(dict(res or {}))
+                    except Exception as e:
+                        result['rotate_err']=str(e)[:160]
+                    # 2) quay lai phien nhanh: ifdown/ifup, cho IP moi
                     try:
                         subprocess.run(['ifdown',iface],timeout=20,capture_output=True)
-                        time.sleep(2)
-                        subprocess.run(['ifup',iface],timeout=45,capture_output=True)
-                        for _ in range(12):
-                            time.sleep(2)
-                            st=json.loads(subprocess.check_output(['ifstatus',iface],text=True,timeout=5))
-                            ips=st.get('ipv4-address') or []
+                        time.sleep(1)
+                        subprocess.run(['ifup',iface],timeout=20,capture_output=True)
+                        # ISP mat ~18-20s sau redial moi cap IP moi; cho toi da 135s.
+                        # Truoc day chi cho 24s nen thuong tra ve IP rong du IP da ve.
+                        ips=[]
+                        for _ in range(45):
+                            time.sleep(3)
+                            try:
+                                st=json.loads(subprocess.check_output(['ifstatus',iface],text=True,timeout=5))
+                                ips=st.get('ipv4-address') or []
+                            except Exception:
+                                ips=[]
                             if ips: break
-                        result['redial']={'ok':True,'iface':iface}
                         result['wan_ip']=ips[0].get('address','') if ips else ''
                         result['up']=bool(ips)
+                        result['redial']={'ok':True,'iface':iface}
                     except Exception as e:
                         result['redial']={'ok':False,'iface':iface,'error':str(e)[:160]}
+                    # 3) ghi lai moc thoi gian doi IP vao ip_log.json
+                    if result.get('wan_ip'):
+                        try:
+                            PPPOE_IP_LOG.parent.mkdir(parents=True,exist_ok=True)
+                            d={}
+                            if PPPOE_IP_LOG.exists():
+                                d=json.loads(PPPOE_IP_LOG.read_text(encoding='utf-8')) or {}
+                            d[str(sid)]={'ip':result['wan_ip'],'ts':time.time()}
+                            PPPOE_IP_LOG.write_text(json.dumps(d,ensure_ascii=False),encoding='utf-8')
+                        except Exception: pass
                     return self._send_json(result)
                 if action == 'proxy':
                     return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))

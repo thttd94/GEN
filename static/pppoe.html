@@ -194,8 +194,7 @@ async function refresh() {
       + `<td>${st}</td>`
       + `<td class="muted" style="font-size:11px;white-space:nowrap">${esc(tm || '—')}</td>`
       + `<td class="muted" style="font-size:11px">${esc(proxy)}</td>`
-      + `<td><button onclick="fillId('${esc(id)}');resetOne()">🔁 Quay số</button>`
-      + `<button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
+      + `<td><button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
       + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;
   }).join('');
 }

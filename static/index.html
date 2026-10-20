@@ -838,7 +838,7 @@
             ? `<td><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="max-width:200px;">
                  <option value="" ${(!String(row.proxy || '').startsWith('pppoe:')) ? 'selected' : ''}>— chọn PPPoE —</option>
                  ${pppoeOptionsHtml(row.proxy)}
-               </select> <a class="muted" style="cursor:pointer;font-size:11px" href="/pppoe" target="_blank" title="Mở quản lý PPPoE">⚙</a></td>`
+               </select> <button class="btn small" onclick="suggestPPPoE(this)" title="Tự động chọn phiên PPPoE chưa được gán">💡 Đề xuất</button></td>`
             : `<td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>`}
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
@@ -881,6 +881,72 @@
         if (typeof currentRows !== 'undefined' && typeof render === 'function') render();
       } catch(e){}
     }
+    function pppoeUsedIds() {
+      // Quet TAT CA cau hinh: phien PPPoE nao da co may nao gan thi bo qua,
+      // tai truoc day chi quet dong dang mo -> goi y trung voi may o cau hinh khac.
+      const used = new Set();
+      const scan = (rows) => (rows || []).forEach(r => {
+        const t = String(r.proxyType || '').toLowerCase();
+        const pp = String(r.proxy || '');
+        if (t === 'pppoe' || pp.startsWith('pppoe:')) {
+          const m = pp.startsWith('pppoe:') ? pp.slice(6).trim() : '';
+          if (m) used.add(m);
+        }
+      });
+      scan(currentRows);
+      (allSessions || []).forEach(sid => {
+        if (String(sid) === String(currentSession)) return;
+        const c = sessionCache[sid];
+        if (c && c.rows) { scan(c.rows); return; }
+        try { fetchJSON('/api/pm/sessions/' + sid).then(d => { if (d && d.rows) { if (!sessionCache[sid]) sessionCache[sid] = {}; sessionCache[sid].rows = d.rows; } }).catch(() => {}); } catch (e) {}
+      });
+      return used;
+    }
+
+
+
+    function suggestPPPoE(btn) {
+      // Bam Dé xuat: lay 1 phien PPPoE chua may nao gan -> nhap vao proxy cua dong nay.
+      try {
+        const td = btn.closest('td');
+        const sel = td.querySelector('select[data-field="proxy"]');
+        const ip = sel ? sel.dataset.ip : '';
+        if (!sel) { setStatus('Khong tim thay o chon PPPoE'); return; }
+
+        const used = pppoeUsedIds();
+        // Bo qua phien cua chinh dong nay de khi bam lai van tim duoc phien tuong tu.
+        const mine = String(sel.value || '').startsWith('pppoe:') ? sel.value.slice(6) : '';
+        if (mine) used.delete(mine);
+
+        const free = (PPPOE_SESSIONS || []).map(x => String(x.id ?? x.wan_id ?? ''))
+          .filter(id => id && !used.has(id));
+
+        if (!free.length) {
+          setStatus('Khong con phien PPPoE nao trong — tao them phien o trang /pppoe hoac go bot may da gan.');
+          return;
+        }
+        const pick = free[0];
+        // Nap day lua chon neu chua co (dropdown dang chi giu 1 option da chon).
+        if (sel.dataset.filled !== '1') {
+          const cur = String(sel.value || '');
+          const opts = PPPOE_SESSIONS.map(x => {
+            const id2 = String(x.id ?? x.wan_id ?? '');
+            const ip2 = x.ip || x.wan_ip || '';
+            const up2 = (x.up === true || x.status === 'up' || x.online === true);
+            const lb = 'PPPoE #' + id2 + (ip2 ? ' (' + ip2 + ')' : (up2 ? '' : ' (down)'));
+            return '<option value="pppoe:' + esc(id2) + '"' + (('pppoe:' + id2) === cur ? ' selected' : '') + '>' + esc(lb) + '</option>';
+          }).join('');
+          sel.innerHTML = '<option value="">— chon PPPoE —</option>' + opts;
+          sel.dataset.filled = '1';
+        }
+        sel.value = 'pppoe:' + pick;
+        sel.dispatchEvent(new Event('change', {bubbles: true}));
+        setStatus('Da de xuat phien PPPoE #' + pick + ' cho ' + (ip || 'may'));
+      } catch (e) {
+        setStatus('Loi de xuat PPPoE: ' + e.message);
+      }
+    }
+
     function pppoeOptionsHtml(cur) {
       return PPPOE_SESSIONS.map(s => {
         const id = s.id ?? s.wan_id ?? '';
@@ -1340,25 +1406,7 @@
       }
     }
 
-    function pppoeUsedIds() {
-      // Cac phien PPPoE da duoc may khac gan (tren moi cau hinh) de khong bi trung.
-      const used = new Set();
-      (allSessions || []).forEach(sid => {
-        try {
-          let rows = (sessionCache[sid] || {}).rows;
-          if (!rows) return;
-          rows.forEach(r => {
-            const t = String(r.proxyType || '').toLowerCase();
-            const p = String(r.proxy || '');
-            if (t === 'pppoe' || p.startsWith('pppoe:')) {
-              const m = p.startsWith('pppoe:') ? p.slice(6) : '';
-              if (m) used.add(m);
-            }
-          });
-        } catch (e) {}
-      });
-      return used;
-    }
+    
 
     function applyColumnProxyType() {
       const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
@@ -1420,11 +1468,20 @@
     }
 
     function clearAllProxy() {
+      // [Ver 2.65] XÓA TẤT CẢ proxy đang chọn, mọi loại: pppoe / vpn / socks5 / http.
+      // Truoc day chỉ set r.proxy='' nhung field phụ (pppoe_account, r.proxyType) còn
+      // -> dropdown vẫn hiện giá trị cũ sau khi render lại.
       const pend = [];
-      getVisibleRows().forEach(r => {
+      const selChk = document.getElementById('clearOnlySelected');
+      const onlySel = selChk ? selChk.checked : false;
+      let targets = onlySel ? getSelectedRowsSafe() : getVisibleRows();
+      if (onlySel && !targets.length) targets = getVisibleRows();
+      targets.forEach(r => {
         const pAcc = effVpnAccount(r);
         r.proxy = '';
         r.proxyType = 'socks5';
+        try { delete r.pppoe_account; } catch (e) {}
+        try { delete r.vpn_account; } catch (e) {}
         pend.push({ r, prevAcc: pAcc });
       });
       applyVpnChangeBulk(pend);
@@ -1434,7 +1491,16 @@
       if (bulk) bulk.value = 'socks5';
       const col = document.getElementById('columnProxyType');
       if (col) col.value = 'socks5';
-      setStatus('Đã xóa toàn bộ proxy của ' + sessionNameOf(currentSession));
+      setStatus('Đã xóa proxy của ' + targets.length + ' máy cua ' + sessionNameOf(currentSession));
+    }
+
+    function getSelectedRowsSafe() {
+      const sels = document.querySelectorAll('.row-check:checked');
+      if (sels && sels.length) {
+        const ips = Array.from(sels).map(x => (x.dataset || {}).ip).filter(Boolean);
+        return (currentRows || []).filter(r => ips.includes(r.ip));
+      }
+      return [];
     }
 
     function clearAllNotes() {
