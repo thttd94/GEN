@@ -1409,42 +1409,29 @@
     
 
     function applyColumnProxyType() {
+      // [Ver 2.66-fix] Chọn PPPoE = chỉ đổi Proxy Type, để Proxy TRỐNG.
+      // Không tự gán phiên nữa (tránh trùng và tránh gán nhầm). Người dùng
+      // tự bấm nút "Đề xuất" hoặc tự chọn phiên cho từng máy.
       const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
       const pend = [];
       const rows = getVisibleRows();
-      let freeQueue = [];
-      if (proxyType === 'pppoe') {
-        // PPPoE ALL: moi may 1 phien, KHONG trung voi phien may khac dang giu.
-        const used = pppoeUsedIds();
-        freeQueue = (PPPOE_SESSIONS || []).map(s => s.id ?? s.wan_id)
-          .map(String).filter(id => !used.has(id));
-        if (!freeQueue.length) {
-          setStatus('Khong con phien PPPoE nao trong — hay xoa bot may da gan hoac tao them phien o /pppoe.');
-          const _el = document.getElementById('columnProxyType');
-          if (_el) _el.value = _el.value || 'socks5';
-          return;
-        }
-      }
-      rows.forEach((r, i) => {
+      rows.forEach(r => {
         const pAcc = effVpnAccount(r);
         r.proxyType = proxyType;
-        if (proxyType !== 'vpn' && String(r.proxy || '').startsWith('vpn:')) r.proxy = '';
-        if (proxyType === 'pppoe') {
-          r.proxy = freeQueue[i] !== undefined ? ('pppoe:' + freeQueue[i]) : (r.proxy || '');
-        }
+        // Đổi loại thì bỏ giá trị proxy cũ để tránh lệch loại (vd đang socks:..:..  mà chuyển sang pppoe)
+        if (String(r.proxy || '').startsWith('vpn:') && proxyType !== 'vpn') r.proxy = '';
+        if (String(r.proxy || '').startsWith('pppoe:') && proxyType !== 'pppoe') r.proxy = '';
         pend.push({ r, prevAcc: pAcc });
       });
-      applyVpnChangeBulk(pend);
+      if (pend.length) applyVpnChangeBulk(pend);
       persistDraft(currentSession);
       render();
       const el = document.getElementById('columnProxyType');
       if (el) el.value = proxyType;
       if (proxyType === 'pppoe') {
-        const gan = Math.min(rows.length, freeQueue.length);
-        setStatus('Da gan ' + gan + '/' + rows.length + ' may vao phien PPPoE chua ai dung (tru so '
-          + Math.max(0, rows.length - freeQueue.length) + ' may khong du phien).');
+        setStatus('Đã đặt ' + pend.length + ' máy sang PPPoE. Proxy để trống — bấm "Đề xuất" hoặc chọn phiên cho từng máy.');
       } else {
-        setStatus('Da doi Proxy Type cho toan bo cot dang hien thi cua ' + sessionNameOf(currentSession));
+        setStatus('Đã đổi Proxy Type cho ' + pend.length + ' máy.');
       }
     }
 
@@ -1467,31 +1454,53 @@
       setStatus('Đã gán 1 proxy cho toàn bộ ' + sessionNameOf(currentSession));
     }
 
-    function clearAllProxy() {
-      // [Ver 2.65] XÓA TẤT CẢ proxy đang chọn, mọi loại: pppoe / vpn / socks5 / http.
-      // Truoc day chỉ set r.proxy='' nhung field phụ (pppoe_account, r.proxyType) còn
-      // -> dropdown vẫn hiện giá trị cũ sau khi render lại.
-      const pend = [];
+    async function clearAllProxy() {
+      // [Ver 2.66] XÓA SẠCH proxy mọi loại (pppoe/vpn/socks5/http).
+      // NGUYÊN NHÂN CŨ: (a) set proxyType='socks5' nên backend hieu la gan socks5
+      // rỗng chứ không xóa; (b) applyVpnChangeBulk chỉ lo VPN nên proxy thường
+      // không được gửi đi -> F5 hoặc render lại thì PPPoE hiện lại.
       const selChk = document.getElementById('clearOnlySelected');
       const onlySel = selChk ? selChk.checked : false;
       let targets = onlySel ? getSelectedRowsSafe() : getVisibleRows();
       if (onlySel && !targets.length) targets = getVisibleRows();
+      if (!targets.length) { setStatus('Khong co may nao de xoa proxy'); return; }
+
       targets.forEach(r => {
         const pAcc = effVpnAccount(r);
+        // [Ver 2.66-fix] CHỈ xóa giá trị proxy. KHÔNG ép proxyType ve socks5 nua
+        // vi user dang dung PPPoE/VPN; ép type lam mat thông tin dang chọn.
         r.proxy = '';
-        r.proxyType = 'socks5';
         try { delete r.pppoe_account; } catch (e) {}
         try { delete r.vpn_account; } catch (e) {}
-        pend.push({ r, prevAcc: pAcc });
+        if (pAcc) r._prevVpnAcc = pAcc;
       });
-      applyVpnChangeBulk(pend);
+
       persistDraft(currentSession);
+      // Lưu + apply riêng cho các máy này để backend ghi 'block'
+      try {
+        await applyRowsToBackend(targets);
+      } catch (e) {
+        setStatus('Lỗi xóa proxy: ' + e.message);
+        return;
+      }
       render();
-      const bulk = document.getElementById('bulkProxyType');
-      if (bulk) bulk.value = 'socks5';
-      const col = document.getElementById('columnProxyType');
-      if (col) col.value = 'socks5';
-      setStatus('Đã xóa proxy của ' + targets.length + ' máy cua ' + sessionNameOf(currentSession));
+      setStatus('Đã xóa proxy của ' + targets.length + ' máy');
+    }
+
+    // Lưu các dòng vừa clear vào preset và apply ra gencore.
+    async function applyRowsToBackend(rows) {
+      const r = await fetchJSON('/api/pm/sessions/' + currentSession, {
+        method: 'POST',
+        body: JSON.stringify({ rows: currentRows, name: sessionNameOf(currentSession) })
+      });
+      if (!r || r.ok === false) throw new Error((r && r.error) || 'luu cau hinh that bai');
+      // Apply để gencore đọc lại config -> outbound 'block'
+      const a = await fetchJSON('/api/pm/apply/' + currentSession, {
+        method: 'POST',
+        body: JSON.stringify({ rows: currentRows })
+      });
+      if (!a || a.ok === false) throw new Error((a && a.error) || 'apply that bai');
+      return a;
     }
 
     function getSelectedRowsSafe() {

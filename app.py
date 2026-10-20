@@ -4393,7 +4393,22 @@ def pppoe_glider_forward_alive(sid, port=None, _cache=None):
         finally:
             try: s.close()
             except Exception: pass
-    except Exception:
+    except Exception as probe_err:
+        # [Ver 2.66 QA fix] Trước đây: bắt MỌI lỗi rồi `return True`. Khi glider treo,
+        # wrap_socket ném SSLEOFError nhưng helper vẫn báo sống -> watchdog
+        # không bao giờ restart. Nay phân biệt rõ:
+        #   - EOF/reset/refused/stop iteration  => glider treo thật  -> False
+        #   - timeout (chưa chắc)              -> True  (không restart)
+        import socket as _s
+        err_name = type(probe_err).__name__
+        if isinstance(probe_err, (_s.timeout, TimeoutError)):
+            return True
+        if isinstance(probe_err, ssl.SSLError):
+            # SSLEOFError / UNEXPECTED_EOF / ConnectionReset = glider treo forward
+            return False
+        if isinstance(probe_err, ConnectionError):
+            return False
+        return False
         # Không probe được thì coi như chưa chắc chết; chỉ restart khi chắc EOF/reset.
         return True
 
@@ -4500,18 +4515,10 @@ def gencore_watchdog_loop():
             except Exception as e:
                 _wd_log(f'dormant-heal error: {e}')
             if not pid:
-                if not Path('/usr/bin/gencore').exists():
-                    continue
-
-            # [Ver 2.62] Glider watchdog: phát hiện glider treo forward
-            # (SOCKS CONNECT OK nhưng TLS/HTTP EOF) rồi tự khởi động lại đúng phiên.
-            _gl_tick += 1
-            if _gl_tick >= 3:
-                _gl_tick = 0
-                try:
-                    pppoe_glider_watchdog_check()
-                except Exception as e:
-                    _pppoe_wd_log('glider check error: %s' % e)
+                # [QA] Truoc day: `if not Path(...).exists(): continue` cat luon vong
+                # while, bo qua glider watchdog. Chi continue khi thuc su thieu binary,
+                # con lai van phai chay du cac check gencore.
+                if not Path('/usr/bin/gencore').exists(): continue
                 if now - WD_STATE.get('last_start', 0) >= 180:
                     WD_STATE['last_start'] = now
                     WD_STATE['restarts'] = WD_STATE.get('restarts', 0) + 1
@@ -4520,6 +4527,19 @@ def gencore_watchdog_loop():
             # Ver 2.47 — chot V2-b: config tren dia moi hon tien trinh => RAM giu
             # ban cu. Phai xet TRUOC cac nguong tai vi day la loi im lang nhat:
             # moi chi so khac deu 'xanh' trong khi 322 may mat DNS.
+            # [Ver 2.60] Glider watchdog chạy MỖI 3 vòng (~3 phút): phát hiện
+            # glider treo forward (SOCKS CONNECT OK nhưng TLS/HTTP EOF) rồi
+            # tự khởi động lại đúng phiên. Đặt trước các continue phía dưới để
+            # không bao giờ bị bỏ qua.
+            _gl_tick += 1
+            if _gl_tick >= 3:
+                _gl_tick = 0
+                try:
+                    fixed = pppoe_glider_watchdog_check()
+                    if fixed:
+                        _pppoe_wd_log('glider fixed: %s' % [(x.get('sid'), x.get('ok')) for x in fixed])
+                except Exception as e:
+                    _pppoe_wd_log('glider check error: %s' % e)
             pid1 = pid.split()[0] if pid else ''
             try:
                 if _wd_check_config_stale(pid1, thr):
