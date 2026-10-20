@@ -1,4 +1,34 @@
 
+## Ver 2.60 (2026-10-20) - PPPoE da phien hoan chinh + GUI khong block
+
+- Tao N phien: goi vendor N lan cung user/pass, khong doi credential.
+  Server goc chi giu 1 slot/user nen goi N lan moi ra du N ban ghi.
+- Delete phien: ifdown -> kill pppd (ipparam) -> kill glider giu port ->
+  xoa UCI/dev -> network reload 1 lan cuoi + quet vet pppd sot.
+  Truoc day pppd song sot giu session ISP, chiem slot (gioi han 32).
+- Rotate IP: ifdown/ifup dung phien, cho IP moi toi da 135s (ISP mat ~20s sau
+  redial moi cap IP). Truoc day chi cho 24s nen tra ve IP rong du IP da ve.
+  Ghi lai moc thoi gian doi IP vao /data/pppoe/ip_log.json.
+- Port switch: cong nao chon PPPoE thi tu nhả khoi br-lan; xoa het phien cua
+  cong do thi cong tu ve lai br-lan. Cong da la WAN thi khong dong gi them
+  (truoc day moi lan tao lai reload lam ifdown/ifup mat IP phien cu).
+  eth0 khong bi ep thanh WAN, van cho phep chon binh thuong.
+- VLAN tuy chon: de trong = chay thang ethX; nhap 35 -> tao ethX.35 roi quay
+  PPPoE tren do. Payload GUI truyen dung field vlan.
+- TK PPPoE luu HE THONG /data/pppoe/accounts.json (khong phu thuoc trinh duyet):
+  acc-list / acc-save / acc-del + dropdown dien nhanh user/pass/cong/VLAN.
+- GUI chinh: cot Port, bo nut Quay so o cot Hanh dong (giu o bang Doi proxy),
+  cot Thoi gian ghi moc doi IP, nut De xuat (chon phien PPPoE chua may nao
+  gan, quet TAT CA cau hinh tranh trung), Proxy Type them PPPOE ALL.
+  Clear proxy xoa duoc ca pppoe/vpn/socks5/http kem meta.
+- GUI khong block: bootstrap khong cho meta/hidden-session; endpoint
+  router-network chi doc route local ( WAN down truoc day tre ~26s x 2 lan);
+  meta khong goi GitHub/git (truoc day tre ~10s); backlog 128 (mac dinh 5)
+  chong 'Failed to fetch' khi nhieu request dong thoi.
+- Phan trang devices 50 dong/render (213 dong x 42 option = ~7.4k node moi
+  render truoc day).
+- Widget thong so may goc phai 3 trang: nhiet do, %CPU, RAM, disk, uptime.
+
 ## Ver 2.62 (2026-10-19) - glider watchdog tu thuong + sua nhan phien ban
 
 - Glider treo forward: SOCKS greet/auth/CONNECT van tra OK, nhung TLS/HTTP bi EOF
