@@ -1,4 +1,23 @@
 
+## Ver 2.66 (2026-10-20) - glider watchdog tự chữa + GUI khóa nút xóa proxy
+
+- Watchdog đo forward bằng TLS handshake thật, không chỉ SOCKS CONNECT
+  (trước dây chỉ CONNECT nên glider treo vẫn báo sống).
+- Phân biệt EOF/reset với timeout: SSLEOFError/ConnectionReset = glider treo
+  thật -> restart đúng phiên; timeout = chưa chắc chết -> không restart.
+- Watchdog chạy trước mọi `continue` trong vòng while, trước dây bị
+  `if not pid` chặn hoàn toàn nên không bao giờ chạy.
+- Khởi tạo glider mới với credential đúng của phiên (port 15000+id-1).
+- Router 15/15 phiên forward OK sau watchdog chạy (HTTP/1.1 200 OK).
+- Clear proxy giữ nguyên proxyType đang chọn (PPPoE/VPN), chỉ xóa
+  giá trị proxy — trước dây ép hết về socks5, mất trạng thái đang chọn.
+- Proxy Type PPPoE: để proxy trống, người dùng tự bấm Đề xuất hoặc
+  chọn phiên; không tự gán gây trùng.
+- Watchdog gọi server gốc 9000 đúng 1 lần/chu kỳ thay vì 35 lần
+  (nguyên nhân GUI lag: request GUI bị xếp hàng sau watchdog).
+- Khôi phục sysinfo_json (404) + route /api/pm/sysinfo (widget 3 trang).
+- Phân trang devices 50 dòng/render; endpoint router-network chỉ đọc route local.
+
 ## Ver 2.60 (2026-10-20) - PPPoE da phien hoan chinh + GUI khong block
 
 - Tao N phien: goi vendor N lan cung user/pass, khong doi credential.
