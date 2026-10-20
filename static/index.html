@@ -289,6 +289,7 @@
           </div>
                   </div>
         <div class="sub" id="countLabel" style="font-weight:800;">0 rows</div>
+        <div id="pager" style="display:flex;align-items:center;gap:2px;margin-left:10px"></div>
       </div>
 
       <div class="grid">
@@ -306,6 +307,7 @@
                   <select id="columnProxyType" onchange="applyColumnProxyType()" style="max-width:96px;">
                     <option value="socks5" selected>SOCKS5</option>
                     <option value="http">HTTP</option>
+                    <option value="pppoe">PPPOE</option>
                   </select>
                 </div>
               </th>
@@ -783,6 +785,21 @@
       setStatus(viewMode === 'configured' ? ('Đang xem ĐÃ CẤU HÌNH của ' + sessionNameOf(currentSession)) : ('Đang xem CHƯA CẤU HÌNH của ' + sessionNameOf(currentSession)));
     }
 
+    let currentPage = 1;
+    const PAGE_SIZE = 50;
+    function renderPager(total) {
+      const el = document.getElementById('pager');
+      if (!el) return;
+      const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      if (currentPage > pages) currentPage = pages;
+      if (pages <= 1) { el.innerHTML = ''; return; }
+      el.innerHTML = '<button class="btn small" ' + (currentPage <= 1 ? 'disabled' : '')
+        + ' onclick="currentPage--;render()">&#8249;</button>'
+        + "<span class='sub' style=\"margin:0 6px\">" + currentPage + ' / ' + pages + '</span>'
+        + '<button class="btn small" ' + (currentPage >= pages ? 'disabled' : '')
+        + ' onclick="currentPage++;render()">&#8250;</button>';
+    }
+
     function render() {
       renderSessionTabs();
       renderProxyMachineNote();
@@ -795,9 +812,11 @@
       const visibleRows = getVisibleRows();
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
       if (currentProjectTab !== 'proxy') return;
-      document.getElementById('rows').innerHTML = visibleRows.map((row, idx) => `
+      renderPager(visibleRows.length);
+      const pageRows = visibleRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+      document.getElementById('rows').innerHTML = pageRows.map((row, idx) => `
         <tr>
-          <td>${idx + 1}</td>
+          <td>${(currentPage - 1) * PAGE_SIZE + idx + 1}</td>
           <td class="mono">${esc(row.mac || '')}</td>
           <td class="mono">${esc(row.ip)}</td>
           <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
@@ -1321,13 +1340,50 @@
       }
     }
 
+    function pppoeUsedIds() {
+      // Cac phien PPPoE da duoc may khac gan (tren moi cau hinh) de khong bi trung.
+      const used = new Set();
+      (allSessions || []).forEach(sid => {
+        try {
+          let rows = (sessionCache[sid] || {}).rows;
+          if (!rows) return;
+          rows.forEach(r => {
+            const t = String(r.proxyType || '').toLowerCase();
+            const p = String(r.proxy || '');
+            if (t === 'pppoe' || p.startsWith('pppoe:')) {
+              const m = p.startsWith('pppoe:') ? p.slice(6) : '';
+              if (m) used.add(m);
+            }
+          });
+        } catch (e) {}
+      });
+      return used;
+    }
+
     function applyColumnProxyType() {
       const proxyType = String(document.getElementById('columnProxyType')?.value || 'socks5').trim().toLowerCase();
       const pend = [];
-      getVisibleRows().forEach(r => {
+      const rows = getVisibleRows();
+      let freeQueue = [];
+      if (proxyType === 'pppoe') {
+        // PPPoE ALL: moi may 1 phien, KHONG trung voi phien may khac dang giu.
+        const used = pppoeUsedIds();
+        freeQueue = (PPPOE_SESSIONS || []).map(s => s.id ?? s.wan_id)
+          .map(String).filter(id => !used.has(id));
+        if (!freeQueue.length) {
+          setStatus('Khong con phien PPPoE nao trong — hay xoa bot may da gan hoac tao them phien o /pppoe.');
+          const _el = document.getElementById('columnProxyType');
+          if (_el) _el.value = _el.value || 'socks5';
+          return;
+        }
+      }
+      rows.forEach((r, i) => {
         const pAcc = effVpnAccount(r);
         r.proxyType = proxyType;
         if (proxyType !== 'vpn' && String(r.proxy || '').startsWith('vpn:')) r.proxy = '';
+        if (proxyType === 'pppoe') {
+          r.proxy = freeQueue[i] !== undefined ? ('pppoe:' + freeQueue[i]) : (r.proxy || '');
+        }
         pend.push({ r, prevAcc: pAcc });
       });
       applyVpnChangeBulk(pend);
@@ -1335,7 +1391,13 @@
       render();
       const el = document.getElementById('columnProxyType');
       if (el) el.value = proxyType;
-      setStatus('Đã đổi Proxy Type cho toàn bộ cột đang hiển thị của ' + sessionNameOf(currentSession));
+      if (proxyType === 'pppoe') {
+        const gan = Math.min(rows.length, freeQueue.length);
+        setStatus('Da gan ' + gan + '/' + rows.length + ' may vao phien PPPoE chua ai dung (tru so '
+          + Math.max(0, rows.length - freeQueue.length) + ' may khong du phien).');
+      } else {
+        setStatus('Da doi Proxy Type cho toan bo cot dang hien thi cua ' + sessionNameOf(currentSession));
+      }
     }
 
     function assignAllProxy() {

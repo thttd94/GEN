@@ -84,6 +84,8 @@ def pppoe_accounts_save(items):
     PPPOE_ACCOUNTS_FILE.parent.mkdir(parents=True,exist_ok=True)
     PPPOE_ACCOUNTS_FILE.write_text(json.dumps(items,ensure_ascii=False,indent=1),encoding='utf-8')
 
+PPPOE_IP_LOG = Path('/data/pppoe/ip_log.json')
+
 def pppoe_runtime_enrich(raw):
     try:
         data=raw.get('data') if isinstance(raw,dict) else raw
@@ -91,6 +93,14 @@ def pppoe_runtime_enrich(raw):
         if not isinstance(sessions,list): return raw
         dump=json.loads(subprocess.check_output(['ubus','call','network.interface','dump'],text=True,timeout=5))
         rt={str(x.get('interface')):x for x in dump.get('interface',[]) if str(x.get('interface','')).startswith('if_')}
+        # Doc log IP cu: ghi lai moc thoi gian moi lan doi IP thanh cong.
+        iplog={}
+        try:
+            if PPPOE_IP_LOG.exists():
+                iplog=json.loads(PPPOE_IP_LOG.read_text(encoding='utf-8')) or {}
+        except Exception: pass
+        dirty=False
+        now=time.time()
         for x in sessions:
             try:
                 sid=int(x.get('id',x.get('wan_id',0)))
@@ -99,7 +109,24 @@ def pppoe_runtime_enrich(raw):
                 x['up']=bool(st.get('up')); x['online']=bool(st.get('up'))
                 x['status']='online' if st.get('up') else 'offline'
                 ips=st.get('ipv4-address') or []
-                if ips: x['ip']=ips[0].get('address','')
+                key=str(sid)
+                if ips:
+                    cur_ip=ips[0].get('address','')
+                    x['ip']=cur_ip
+                    old=iplog.get(key) or {}
+                    if old.get('ip') != cur_ip:
+                        # IP doi (quay so/xoay IP thanh cong) -> ghi moc thoi gian moi.
+                        iplog[key]={'ip':cur_ip,'ts':now}
+                        dirty=True
+                    x['last_changed']=time.strftime('%d/%m %H:%M:%S',time.localtime((iplog.get(key) or {}).get('ts',now)))
+                    x['ip_ts']=(iplog.get(key) or {}).get('ts',0)
+                else:
+                    x['last_changed']='—'
+            except Exception: pass
+        if dirty:
+            try:
+                PPPOE_IP_LOG.parent.mkdir(parents=True,exist_ok=True)
+                PPPOE_IP_LOG.write_text(json.dumps(iplog,ensure_ascii=False),encoding='utf-8')
             except Exception: pass
         return raw
     except Exception: return raw
@@ -2861,18 +2888,25 @@ def check_proxy_batch(items, session='1', max_workers=64):
     return results
 
 def pppoe_prepare_port(device):
+    # [Ver 2.64] Chi go port ra khoi bridge khi port DANG con trong bridge.
+    # Port da o ngoai bridge (tao phien lan 2, 3...) => return ngay, KHONG ghi uci
+    # va KHONG reload network. Truoc day moi lan goi lai reload lam ifdown/ifup
+    # toan bo phien dang chay => anh bi mat IP cua cac phien da xoay truoc do.
     base=(str(device or '').split('.',1)[0] or '').strip()
     if not re.match(r'^eth[0-9]+$',base): return {'ok':False,'error':('port PPPoE khong hop le: '+base)}
-    port_state={'ok':True,'port':base,'changed':False}
+    port_state={'ok':True,'port':base,'changed':False,'reloaded':False}
     try:
         cur=subprocess.check_output(['uci','-q','get','network.@device[0].ports'],text=True,timeout=5).strip()
         cur=[x for x in cur.split() if x]
+        if base not in cur:
+            port_state['reason']='port da la WAN, khong dong'
+            return port_state
         if base in cur:
             keep=[x for x in cur if x!=base]
             subprocess.run(['uci','-q','del','network.@device[0].ports'],check=True,timeout=5)
             for x in keep: subprocess.run(['uci','add_list','network.@device[0].ports='+x],check=True,timeout=5)
             subprocess.run(['uci','commit','network'],check=True,timeout=5)
-            port_state.update({'changed':True,'lan_ports':keep})
+            port_state.update({'changed':True,'lan_ports':keep,'reloaded':True})
     except Exception as e:
         port_state.update({'ok':False,'error':str(e)[:160]})
     return port_state
@@ -4502,34 +4536,35 @@ class Handler(BaseHTTPRequestHandler):
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                 return self._send_json({'session': session_id, 'name': get_session_display_name(session_id), 'source': str(SESSION_FILES[session_id]), 'rows': extract_rows(load_json(SESSION_FILES[session_id]), session=session_id)})
         if path == '/api/pm/router-network':
-            probes = [('https://api.ipify.org', 'wan_ip'), ('https://ifconfig.me/ip', 'wan_ip')]
-            errors = []
-            for url, field in probes:
-                try:
-                    probe = urllib.request.Request(url, headers={'User-Agent': 'pm-network-check'})
-                    with urllib.request.urlopen(probe, timeout=8) as resp:
-                        value = resp.read().decode('utf-8', 'replace').strip()
-                    if value:
-                        return self._send_json({'ok': True, 'connected': True, field: value, 'probe': url})
-                except Exception as e:
-                    errors.append(f'{url}: {e}')
+            # CHỐNG LAG GUI: WAN down => probe HTTPS timeout 8s x2 + ping 10s = 26s,
+            # GUI co the goi endpoint nay 2 lan (bootstrap + badge) => ~52s treo.
+            # Badge chi la thong tin phu nen KHONG probe Internet dong bo. Chi đọc
+            # route local (0ms) => tra ngay, khong anh huong hien thi.
             try:
-                ping = subprocess.run(['ping', '-c', '1', '1.1.1.1'], capture_output=True, text=True, timeout=10)
-                if ping.returncode == 0:
-                    return self._send_json({'ok': True, 'connected': True, 'probe': 'ping'})
-            except Exception as e:
-                errors.append(f'ping: {e}')
-            return self._send_json({'ok': False, 'connected': False, 'error': ' | '.join(errors)})
+                _rc = subprocess.run(['ip', 'route', 'get', '1.1.1.1'], timeout=1, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+            except Exception:
+                _rc = 1
+            return self._send_json({'ok': True, 'connected': _rc == 0, 'probe': 'local-route'})
         if path == '/api/pm/router-info':
             return self._send_json(call_old_gui('/api/router/info'))
         if path == '/api/pm/meta':
-            version_info = get_repo_version_info()
+            # Ver 2.64: khong goi GitHub/git trong luong mo GUI. Truoc day
+            # get_repo_version_info() fetch remote => tre ~10s khi WAN cham/loi.
+            version_info = {
+                'current_label': read_current_version_label(),
+                'latest_label': read_current_version_label(),
+                'current_commit': '',
+                'has_update': False,
+            }
             active_session = ''
             try:
                 active_session = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '')
             except (OSError, ValueError):
                 pass
-            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session, 'health': wd_health_json()})
+            return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
+        if path == '/api/pm/version-check':
+            # Endpoint rieng cho nut Kiem tra phien ban (chi goi khi nguoi dung bam).
+            return self._send_json(get_repo_version_info())
         if path == '/api/pm/health':
             return self._send_json(wd_health_json())
         if path == '/vpn':
@@ -5017,4 +5052,9 @@ if __name__ == '__main__':
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
-    ThreadingHTTPServer(('0.0.0.0', 9001), Handler).serve_forever()
+    class _GUIServer(ThreadingHTTPServer):
+        # [Ver 2.63] Backlog mac dinh cua socketserver la 5. Khi GUI go dong thoi
+        # nhieu request (bảng + /api/pppoe/list + /api/vpn/status + badge), SYN
+        # bi drop va trinh duyet bao 'Failed to fetch'. Tăng backlog len 128.
+        request_queue_size = 128
+    _GUIServer(('0.0.0.0', 9001), Handler).serve_forever()

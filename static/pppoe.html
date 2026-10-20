@@ -72,9 +72,8 @@
     <button class="bad" onclick="delAll()">🗑 Xóa tất cả phiên</button>
   </div>
   <table>
-      <thead><tr><th>ID</th><th>Port</th><th>Interface</th><th>User PPPoE</th><th>WAN IP</th><th>Trạng thái</th><th>Proxy</th><th style="width:220px">Hành động</th></tr></thead>
-    <tbody id="tb"><tr><td colspan="8" class="muted">…</td></tr></tbody>
-    <tbody id="tb"><tr><td colspan="8" class="muted">…</td></tr></tbody>
+      <thead><tr><th>ID</th><th>Port</th><th>Interface</th><th>User PPPoE</th><th>WAN IP</th><th>Trạng thái</th><th>Thời gian</th><th>Proxy</th><th style="width:220px">Hành động</th></tr></thead>
+    <tbody id="tb"><tr><td colspan="9" class="muted">…</td></tr></tbody>
   </table>
 </div>
 
@@ -111,6 +110,7 @@
     </div>
     <div style="margin-top:10px">
       <button onclick="setProxy()">🔑 Đổi proxy</button>
+      <button onclick="resetOne()">🔁 Quay số</button>
       <button onclick="rotateOne()">🔀 Xoay IP</button>
       <button class="bad" onclick="delOne()">🗑 Xóa</button>
     </div>
@@ -176,7 +176,7 @@ async function refresh() {
   document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()}`;
   const tb = document.getElementById('tb');
   if (!list.length) {
-    tb.innerHTML = '<tr><td colspan="8" class="muted">Chưa có phiên nào — tạo bằng form bên dưới.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="9" class="muted">Chưa có phiên nào — tạo bằng form bên dưới.</td></tr>';
     return;
   }
   tb.innerHTML = list.map(s => {
@@ -187,11 +187,15 @@ async function refresh() {
     const ip = s.ip || s.wan_ip || s.public_ip || '';
     const proxy = s.socks5 || s.socks_proxy || s.proxy || '';
     const port = String(s.device || '').split('.')[0] || '—';
+    const tm = s.last_changed || s.ip_changed_at || '';
     return `<tr><td><b>${esc(id)}</b></td><td>${esc(port)}</td><td class="muted">${esc(iface)}</td>`
       + `<td>${esc(s.username || '')}</td>`
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
-      + `<td>${st}</td><td class="muted" style="font-size:11px">${esc(proxy)}</td>`
-      + `<td><button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
+      + `<td>${st}</td>`
+      + `<td class="muted" style="font-size:11px;white-space:nowrap">${esc(tm || '—')}</td>`
+      + `<td class="muted" style="font-size:11px">${esc(proxy)}</td>`
+      + `<td><button onclick="fillId('${esc(id)}');resetOne()">🔁 Quay số</button>`
+      + `<button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
       + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;
   }).join('');
 }
