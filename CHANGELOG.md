@@ -1,3 +1,15 @@
+## Ver 2.75 (2026-10-21) - Tick Chan local (may client khong thay nhau) tren GUI chinh
+
+- Loi: tick `Chan local 2 chieu` (Ver 2.53, trang /vpn) bi mat o commit `3fb5837` (2026-10-19, khoi phuc PPPoE tu
+  v2.54 tren nen v2.52): mat UI, mat `vpn_mgr.sh isolate`, init.d `client-isolate` khong doc che do nua
+  => router LUON chan local du file che do ghi `off` (Gen15 off / Gen17 one-way van chan).
+- Khoi phuc + dua ra GUI 9001: o tick `Chan local` canh tab DA / CHUA CAU HINH, hien trang thai that (doc bang nft).
+  Tat co hoi xac nhan. Backend `/api/vpn/action isolate` (da co san) -> `vpn_mgr.sh isolate on|off|status|guard`.
+- `/etc/init.d/client-isolate` doc `/data/vpn/isolate.mode` (two-way|off); khi off luc boot thi khong bat.
+- Update KHONG tu doi hanh vi mang: lan dau len 2.75 ghi isolate.mode theo trang thai dang chay (bang nft co => two-way).
+- Sua cron `isolate guard` bi nhan ban (2.53 grep sai pattern; Gen15 co 83 dong) => con 1 dong.
+- Kiem: sandbox /tmp Gen15 voi nft gia 14/14 (bat/tat/boot/guard/migrate/dedupe cron); GUI Edge CDP 6/6 + vi tri.
+
 ## Ver 2.74 (2026-10-21) - O tim kiem so may / IP
 
 - Them o tim kiem ben trai `Hien thi`. Go xong ra ket qua ngay (khong can Enter), Esc / nut x de xoa.

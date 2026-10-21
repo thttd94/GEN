@@ -91,11 +91,36 @@ if [ "$CRON_TOUCHED" = 1 ]; then
 fi
 
 echo "=== 2b) client-isolate (tach client L2, giu router) ==="
+# [Ver 2.75] tick "Chan local" tren GUI 9001: /data/vpn/isolate.mode = two-way|off.
+# Lan dau len 2.75: ghi DUNG trang thai dang chay (bang nft co => two-way, khong => off)
+# de update khong tu doi hanh vi mang. Router moi chua co client-isolate => two-way (mac dinh 2.50).
+ISO_MODEF=/data/vpn/isolate.mode
+ISO_MARK=/data/vpn/isolate.mode.v275
+mkdir -p /data/vpn 2>/dev/null
+if [ ! -f "$ISO_MARK" ]; then
+  if nft list table bridge client_isolate >/dev/null 2>&1 || [ ! -f /etc/init.d/client-isolate ]; then
+    echo two-way > "$ISO_MODEF"
+  else
+    echo off > "$ISO_MODEF"
+  fi
+  touch "$ISO_MARK"
+  echo "[OK] isolate.mode khoi tao = $(cat "$ISO_MODEF") (theo trang thai dang chay)"
+fi
 _put "$SRC_ETC/init.d/client-isolate" /etc/init.d/client-isolate 755
 _put "$SRC_ETC/client-isolate.nft.tpl" /etc/client-isolate.nft.tpl 644
 if [ -x /etc/init.d/client-isolate ]; then
   /etc/init.d/client-isolate enable 2>/dev/null || ln -sf /etc/init.d/client-isolate /etc/rc.d/S99client-isolate 2>/dev/null
   _add_cron 'client-isolate' '* * * * * nft list table bridge client_isolate >/dev/null 2>&1 || /etc/init.d/client-isolate start >/dev/null 2>&1'
+  # guard ep trang thai theo isolate.mode (ban 2.53 grep sai pattern => cron bi nhan ban hang chuc dong)
+  ISO_GUARD='* * * * * /opt/proxy-manager-v1/tools/vpn_mgr.sh isolate guard >/dev/null 2>&1'
+  ISO_N=$(grep -c 'vpn_mgr.sh isolate guard' "$CRONF" 2>/dev/null); ISO_N=${ISO_N:-0}
+  if [ "$ISO_N" != 1 ]; then
+    [ "$CRON_TOUCHED" = 0 ] && cp "$CRONF" "$CRONF.bak.$STAMP" 2>/dev/null
+    grep -v 'vpn_mgr.sh isolate guard' "$CRONF" > "$CRONF.tmp" 2>/dev/null; cat "$CRONF.tmp" > "$CRONF"; rm -f "$CRONF.tmp"
+    printf '%s\n' "$ISO_GUARD" >> "$CRONF"
+    /etc/init.d/cron reload >/dev/null 2>&1 || /etc/init.d/cron restart >/dev/null 2>&1 || true
+    echo "[OK] cron isolate guard: $ISO_N dong -> 1"
+  fi
   /etc/init.d/client-isolate start 2>/dev/null || true
 else
   echo "[--] thieu client-isolate, bo qua"

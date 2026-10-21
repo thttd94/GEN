@@ -24,6 +24,12 @@
 #   vpn_mgr.sh unassign-many <IP...>       : bo gan NHIEU client 1 luot
 #   vpn_mgr.sh clean-stale                 : don rule/map rac khi tunnel chet hoac IP khong con trong map
 #   vpn_mgr.sh unassign <IP>               : bo gan client
+#   vpn_mgr.sh isolate [status|on|two-way|off|guard]
+#                                          : bat/tat chan local 2 chieu (may client khong thay nhau)
+#     status  : mode=two-way|off l2_bridge=yes|no
+#     on|two-way|show : chan (bridge client_isolate); internet binh thuong
+#     off|one-way|hide: mo het (local thay nhau)
+#     guard   : ep trang thai that theo /data/vpn/isolate.mode
 #   vpn_mgr.sh test <ten>                  : xem exit-IP qua tunnel
 #   vpn_mgr.sh autostart <ten> on|off      : up khi goi startall
 #   vpn_mgr.sh startall|stopall            : loat theo flag auto
@@ -662,6 +668,43 @@ case "$1" in
     grep -v " $name\$" "$MAPF" > "$MAPF.tmp" 2>/dev/null; mv "$MAPF.tmp" "$MAPF"
     rm -rf "$ACCT/$name"
     ok "da xoa '$name'" ;;
+  isolate)
+    # [Ver 2.75] khoi phuc tu 2.53 (bi mat o 3fb5837). Nguon su that: $BASE/isolate.mode
+    # (two-way | off). /etc/init.d/client-isolate doc file nay khi start.
+    MODEF=$BASE/isolate.mode
+    mkdir -p "$BASE"
+    [ -f "$MODEF" ] || echo "two-way" > "$MODEF"
+    mode="${2:-status}"
+    case "$mode" in
+      status)
+        cur=$(cat "$MODEF" 2>/dev/null || echo two-way)
+        case "$cur" in two-way|show|on) cur=two-way ;; *) cur=off ;; esac
+        l2=no; nft list table bridge client_isolate >/dev/null 2>&1 && l2=yes
+        echo "mode=$cur l2_bridge=$l2" ;;
+      on|two-way|show)
+        echo "two-way" > "$MODEF"
+        /etc/init.d/client-isolate start >/dev/null 2>&1
+        nft delete table inet gen_hide 2>/dev/null
+        nft list table bridge client_isolate >/dev/null 2>&1 || err "bat chan local that bai (nft)"
+        ok "isolate=two-way (chan local 2 chieu, internet binh thuong)" ;;
+      off|one-way|hide)
+        echo "off" > "$MODEF"
+        nft delete table bridge client_isolate 2>/dev/null
+        nft delete table inet gen_hide 2>/dev/null
+        ok "isolate=off (mo het, local thay nhau, internet binh thuong)" ;;
+      fix|guard)
+        cur=$(cat "$MODEF" 2>/dev/null || echo two-way)
+        case "$cur" in
+          two-way|show|on)
+            nft list table bridge client_isolate >/dev/null 2>&1 || /etc/init.d/client-isolate start >/dev/null 2>&1
+            echo "guard: two-way" ;;
+          *)
+            nft delete table bridge client_isolate 2>/dev/null
+            echo "guard: off" ;;
+        esac
+        nft delete table inet gen_hide 2>/dev/null ;;
+      *) err "dung: isolate [status|on|off|guard]" ;;
+    esac ;;
   json)
     out="["
     sep=""
