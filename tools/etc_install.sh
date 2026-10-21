@@ -12,6 +12,7 @@
 #   etc/config/dhcp.tpl           -> /etc/config/dhcp (CHI THEM section thieu:
 #                                    dnsmasq + dhcp.lan + dhcp.wan)
 #   tools/dnsmasq_local_dns.sh    -> dam bao dnsmasq nghe 127.0.0.1:5353 (Ver 2.71)
+#   tools/disk_expand.sh --auto-bg -> tu mo rong root khi gan day (Ver 2.77, chay nen)
 #
 # => router moi pull source ve se KHONG co kill-switch, KHONG co ban tproxy da sua,
 #    KHONG co watchdog data-plane. Day la khoang trong cua yeu cau "full final".
@@ -204,6 +205,14 @@ if [ -f "$DNS5353" ]; then
   sh "$DNS5353" 2>&1 | sed 's/^/  /'
 else
   echo "[WARN] thieu dnsmasq_local_dns.sh - khong kiem duoc DNS 5353"
+fi
+# [Ver 2.77] Tu mo rong root p3 khi gan day (>=70% hoac <100MB trong): chay NEN sau 90s,
+# cho update xong, khong chan etc_install. Router da du rong (Gen15/17) => SKIP.
+# Chi chay 1 lan (logs/disk_expand.done); bi chan => logs/disk_expand.blocked.
+DXP="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/disk_expand.sh"
+[ -f "$DXP" ] || DXP=/opt/proxy-manager-v1/tools/disk_expand.sh
+if [ -f "$DXP" ]; then
+  sh "$DXP" --auto-bg 2>&1 | sed 's/^/  /'
 fi
 
 echo "=== 3) tproxy da sua (vendor script) ==="

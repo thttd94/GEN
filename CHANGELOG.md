@@ -1,3 +1,18 @@
+## Ver 2.77 (2026-10-21) - Tu mo rong phan vung root (auto)
+
+- `tools/disk_expand.sh` viet lai, them `--auto` / `--auto-bg`. `etc_install.sh` goi `--auto-bg` (chay nen sau 90s, cho update xong).
+- Chi lam khi root dung >=70% hoac con <100MB (Gen14 300M/84%). Gen15/17 (6.1G) tu SKIP.
+- SUA LOI NGUY HIEM ban 2.51: fdisk d+n tao PARTUUID MOI => kernel `root=PARTUUID` khong thay root => router khong boot.
+  Nay dung `sfdisk -N 3` giu nguyen start + PARTUUID + type; ghi xong doc lai, khac => tu ghi lai bang cu.
+- An toan: PARTUUID phai khop /proc/cmdline; chi GPT; sau root toi da 1 partition (p4) va p4 chi duoc chua
+  lost+found/log/proxy-manager/genrouter_backups/GEN/GEN-main.tar.gz/update work (<=30MB), co file la => dung, ghi `disk_expand.blocked`.
+  p4 dang ban => hoan. Backup bang phan vung + GPT head/tail + noi dung p4 vao `/data/genrouter_backups/disk_expand_<time>/`.
+  Loi truoc resize2fs => khoi phuc bang cu + mount lai p4. Kernel chua nhan => `disk_expand.pending`, lan boot sau resize.
+  Chi chay 1 lan (`logs/disk_expand.done`). sfdisk/resize2fs/partx thieu => tai .ipk tu feed giai nen vao /tmp (khong cai vao rootfs).
+- Kiem: loop device trong /tmp Gen15 (anh dia gia lap layout Gen14) 45/45 PASS: skip, dry-run, file la, PARTUUID lech, p4 ban,
+  loi gia lap sau xoa p4 / sau keo p3 (khoi phuc dung), thanh cong (UUID+start giu, du lieu md5 nguyen, e2fsck sach, 300M->2G),
+  pending -> lan sau xong, --auto-bg chay nen, chan test tren nvme. DRY-RUN tren Gen14/15/17 that: ke hoach dung, khong ghi gi.
+
 ## Ver 2.76 (2026-10-21) - Nut CAU HINH gom cac nut chuc nang
 
 - Gom `GAN IP`, `GAN MAC`, `SETUP ROUTER`, `REBOOT ROUTER` vao 1 nut `CAU HINH`; bam hien popup 4 muc (icon + mo ta).
