@@ -4858,7 +4858,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/api/pm/sessions':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
-            return self._send_json({'ok': True, 'sessions': get_available_sessions(include_hidden=include_hidden), 'max_sessions': MAX_SESSION_COUNT})
+            # [Ver 2.72] tra kem cau hinh DANG APPLY: GUI mo len (F5/tat-mo) phai nhay dung
+            # cau hinh do. Ver 2.70 dua /api/pm/meta ra chay nen nen mat buoc nay => luon ve 1.
+            active_session = ''
+            try:
+                active_session = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '') or '').strip()
+            except (OSError, ValueError):
+                pass
+            return self._send_json({'ok': True, 'sessions': get_available_sessions(include_hidden=include_hidden), 'max_sessions': MAX_SESSION_COUNT, 'active_session': active_session})
         if path.startswith('/api/pm/sessions/'):
             session_id = path.rsplit('/', 1)[-1]
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():

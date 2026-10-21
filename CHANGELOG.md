@@ -1,3 +1,13 @@
+## Ver 2.72 (2026-10-21) - GUI mo len nhay dung cau hinh dang apply
+
+- Loi: F5 / tat-mo lai GUI luon mo CAU HINH 1 du router dang apply cau hinh khac (Gen17 dang apply 2).
+  Commit `31d0a41` (2026-10-19) dua `/api/pm/meta` ra chay nen cho GUI khong treo, nhung bo luon
+  doan doc `active_session` => `startSession` co dinh `'1'`.
+- Sua: `/api/pm/sessions` tra kem `active_session` (doc `active_session.json`). `bootstrap()` mo
+  dung cau hinh do, ke ca khi no dang an khoi tab; khong co / khong ton tai thi mo 1. Khong cho meta.
+- Kiem: Edge headless + mock API: active=2 -> mo 2, active=3 (an) -> mo 3, rong -> 1, 9 -> 1: 4/4 PASS.
+  Cung test tren index.html cu: 2/4 FAIL (tai hien dung loi).
+
 ## Ver 2.71 (2026-10-21) - fix DNS 5353: proxy lumi + VPN khong vao mang
 
 - Loi: `tools/etc_install.sh` (tu Ver 2.52) tao section dnsmasq voi `port='0'` (tat DNS).

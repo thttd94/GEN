@@ -1782,8 +1782,20 @@
       networkPollTimer = setInterval(() => refreshConnectionStatus(true), 30000);
       if (versionCheckTimer) clearInterval(versionCheckTimer);
       versionCheckTimer = setInterval(() => refreshVersionInfo(true), 60000);
-      await fetchSessionsList(false);
+      const sessData = await fetchSessionsList(false);
+      // [Ver 2.72] Mo len (F5 / tat-mo lai) phai nhay dung cau hinh DANG APPLY tren router,
+      // khong ve mac dinh 1. active_session tra cung /api/pm/sessions (khong cho meta).
       let startSession = '1';
+      const act = String((sessData && sessData.active_session) || '').trim();
+      if (act && (availableSessions.includes(act) || (sessData.sessions || []).some(x => String(x.session) === act))) {
+        startSession = act;
+      } else if (act) {
+        // cau hinh dang apply bi an khoi tab: van mo dung no, khong mo nham cau hinh 1
+        try {
+          const all = await fetchSessionsList(true);
+          if ((all.sessions || []).some(x => String(x.session) === act)) startSession = act;
+        } catch (e) {}
+      }
       await loadSession(startSession, true);
       // Hidden sessions refresh nền, không chặn giao diện.
       fetchSessionsList(true).catch(()=>{});
