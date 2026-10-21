@@ -1,3 +1,11 @@
+## Ver 2.76 (2026-10-21) - Nut CAU HINH gom cac nut chuc nang
+
+- Gom `GAN IP`, `GAN MAC`, `SETUP ROUTER`, `REBOOT ROUTER` vao 1 nut `CAU HINH`; bam hien popup 4 muc (icon + mo ta).
+  `VPN` / `PPPOE` giu nguyen ngoai toolbar.
+- Popup tu an: bam ra ngoai, bam lai nut, Esc, chon 1 muc, hoac de yen 8s (chuot dang o trong popup thi khong an).
+- Reboot router nay HOI XAC NHAN truoc (truoc do bam la reboot ngay). Dung duoc ban phim (Enter mo, mui ten, Esc).
+- Kiem: Edge CDP 1400 sang / 1024 dark 33/34 (1 la do truoc khi viewport doi xong; do lai 1400/1280/1024/900: popup nam trong man hinh).
+
 ## Ver 2.75 (2026-10-21) - Tick Chan local (may client khong thay nhau) tren GUI chinh
 
 - Loi: tick `Chan local 2 chieu` (Ver 2.53, trang /vpn) bi mat o commit `3fb5837` (2026-10-19, khoi phuc PPPoE tu

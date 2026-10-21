@@ -70,6 +70,33 @@
     #proxyPanel { border-top:4px solid var(--pc,#2563eb); }
     .btn.apply { background:linear-gradient(135deg,#f97316,#ec4899 55%,#c026d3); color:#fff; border-color:#e0447f; box-shadow:0 6px 16px rgba(236,72,153,.3); }
     .btn.warn { background:#f59e0b; color:#fff; border-color:#f59e0b; }
+    /* [Ver 2.76] menu CẤU HÌNH */
+    .cfg-menu { position:relative; display:inline-block; }
+    .cfg-menu-btn { display:inline-flex; align-items:center; gap:6px; }
+    .cfg-menu-btn .cfg-caret { font-size:11px; transition:transform .15s ease; }
+    .cfg-menu-btn.open { box-shadow:0 0 0 3px rgba(245,158,11,.35); }
+    .cfg-menu-btn.open .cfg-caret { transform:rotate(180deg); }
+    .cfg-menu-pop { position:absolute; right:0; top:calc(100% + 8px); z-index:1200; min-width:270px; padding:6px;
+      background:var(--surface-3,#fff); border:1px solid var(--line-4,#e5e7eb); border-radius:14px;
+      box-shadow:0 18px 40px rgba(15,23,42,.22), 0 2px 6px rgba(15,23,42,.08);
+      opacity:0; transform:translateY(-6px) scale(.98); transform-origin:top right; transition:opacity .14s ease, transform .14s ease; }
+    .cfg-menu-pop.show { opacity:1; transform:none; }
+    .cfg-menu-pop::before { content:''; position:absolute; top:-6px; right:22px; width:10px; height:10px; transform:rotate(45deg);
+      background:inherit; border-left:1px solid var(--line-4,#e5e7eb); border-top:1px solid var(--line-4,#e5e7eb); }
+    .cfg-item { display:flex; align-items:center; gap:10px; width:100%; padding:9px 10px; border:0; border-radius:10px;
+      background:transparent; color:var(--text-head,inherit); cursor:pointer; text-align:left; font:inherit; }
+    .cfg-item:hover, .cfg-item:focus-visible { background:rgba(236,72,153,.08); outline:none; }
+    .cfg-item:focus-visible { box-shadow:inset 0 0 0 2px var(--accent-hi,#f056c7); }
+    .cfg-item b { display:block; font-size:13px; }
+    .cfg-item small { display:block; font-size:11px; opacity:.7; margin-top:1px; font-weight:500; }
+    .cfg-ico { flex:0 0 32px; height:32px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center;
+      color:#fff; font-size:11px; font-weight:800; letter-spacing:.2px; box-shadow:inset 0 -2px 0 rgba(0,0,0,.12); }
+    .cfg-item.danger b { color:#dc2626; }
+    .cfg-item.danger:hover, .cfg-item.danger:focus-visible { background:rgba(239,68,68,.10); }
+    .cfg-sep { height:1px; margin:5px 6px; background:var(--line-4,#e5e7eb); }
+    body.dark .cfg-item:hover, body.dark .cfg-item:focus-visible { background:rgba(244,114,182,.12); }
+    body.dark .cfg-item.danger b { color:#f87171; }
+    @media (prefers-reduced-motion: reduce) { .cfg-menu-pop, .cfg-menu-btn .cfg-caret { transition:none; } }
     .btn.save-strong { background:#7c3aed; color:#fff; border-color:#7c3aed; padding:11px 18px; font-size:14px; box-shadow:0 10px 22px rgba(124,58,237,.28); }
     .btn.small { padding:6px 10px; font-size:12px; }
     .status { display:inline-flex; align-items:center; min-height:20px; padding:10px 14px; border-radius:999px; background:linear-gradient(135deg,var(--status1) 0%,var(--status2) 100%); border:1px solid var(--line-status); color:var(--accent-ink); font-size:14px; font-weight:900; margin-left:6px; box-shadow:0 6px 18px rgba(219,39,119,.16), inset 0 1px 0 rgba(255,255,255,.85); }
@@ -222,12 +249,19 @@
         <button class="btn apply" onclick="applyCurrentSession()">NẠP & APPLY CẤU HÌNH ĐANG MỞ</button>
       </div>
       <div class="toolbar-right">
-        <button class="btn warn" onclick="openIpMacConfig()">GÁN IP</button>
         <button class="btn warn" onclick="window.open('/vpn','_blank')" title="Trang cấu hình VPN">VPN</button>
         <button class="btn warn" onclick="window.open('/pppoe','_blank')" title="Trang quản lý PPPoE đa phiên">PPPOE</button>
-        <button class="btn warn" onclick="openMacAssignPage()">GÁN MAC</button>
-        <button class="btn warn" onclick="openSetupRouter()">SETUP ROUTER</button>
-        <button class="btn warn" onclick="rebootRouter()">REBOOT ROUTER</button>
+        <!-- [Ver 2.76] Gom GÁN IP / GÁN MAC / SETUP / REBOOT vào 1 nút CẤU HÌNH (popup) -->
+        <div class="cfg-menu" id="cfgMenu">
+          <button class="btn warn cfg-menu-btn" id="cfgMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="cfgMenuPop" onclick="toggleCfgMenu(event)">⚙ CẤU HÌNH <span class="cfg-caret">▾</span></button>
+          <div class="cfg-menu-pop" id="cfgMenuPop" role="menu" aria-labelledby="cfgMenuBtn" hidden>
+            <button type="button" role="menuitem" class="cfg-item" onclick="cfgMenuRun(openIpMacConfig)"><span class="cfg-ico" style="background:#0ea5e9">IP</span><span><b>Gán IP</b><small>IP tĩnh theo số máy / MAC</small></span></button>
+            <button type="button" role="menuitem" class="cfg-item" onclick="cfgMenuRun(openMacAssignPage)"><span class="cfg-ico" style="background:#8b5cf6">MAC</span><span><b>Gán MAC</b><small>Gán MAC cho từng máy</small></span></button>
+            <button type="button" role="menuitem" class="cfg-item" onclick="cfgMenuRun(openSetupRouter)"><span class="cfg-ico" style="background:#f59e0b">⚒</span><span><b>Setup router</b><small>LAN IP, cổng, cài đặt router</small></span></button>
+            <div class="cfg-sep" role="separator"></div>
+            <button type="button" role="menuitem" class="cfg-item danger" onclick="cfgMenuRun(confirmRebootRouter)"><span class="cfg-ico" style="background:#ef4444">⏻</span><span><b>Reboot router</b><small>Khởi động lại, mất mạng ~1–2 phút</small></span></button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1417,6 +1451,59 @@
         setStatus('Lỗi CHECK ALL: ' + (e?.message || e));
       }
     }
+    // [Ver 2.76] Menu CẤU HÌNH: bấm mở/đóng; bấm ra ngoài, Esc, hoặc để yên 8s (chuột không ở trong) => ẩn.
+    let cfgMenuIdle = null;
+    function cfgMenuOpen() { const p = document.getElementById('cfgMenuPop'); return !!p && !p.hidden; }
+    function closeCfgMenu() {
+      const p = document.getElementById('cfgMenuPop'), b = document.getElementById('cfgMenuBtn');
+      if (!p || p.hidden) return;
+      p.classList.remove('show');
+      b.setAttribute('aria-expanded', 'false');
+      b.classList.remove('open');
+      if (cfgMenuIdle) { clearTimeout(cfgMenuIdle); cfgMenuIdle = null; }
+      setTimeout(() => { if (!p.classList.contains('show')) p.hidden = true; }, 140);
+    }
+    function armCfgMenuIdle() {
+      if (cfgMenuIdle) clearTimeout(cfgMenuIdle);
+      cfgMenuIdle = setTimeout(() => {
+        const m = document.getElementById('cfgMenu');
+        if (m && m.matches(':hover')) { armCfgMenuIdle(); return; }
+        closeCfgMenu();
+      }, 8000);
+    }
+    function toggleCfgMenu(ev) {
+      if (ev) ev.stopPropagation();
+      if (cfgMenuOpen()) { closeCfgMenu(); return; }
+      const p = document.getElementById('cfgMenuPop'), b = document.getElementById('cfgMenuBtn');
+      p.hidden = false;
+      requestAnimationFrame(() => p.classList.add('show'));
+      p.classList.add('show');
+      b.setAttribute('aria-expanded', 'true');
+      b.classList.add('open');
+      armCfgMenuIdle();
+      const first = p.querySelector('.cfg-item');
+      if (first && ev && ev.detail === 0) first.focus(); // mở bằng bàn phím => focus mục đầu
+    }
+    function cfgMenuRun(fn) { closeCfgMenu(); try { fn(); } catch (e) { setStatus('Lỗi: ' + e.message); } }
+    function confirmRebootRouter() {
+      if (!confirm('Reboot router? Toàn bộ máy sẽ mất mạng khoảng 1–2 phút.')) return;
+      rebootRouter();
+    }
+    document.addEventListener('click', (e) => {
+      const m = document.getElementById('cfgMenu');
+      if (cfgMenuOpen() && m && !m.contains(e.target)) closeCfgMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (!cfgMenuOpen()) return;
+      if (e.key === 'Escape') { closeCfgMenu(); document.getElementById('cfgMenuBtn').focus(); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const items = [...document.querySelectorAll('#cfgMenuPop .cfg-item')];
+        const i = items.indexOf(document.activeElement);
+        const n = e.key === 'ArrowDown' ? (i + 1) % items.length : (i <= 0 ? items.length - 1 : i - 1);
+        items[n].focus(); e.preventDefault(); armCfgMenuIdle();
+      }
+    });
+
     async function rebootRouter() {
       try {
         setStatus('Đang reboot router...');
