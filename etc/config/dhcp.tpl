@@ -9,9 +9,11 @@
 #   __LAN_IP__   : IP router (vd 192.17.0.1)
 #
 # Dac diem (hoc tu Gen14 + sua loi Gen17):
-#   - port=0 + noresolv: dnsmasq he thong CHI lam DHCP, KHONG giu port 53.
-#     Port 53 do gencore giu (DNS chan/filter client). Tranh xung dot
-#     "failed to create listening socket ... Address in use".
+#   - DNS cua dnsmasq o 5353 (dat 'port=5353' trong /etc/dnsmasq.conf, nhu Gen15),
+#     KHONG giu port 53. Port 53 do gencore giu (DNS chan/filter client).
+#     gencore dung dnsmasq 127.0.0.1:5353 de resolve as.lumiproxy.io + dns.final.
+#     [Ver 2.71] TUYET DOI KHONG dat port '0': tat DNS => lumi + VPN chet (Gen17
+#     2026-10-21). tools/dnsmasq_local_dns.sh tu chua neu gap port '0'.
 #   - interface br-lan + notinterface eth0/tun*/wg*: chi nghe LAN,
 #     khong bind IP tunnel VPN (tun22, wg*) gay crash loop.
 #   - start=10 limit=1000 leasetime=30d, DNS client tro ve router.
@@ -34,8 +36,6 @@ config dnsmasq
 	option localservice '1'
 	option cachesize '8000'
 	option min_cache_ttl '3600'
-	option port '0'
-	option noresolv '1'
 	list interface 'br-lan'
 	list notinterface 'eth0'
 	list notinterface 'tun*'

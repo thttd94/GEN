@@ -1,3 +1,19 @@
+## Ver 2.71 (2026-10-21) - fix DNS 5353: proxy lumi + VPN khong vao mang
+
+- Loi: `tools/etc_install.sh` (tu Ver 2.52) tao section dnsmasq voi `port='0'` (tat DNS).
+  gencore dung dnsmasq `127.0.0.1:5353` de resolve `as.lumiproxy.io` va lam `dns.final`.
+  Khong ai nghe 5353 => moi outbound lumi chet, DNS client chet => gan proxy lumi hay VPN
+  deu khong vao mang (Gen17 sau khi len 2.70). Update chi thay code, giu `/etc/config/dhcp`,
+  nen ban 2.70 khong chua duoc router da dinh loi.
+- Moi: `tools/dnsmasq_local_dns.sh` dua dnsmasq ve dung mau Gen15: xoa uci `port='0'`,
+  dam bao `/etc/dnsmasq.conf` co `port=5353`, co upstream neu `noresolv=1`. Chi restart
+  dnsmasq khi co thay doi; sau restart tu kiem nghe 5353 + resolve, FAIL thi tra backup.
+  Log `logs/dnsmasq_local_dns.log`. `--check` chi in, khong sua.
+- `etc_install.sh` goi script tren o cuoi muc 2c (chay khi update va khi app khoi dong),
+  bo `port=0`/`noresolv=1` khoi section tao moi. `etc/config/dhcp.tpl` bo `port '0'`.
+- Kiem: `sh -n` OK; `--check` tren Gen14/Gen15 = `[=] dnsmasq 5353 OK` (khong dong gi),
+  Gen17 = can sua `uci_port0 conf_port`; `dnsmasq --test` voi cau hinh gia lap sau sua: OK.
+
 ## Ver 2.70 (2026-10-21) - update qua GUI không xoá dữ liệu runtime
 
 - `update_repo_from_remote`: thư mục `xxtouch_jobs`, `logs`, `presets`, `persist` được chép đè (merge),

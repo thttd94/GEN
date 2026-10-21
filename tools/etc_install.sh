@@ -10,7 +10,8 @@
 #   etc/genrouter/core/tproxy     -> /etc/genrouter/core/tproxy    + /etc/shm/tproxy
 #   etc/crontabs/root (dong */5)  -> /etc/crontabs/root            (APPEND)
 #   etc/config/dhcp.tpl           -> /etc/config/dhcp (CHI THEM section thieu:
-#                                    dnsmasq DHCP-only + dhcp.lan + dhcp.wan)
+#                                    dnsmasq + dhcp.lan + dhcp.wan)
+#   tools/dnsmasq_local_dns.sh    -> dam bao dnsmasq nghe 127.0.0.1:5353 (Ver 2.71)
 #
 # => router moi pull source ve se KHONG co kill-switch, KHONG co ban tproxy da sua,
 #    KHONG co watchdog data-plane. Day la khoang trong cua yeu cau "full final".
@@ -114,13 +115,16 @@ if [ -f "$DHCP_TPL" ]; then
   fi
   # them section dnsmasq neu thieu
   if ! uci show dhcp.@dnsmasq[0] >/dev/null 2>&1; then
-    echo "[OK] them section dnsmasq (DHCP-only, port=0, nghe br-lan)"
+    # [Ver 2.71] BO 'port=0' + 'noresolv=1': port=0 tat DNS cua dnsmasq => gencore
+    # khong resolve duoc as.lumiproxy.io qua 127.0.0.1:5353 => lumi + VPN chet
+    # (Gen17 2026-10-21). Port 5353 dat o /etc/dnsmasq.conf nhu Gen15 - xem
+    # tools/dnsmasq_local_dns.sh (goi o cuoi muc 2c).
+    echo "[OK] them section dnsmasq (nghe br-lan, DNS o 5353 qua /etc/dnsmasq.conf)"
     uci add dhcp dnsmasq >/dev/null 2>&1
     for kv in "domainneeded=1" "boguspriv=1" "filterwin2k=0" "localise_queries=1" \
       "rebind_protection=1" "rebind_localhost=1" "local=/lan/" "expandhosts=1" \
       "authoritative=1" "readethers=1" "leasefile=/tmp/dhcp.leases" \
-      "localservice=1" "cachesize=8000" "min_cache_ttl=3600" \
-      "port=0" "noresolv=1"; do
+      "localservice=1" "cachesize=8000" "min_cache_ttl=3600"; do
       k="${kv%%=*}"; v="${kv#*=}"
       uci set "dhcp.@dnsmasq[0].$k=$v" 2>/dev/null
     done
@@ -164,6 +168,17 @@ if [ -f "$DHCP_TPL" ]; then
   fi
 else
   echo "[--] khong co $DHCP_TPL, bo qua"
+fi
+# [Ver 2.71] Chua ca router CU da bi 'port=0' tu ban 2.52: update chi thay code,
+# giu /etc/config/dhcp => neu khong chua o day thi loi nam lai mai mai.
+# Chay ca khi update lan khi app khoi dong (ensure_etc_installed). Idempotent:
+# dung roi thi chi in [=], KHONG restart dnsmasq.
+DNS5353="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/dnsmasq_local_dns.sh"
+[ -f "$DNS5353" ] || DNS5353=/opt/proxy-manager-v1/tools/dnsmasq_local_dns.sh
+if [ -f "$DNS5353" ]; then
+  sh "$DNS5353" 2>&1 | sed 's/^/  /'
+else
+  echo "[WARN] thieu dnsmasq_local_dns.sh - khong kiem duoc DNS 5353"
 fi
 
 echo "=== 3) tproxy da sua (vendor script) ==="
