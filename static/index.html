@@ -288,9 +288,11 @@
             <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
           </div>
                   </div>
-        <div class="sub" id="countLabel" style="font-weight:800;">0 rows</div>
-        <label class="sub" for="pageSizeSelect" style="margin-left:10px;font-weight:700">Hiển thị</label>
-        <select id="pageSizeSelect" onchange="setPageSize(this.value)" style="width:auto;margin-left:4px" title="Số máy hiển thị mỗi trang">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap;">
+        <div class="sub" id="countLabel" style="font-weight:800;white-space:nowrap;">0 rows</div>
+        <input type="search" id="rowSearchInput" oninput="onRowSearch(this.value)" onkeydown="if(event.key==='Escape'){this.value='';onRowSearch('')}" placeholder="Tìm số máy / IP (.200)" title="Gõ số = tìm theo số máy (4 => 4, 14, 404...). Có dấu chấm = tìm theo IP (4.200, .200). Esc = xóa" aria-label="Tìm theo số máy hoặc IP" style="width:170px;margin-left:6px">
+        <label class="sub" for="pageSizeSelect" style="margin-left:4px;font-weight:700;white-space:nowrap">Hiển thị</label>
+        <select id="pageSizeSelect" onchange="setPageSize(this.value)" style="width:auto" title="Số máy hiển thị mỗi trang">
           <option value="50">50</option>
           <option value="100">100</option>
           <option value="200">200</option>
@@ -298,7 +300,8 @@
           <option value="1000">1000</option>
           <option value="0">Tất cả</option>
         </select>
-        <div id="pager" style="display:flex;align-items:center;gap:2px;margin-left:10px"></div>
+        <div id="pager" style="display:flex;align-items:center;gap:2px;margin-left:6px"></div>
+        </div>
       </div>
 
       <div class="grid">
@@ -803,15 +806,41 @@
       const saved = parseInt(localStorage.getItem('pm_page_size') || '', 10);
       if (PAGE_SIZE_OPTIONS.includes(saved)) PAGE_SIZE = saved;
     } catch (e) {}
+    // [Ver 2.74] O tim kiem: co dau cham => tim theo IP (chuoi con, vd '4.200', '.200');
+    // chi so => tim theo so may chua chuoi do (vd '4' => 4, 14, 404, 444...). Chi loc HIEN THI,
+    // khong doi du lieu / cac thao tac hang loat.
+    let rowSearch = '';
+    function onRowSearch(v) {
+      // render ngay khi go (khong debounce: timer bi trinh duyet ham khi tab nen => ket qua tre 1 nhip)
+      const q = String(v || '').trim();
+      if (q === rowSearch) return;
+      rowSearch = q;
+      currentPage = 1;
+      render();
+    }
+    function ipKey(ip) {
+      return String(ip || '').split('.').map(x => String(Number(x) || 0).padStart(3, '0')).join('.');
+    }
+    function getDisplayRows() {
+      const rows = getVisibleRows();
+      const q = rowSearch;
+      if (!q) return rows;
+      if (q.includes('.')) {
+        return rows.filter(r => String(r.ip || '').includes(q))
+          .sort((a, b) => ipKey(a.ip).localeCompare(ipKey(b.ip)));
+      }
+      // so may (getVisibleRows da sap xep tang dan theo so may)
+      return rows.filter(r => String(r.machine || '').trim().includes(q));
+    }
     function pageSizeOf(total) { return PAGE_SIZE > 0 ? PAGE_SIZE : Math.max(1, total); }
     function setPageSize(v) {
       const n = parseInt(v, 10);
       if (!PAGE_SIZE_OPTIONS.includes(n)) return;
       // giu may dau tien dang xem van nam trong trang moi
-      const firstIdx = (currentPage - 1) * pageSizeOf(getVisibleRows().length);
+      const firstIdx = (currentPage - 1) * pageSizeOf(getDisplayRows().length);
       PAGE_SIZE = n;
       try { localStorage.setItem('pm_page_size', String(n)); } catch (e) {}
-      currentPage = Math.floor(firstIdx / pageSizeOf(getVisibleRows().length)) + 1;
+      currentPage = Math.floor(firstIdx / pageSizeOf(getDisplayRows().length)) + 1;
       render();
     }
     function renderPager(total) {
@@ -838,8 +867,11 @@
       document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
       applySessionTheme();
       document.querySelector('.btn.apply').textContent = 'APPLY ' + sessionTabLabel(currentSession).toUpperCase();
-      const visibleRows = getVisibleRows();
-      document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
+      const allVisible = getVisibleRows();
+      const visibleRows = rowSearch ? getDisplayRows() : allVisible;
+      document.getElementById('countLabel').textContent = rowSearch
+        ? `${visibleRows.length} / ${allVisible.length} rows`
+        : `${visibleRows.length} rows`;
       if (currentProjectTab !== 'proxy') return;
       renderPager(visibleRows.length);
       const ps = pageSizeOf(visibleRows.length);

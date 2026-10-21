@@ -1,3 +1,12 @@
+## Ver 2.74 (2026-10-21) - O tim kiem so may / IP
+
+- Them o tim kiem ben trai `Hien thi`. Go xong ra ket qua ngay (khong can Enter), Esc / nut x de xoa.
+  - Chi so: tim theo SO MAY chua chuoi do, sap xep tang dan (`4` => 4, 14, 24 ... 404, 414, 444 ...).
+  - Co dau cham: tim theo IP chua chuoi do, sap xep theo IP (`4.200` => 192.17.4.200; `.200` => moi IP co .200).
+- Chi loc phan hien thi; nhan so luong `x / tong rows`; ket hop duoc voi so may/trang, ve trang 1 khi doi tu khoa.
+- Gom so rows + tim kiem + Hien thi + trang vao 1 hang (truoc do de tran xuong dong khi man hep).
+- Kiem: Edge CDP + mock 1234 may, go phim that: 16/16 PASS (1400px va 1024px cung 1 hang).
+
 ## Ver 2.73 (2026-10-21) - Chon so may hien thi moi trang
 
 - Them o chon `Hien thi` canh so rows: 50 / 100 / 200 / 500 / 1000 / Tat ca (khong phan trang).
