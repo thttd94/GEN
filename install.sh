@@ -118,7 +118,7 @@ rm -f "$APP_DIR/frpc" "$APP_DIR/frpc_config.json" "$APP_DIR/frpc_template.toml" 
 rm -rf "$APP_DIR/static"
 mkdir -p "$APP_DIR/static"
 cp -r "$SCRIPT_DIR/static/." "$APP_DIR/static/"
-rm -rf "$APP_DIR/xxtouch_jobs"
+# [Ver 2.70] Khong xoa xxtouch_jobs: giu data/log/tmp khi cai lai.
 mkdir -p "$APP_DIR/xxtouch_jobs"
 if [ -d "$SCRIPT_DIR/xxtouch_jobs" ]; then
   cp -r "$SCRIPT_DIR/xxtouch_jobs/." "$APP_DIR/xxtouch_jobs/"

@@ -1,1 +1,1 @@
-Ver 2.69 (xoay IP chay nen + widget phan cung; PPPoE da phien + VLAN + xoay IP giu connect + phan trang GUI + TK luu he thong + glider watchdog tu chua + GUI khong block; config rieng tung router giu nguyen)
+Ver 2.70 (update giu du lieu xxtouch_jobs/logs/presets/persist; xoay IP chay nen + widget phan cung; PPPoE da phien + VLAN + xoay IP giu connect + phan trang GUI + TK luu he thong + glider watchdog tu chua + GUI khong block; config rieng tung router giu nguyen)

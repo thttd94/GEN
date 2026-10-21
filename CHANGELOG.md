@@ -1,3 +1,12 @@
+## Ver 2.70 (2026-10-21) - update qua GUI không xoá dữ liệu runtime
+
+- `update_repo_from_remote`: thư mục `xxtouch_jobs`, `logs`, `presets`, `persist` được chép đè (merge),
+  không `rmtree` trước nữa. Trước đây mỗi lần update mất `xxtouch_jobs/data`, `log`, `tmp`.
+  Thư mục code (`static`, `tools`, `etc`) vẫn thay sạch để xoá file cũ.
+- Bỏ `xxtouch_jobs/README.txt` khỏi git: gói update không còn thư mục này nên router đang chạy
+  bản cũ (code update cũ) cũng không đụng tới khi lên 2.70.
+- `install.sh`: bỏ `rm -rf xxtouch_jobs`, chỉ `mkdir -p` + chép thêm.
+
 ## Ver 2.69 (2026-10-21) - xoay IP chạy nền + khôi phục widget phần cứng + fix gốc lag GUI
 
 - Xoay IP: đo thật 2 phiên — BRAS nhà mạng không trả PADO ~5–5.5 phút sau khi ngắt

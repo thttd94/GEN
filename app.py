@@ -566,8 +566,14 @@ def update_repo_from_remote(password: str):
         if latest_label:
             version_text = latest_label if not latest_short else f'{latest_label} ({latest_short})'
             (extract_dir / 'VERSION.txt').write_text(version_text + '\n', encoding='utf-8')
+        # [Ver 2.70] Thu muc co du lieu runtime: chep DE (merge), KHONG xoa truoc.
+        # Truoc day rmtree => moi lan update mat xxtouch_jobs/data, log, tmp.
+        _merge_dirs = {'xxtouch_jobs', 'logs', 'presets', 'persist'}
         for item in extract_dir.iterdir():
             target = BASE_DIR / item.name
+            if item.is_dir() and item.name in _merge_dirs and target.is_dir() and (not target.is_symlink()):
+                shutil.copytree(item, target, dirs_exist_ok=True)
+                continue
             if target.exists():
                 if target.is_dir() and (not target.is_symlink()):
                     shutil.rmtree(target, ignore_errors=True)
