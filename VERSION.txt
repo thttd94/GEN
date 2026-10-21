@@ -1,1 +1,1 @@
-Ver 2.66 (PPPoE da phien + VLAN + xoay IP giu connect + phan trang GUI + TK luu he thong + glider watchdog tu chua + GUI khong block; config rieng tung router giu nguyen)
+Ver 2.69 (xoay IP chay nen + widget phan cung; PPPoE da phien + VLAN + xoay IP giu connect + phan trang GUI + TK luu he thong + glider watchdog tu chua + GUI khong block; config rieng tung router giu nguyen)

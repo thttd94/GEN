@@ -419,5 +419,124 @@ async function unassignAll(name) {
   setInterval(refresh, 5000);
 })();
 </script>
+<style>/* Widget thong so may thoi gian thuc (goc phai): nhiet do CPU, %CPU, RAM, disk, uptime. */
+.sysbar{position:fixed;top:10px;right:12px;z-index:9999;display:flex;gap:6px;align-items:center;background:rgba(8,19,31,.88);border:1px solid #1f4255;border-radius:999px;padding:5px 12px;font-size:11.5px;color:#bde7fa;font-family:'Segoe UI',system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.45);white-space:nowrap}
+.sysbar b{color:#fff;font-weight:700}
+.sysbar .hot{color:#ff8aa5}
+.sysbar .warm{color:#ffc94d}
+.sysbar .ok{color:#4ff0bd}
+.sysbar .sep{opacity:.35}
+.sysbar.sysbar-inline{position:static;top:auto;right:auto;box-shadow:none;padding:6px 12px;font-size:12px}
+@media (max-width:640px){.sysbar{font-size:10px;padding:4px 9px;top:auto;bottom:10px}}
+</style>
+<script>// Widget thong so may: fetch /api/pm/sysinfo moi 5s, hien goc phai.
+(function () {
+  if (document.getElementById('sysbar')) return;
+  var bar = document.createElement('div');
+  bar.id = 'sysbar'; bar.className = 'sysbar';
+  bar.textContent = '…';
+  var host = document.querySelector('.titlebar-right');
+  if (host) { bar.classList.add('sysbar-inline'); host.insertBefore(bar, host.firstChild); }
+  else document.body.appendChild(bar);
+  function fmtUp(s) {
+    s = s | 0;
+    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    return (d ? d + 'd' : '') + (h ? h + 'h' : '') + m + 'm';
+  }
+  async function tick() {
+    try {
+      var r = await fetch('/api/pm/sysinfo', {cache: 'no-store'});
+      var d = await r.json();
+      if (!d || !d.ok) { bar.textContent = 'máy: ?'; return; }
+      var t = d.temp_c, tc = t == null ? '—' : (t >= 75 ? 'hot' : t >= 60 ? 'warm' : 'ok');
+      var c = d.cpu_pct, cc = c == null ? '—' : (c >= 85 ? 'hot' : c >= 60 ? 'warm' : 'ok');
+      var m = (d.mem || {}).pct, mc = m == null ? '—' : (m >= 90 ? 'hot' : m >= 75 ? 'warm' : 'ok');
+      var dk = (d.disks && d.disks[0]) || {}, dp = dk.pct, dc = dp == null ? '—' : (dp >= 90 ? 'hot' : dp >= 80 ? 'warm' : 'ok');
+      bar.innerHTML = '🌡 <b class="' + tc + '">' + (t == null ? '—' : t + '°C') + '</b><span class="sep">|</span>'
+        + 'CPU <b class="' + cc + '">' + (c == null ? '—' : c + '%') + '</b><span class="sep">|</span>'
+        + 'RAM <b class="' + mc + '">' + (m == null ? '—' : m + '%') + '</b><span class="sep">|</span>'
+        + 'Disk <b class="' + dc + '">' + (dp == null ? '—' : dp + '%') + '</b><span class="sep">|</span>'
+        + '⏱ ' + fmtUp(d.uptime_s || 0);
+      bar.title = 'CPU: ' + (c == null ? '—' : c + '% x' + (d.cpu_count || '?'))
+        + ' | RAM: ' + ((d.mem || {}).used_mb || '?') + '/' + ((d.mem || {}).total_mb || '?') + 'MB'
+        + ' | Disk: ' + (dk.used_gb != null ? dk.used_gb + '/' + dk.total_gb + 'GB (' + dk.mount + ')' : '—')
+        + ' | Load: ' + ((d.load || []).join(' ') || '—')
+        + ' | Uptime: ' + fmtUp(d.uptime_s || 0);
+    } catch (e) { bar.textContent = 'máy: ?'; }
+  }
+  tick();
+  setInterval(tick, 5000);
+})();
+</script>
+<style>/* [Ver 2.69] Panel log trong suot ben phai: hien khi dang chay, xong thi an. */
+#oplog{position:fixed;top:56px;right:12px;width:min(380px,42vw);max-height:calc(100vh - 80px);z-index:9998;display:flex;flex-direction:column;background:rgba(4,10,18,.88);backdrop-filter:blur(8px) saturate(.6);-webkit-backdrop-filter:blur(8px) saturate(.6);border:1px solid rgba(79,240,189,.45);border-radius:10px;color:#ffffff;font:12.5px/1.5 Consolas,'Segoe UI',monospace;text-shadow:0 1px 2px rgba(0,0,0,.9);box-shadow:0 8px 24px rgba(0,0,0,.55);pointer-events:none;opacity:0;transform:translateX(16px);transition:opacity .45s ease,transform .45s ease;visibility:hidden}
+#oplog.show{opacity:1;transform:none;visibility:visible}
+#oplog .hd{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.18);font-weight:700;color:#fff;background:rgba(255,255,255,.06);border-radius:10px 10px 0 0}
+#oplog .hd .dot{width:9px;height:9px;border-radius:50%;background:#ffd166;box-shadow:0 0 6px #ffd166;animation:oplogp 1s infinite}
+#oplog.idle .hd .dot{background:#4ff0bd;animation:none}
+#oplog .hd .x{margin-left:auto;pointer-events:auto;cursor:pointer;background:none;border:0;color:#ffffff;font-size:15px;padding:0 4px}
+#oplog .bd{overflow:auto;padding:6px 10px;white-space:pre-wrap;word-break:break-word}
+#oplog .bd div{padding:2px 0;border-bottom:1px dashed rgba(255,255,255,.10)}
+#oplog .bd .t{color:#a9c9d8;margin-right:6px}
+#oplog .bd .er{color:#ff9db3;font-weight:700}
+#oplog .bd .ok{color:#5cffc8;font-weight:700}
+@keyframes oplogp{50%{opacity:.35}}
+@media (max-width:640px){#oplog{width:calc(100vw - 24px);top:auto;bottom:48px;max-height:40vh}}
+</style>
+<script>// Panel log ben phai: boc log() + api() cua trang.
+(function () {
+  if (document.getElementById('oplog')) return;
+  var READ = {'status':1,'list':1,'rotate_status':1,'acc-list':1,'devices':1,'refresh-exitips':0};
+  var HIDE_MS = 6000, MAX_LINES = 200;
+  var p = document.createElement('div'); p.id = 'oplog'; p.setAttribute('role', 'log'); p.setAttribute('aria-live', 'polite');
+  p.innerHTML = '<div class="hd"><span class="dot"></span><span class="ti">Đang chạy…</span><button class="x" type="button" aria-label="Ẩn log">✕</button></div><div class="bd"></div>';
+  document.body.appendChild(p);
+  var bd = p.querySelector('.bd'), ti = p.querySelector('.ti'), running = 0, hideT = null;
+  p.querySelector('.x').onclick = function () { p.classList.remove('show'); };
+  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+  function pending() {
+    try { return (typeof rotPending === 'function') ? rotPending().length : 0; } catch (e) { return 0; }
+  }
+  function busy() { return running > 0 || pending() > 0; }
+  function sched(fresh) {
+    // fresh=true: co log moi => dem lai tu dau. Kiem tra dinh ky KHONG reset dong ho an.
+    if (busy()) { clearTimeout(hideT); hideT = null; p.classList.remove('idle'); ti.textContent = 'Đang chạy…' + (pending() ? ' (' + pending() + ' phiên đang xoay)' : ''); return; }
+    p.classList.add('idle'); ti.textContent = 'Hoàn thành';
+    if (fresh) { clearTimeout(hideT); hideT = null; }
+    if (!hideT) hideT = setTimeout(function () { hideT = null; if (!busy()) p.classList.remove('show'); }, HIDE_MS);
+  }
+  function add(msg) {
+    var s = String(msg == null ? '' : msg);
+    var cls = /lỗi|loi|error|fail|✖/i.test(s) ? 'er' : (/xong|ok|✔|thành công|đã /i.test(s) ? 'ok' : '');
+    var d = document.createElement('div');
+    d.innerHTML = '<span class="t">' + new Date().toLocaleTimeString() + '</span><span class="' + cls + '">' + esc(s) + '</span>';
+    bd.appendChild(d);
+    while (bd.childNodes.length > MAX_LINES) bd.removeChild(bd.firstChild);
+    bd.scrollTop = bd.scrollHeight;
+    p.classList.add('show'); sched(true);
+  }
+  window.oplog = add;
+  if (typeof window.log === 'function') {
+    var _log = window.log;
+    window.log = function (m) { try { _log.apply(this, arguments); } catch (e) {} add(m); };
+    try { log = window.log; } catch (e) {}
+  }
+  if (typeof window.api === 'function') {
+    var _api = window.api;
+    window.api = async function (action) {
+      var w = !READ[action];
+      if (w) { running++; add('▶ ' + action + '…'); }
+      try {
+        var r = await _api.apply(this, arguments);
+        if (w) add((r && r.ok === false ? '✖ ' : '✔ ') + action + (r && r.error ? ': ' + r.error : ''));
+        return r;
+      } catch (e) { if (w) add('✖ ' + action + ': ' + e.message); throw e; }
+      finally { if (w) { running = Math.max(0, running - 1); sched(); } }
+    };
+    try { api = window.api; } catch (e) {}
+  }
+  setInterval(function () { if (p.classList.contains('show')) sched(); }, 3000);
+})();
+</script>
 </body>
 </html>

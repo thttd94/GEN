@@ -86,6 +86,91 @@ def pppoe_accounts_save(items):
 
 PPPOE_IP_LOG = Path('/data/pppoe/ip_log.json')
 
+# [Ver 2.69] Xoay IP chay nen. Do thuc te 2026-10-21: sau khi ngat, BRAS nha mang
+# khong tra PADO ~5-5.5 phut (doi MAC hay khong deu nhu nhau), nen request dong bo
+# 135s cu luon tra up=false du IP that su da doi. Gio: rotate tra ngay, GUI poll.
+ROTATE_WAIT_MAX_S = 480
+_ROTATE_JOBS = {}
+_ROTATE_LOCK = threading.Lock()
+_IP_LOG_LOCK = threading.Lock()
+
+def _iface_ip(iface):
+    try:
+        st = json.loads(subprocess.check_output(['ifstatus', iface], text=True, timeout=5))
+        ips = st.get('ipv4-address') or []
+        return ips[0].get('address', '') if ips else ''
+    except Exception:
+        return ''
+
+def _rotate_job_set(sid, **kw):
+    with _ROTATE_LOCK:
+        j = _ROTATE_JOBS.setdefault(sid, {})
+        j.update(kw)
+        j['updated'] = time.time()
+
+def _rotate_worker(sid, rd, call_rotate):
+    iface = 'if_%03d' % sid
+    t0 = time.time()
+    try:
+        # 1) doi MAC macvlan qua server goc (giu nhu cu)
+        try:
+            res = call_rotate(rd)
+            _rotate_job_set(sid, rotate=dict(res or {}) if isinstance(res, dict) else {'raw': str(res)[:160]})
+        except Exception as e:
+            _rotate_job_set(sid, rotate_err=str(e)[:160])
+        # 2) quay lai dung phien nay (khong dung session khac)
+        subprocess.run(['ifdown', iface], timeout=20, capture_output=True)
+        time.sleep(1)
+        subprocess.run(['ifup', iface], timeout=20, capture_output=True)
+        _rotate_job_set(sid, state='waiting')
+        ip = ''
+        while time.time() - t0 < ROTATE_WAIT_MAX_S:
+            time.sleep(5)
+            ip = _iface_ip(iface)
+            if ip:
+                break
+            _rotate_job_set(sid, elapsed=int(time.time() - t0))
+        if not ip:
+            _rotate_job_set(sid, state='failed', elapsed=int(time.time() - t0),
+                            error='qua %ds chua co IP (BRAS chua tra PADO)' % ROTATE_WAIT_MAX_S)
+            return
+        # 3) ghi moc thoi gian doi IP
+        try:
+            with _IP_LOG_LOCK:
+                PPPOE_IP_LOG.parent.mkdir(parents=True, exist_ok=True)
+                d = {}
+                if PPPOE_IP_LOG.exists():
+                    d = json.loads(PPPOE_IP_LOG.read_text(encoding='utf-8')) or {}
+                d[str(sid)] = {'ip': ip, 'ts': time.time()}
+                PPPOE_IP_LOG.write_text(json.dumps(d, ensure_ascii=False), encoding='utf-8')
+        except Exception:
+            pass
+        with _ROTATE_LOCK:
+            old = (_ROTATE_JOBS.get(sid) or {}).get('old_ip', '')
+        _rotate_job_set(sid, state='done', wan_ip=ip, changed=bool(old and ip != old),
+                        elapsed=int(time.time() - t0))
+    except Exception as e:
+        _rotate_job_set(sid, state='failed', error=str(e)[:160], elapsed=int(time.time() - t0))
+
+def rotate_start(sid, rd, call_rotate):
+    """Bat dau xoay nen. Dang xoay roi thi khong chay chong."""
+    with _ROTATE_LOCK:
+        j = _ROTATE_JOBS.get(sid)
+        if j and j.get('state') in ('starting', 'waiting'):
+            return dict(j, ok=True, rotate_id=sid, already=True)
+    _rotate_job_set(sid, state='starting', started=time.time(), elapsed=0,
+                    old_ip=_iface_ip('if_%03d' % sid), wan_ip='', error='', changed=False)
+    threading.Thread(target=_rotate_worker, args=(sid, rd, call_rotate), daemon=True,
+                     name='rotate-%d' % sid).start()
+    with _ROTATE_LOCK:
+        return dict(_ROTATE_JOBS[sid], ok=True, rotate_id=sid, accepted=True)
+
+def rotate_status(ids=None):
+    with _ROTATE_LOCK:
+        if ids:
+            return {str(i): dict(_ROTATE_JOBS[i]) for i in ids if i in _ROTATE_JOBS}
+        return {str(k): dict(v) for k, v in _ROTATE_JOBS.items()}
+
 _SYSINFO_PREV = {'total': 0, 'idle': 0, 'ts': 0.0}
 
 def sysinfo_json():
@@ -553,6 +638,10 @@ def update_repo_from_remote(password: str):
             except Exception:
                 pass
         shutil.rmtree(tmp_root, ignore_errors=True)
+        try:
+            ensure_lan_syn_bypass()
+        except Exception:
+            pass
         after_label = read_current_version_label()
         changed = after_label != before_label
         reboot_scheduled = False
@@ -2971,42 +3060,98 @@ def check_proxy_batch(items, session='1', max_workers=64):
                 results[tag] = {'ok': False, 'status': 'dead', 'message': 'DEAD', 'error': str(e)}
     return results
 
+# [Ver 2.68] Quy tac cong WAN/LAN (Anh Thai chot 2026-10-21):
+#   - eth0 LUON LA WAN, khong bao gio nam trong br-lan.
+#   - eth1..eth5 mac dinh thuoc br-lan; khi duoc chon lam cong quay PPPoE => go khoi br-lan.
+#   - Cong da la WAN ma chon tiep => KHONG dung gi (khong reload, khong reset IP phien cu).
+#   - Cong khong con phien PPPoE nao => tra ve br-lan ngay.
+# Ap dung bang uci (ben vung) + `ip link set master/nomaster` (tuc thi). KHONG goi
+# /etc/init.d/network reload vi reload ifdown/ifup moi phien dang chay => mat IP.
+# Ban 2.64-2.67 thieu chan eth0 trong pppoe_return_port => xoa phien tren eth0
+# day eth0 vao br-lan, macvlan dev_xxx khong claim duoc, toan bo PPPoE chet.
+PPPOE_WAN_FIXED = 'eth0'
+
+def _lan_ports_get():
+    cur=subprocess.check_output(['uci','-q','get','network.@device[0].ports'],text=True,timeout=5).strip()
+    return [x for x in cur.split() if x]
+
+def _lan_ports_set(ports):
+    subprocess.run(['uci','-q','del','network.@device[0].ports'],check=True,timeout=5)
+    for x in ports: subprocess.run(['uci','add_list','network.@device[0].ports='+x],check=True,timeout=5)
+    subprocess.run(['uci','commit','network'],check=True,timeout=5)
+
+def _port_in_use_by_pppoe(port, exclude_ids=None):
+    # Dem phien PPPoE con lai dung cong nay (sau khi tru cac id sap xoa).
+    # Loi doc danh sach => coi nhu CON DUNG (an toan: khong tra cong ve LAN).
+    exclude_ids=set(exclude_ids or [])
+    try:
+        old=call_old_gui('/api/router/pppoe'); raw=(old or {}).get('data')
+        if isinstance(raw,dict): raw=raw.get('data',raw)
+        if not isinstance(raw,list): return True
+        for x in raw:
+            try: xid=int(x.get('id',-1))
+            except Exception: xid=-1
+            if xid in exclude_ids: continue
+            if str(x.get('device') or '').split('.',1)[0]==port: return True
+        return False
+    except Exception:
+        return True
+
+def ensure_wan_port_not_bridged():
+    # Tu chua: eth0 bi nhet vao br-lan (uci hoac kernel) => go ra + log vet.
+    st={'ok':True,'changed':False}
+    try:
+        ports=_lan_ports_get()
+        if PPPOE_WAN_FIXED in ports:
+            _lan_ports_set([x for x in ports if x!=PPPOE_WAN_FIXED]); st['changed']=True; st['uci']=True
+        link=subprocess.run(['ip','-o','link','show',PPPOE_WAN_FIXED],capture_output=True,text=True,timeout=5).stdout
+        if 'master br-lan' in link:
+            subprocess.run(['ip','link','set',PPPOE_WAN_FIXED,'nomaster'],timeout=5,capture_output=True)
+            st['changed']=True; st['kernel']=True
+        if st['changed']:
+            print('[HEAL] eth0 (WAN) bi nam trong br-lan -> da go ra', st, flush=True)
+    except Exception as e:
+        st.update({'ok':False,'error':str(e)[:160]})
+    return st
+
 def pppoe_prepare_port(device):
-    # [Ver 2.64] Chi go port ra khoi bridge khi port DANG con trong bridge.
-    # Port da o ngoai bridge (tao phien lan 2, 3...) => return ngay, KHONG ghi uci
-    # va KHONG reload network. Truoc day moi lan goi lai reload lam ifdown/ifup
-    # toan bo phien dang chay => anh bi mat IP cua cac phien da xoay truoc do.
     base=(str(device or '').split('.',1)[0] or '').strip()
     if not re.match(r'^eth[0-9]+$',base): return {'ok':False,'error':('port PPPoE khong hop le: '+base)}
     port_state={'ok':True,'port':base,'changed':False,'reloaded':False}
     try:
-        cur=subprocess.check_output(['uci','-q','get','network.@device[0].ports'],text=True,timeout=5).strip()
-        cur=[x for x in cur.split() if x]
+        if base==PPPOE_WAN_FIXED:
+            heal=ensure_wan_port_not_bridged()
+            port_state.update({'reason':'eth0 luon la WAN','changed':heal.get('changed',False)})
+            return port_state
+        cur=_lan_ports_get()
         if base not in cur:
+            # Da la WAN tu truoc => khong dung gi, giu IP cac phien cu.
             port_state['reason']='port da la WAN, khong dong'
             return port_state
-        if base in cur:
-            keep=[x for x in cur if x!=base]
-            subprocess.run(['uci','-q','del','network.@device[0].ports'],check=True,timeout=5)
-            for x in keep: subprocess.run(['uci','add_list','network.@device[0].ports='+x],check=True,timeout=5)
-            subprocess.run(['uci','commit','network'],check=True,timeout=5)
-            port_state.update({'changed':True,'lan_ports':keep,'reloaded':True})
+        _lan_ports_set([x for x in cur if x!=base])
+        subprocess.run(['ip','link','set',base,'nomaster'],timeout=5,capture_output=True)
+        subprocess.run(['ip','link','set',base,'up'],timeout=5,capture_output=True)
+        port_state.update({'changed':True,'lan_ports':[x for x in cur if x!=base]})
     except Exception as e:
         port_state.update({'ok':False,'error':str(e)[:160]})
     return port_state
 
-def pppoe_return_port(base):
+def pppoe_return_port(base, deleted_ids=None):
     port=(str(base or '').split('.',1)[0] or '').strip()
     port_state={'ok':True,'port':port,'changed':False}
     if not re.match(r'^eth[0-9]+$',port): return port_state
+    if port==PPPOE_WAN_FIXED:
+        port_state['reason']='eth0 luon la WAN, khong tra ve LAN'
+        return port_state
     try:
-        cur=subprocess.check_output(['uci','-q','get','network.@device[0].ports'],text=True,timeout=5).strip()
-        ports=[x for x in cur.split() if x]
+        if _port_in_use_by_pppoe(port, deleted_ids):
+            port_state['reason']='con phien PPPoE dung cong, giu WAN'
+            return port_state
+        ports=_lan_ports_get()
         if port in ports: return port_state
         ports.append(port)
-        subprocess.run(['uci','-q','del','network.@device[0].ports'],check=True,timeout=5)
-        for x in ports: subprocess.run(['uci','add_list','network.@device[0].ports='+x],check=True,timeout=5)
-        subprocess.run(['uci','commit','network'],check=True,timeout=5)
+        _lan_ports_set(ports)
+        subprocess.run(['ip','link','set',port,'master','br-lan'],timeout=5,capture_output=True)
         port_state.update({'changed':True,'lan_ports':ports})
     except Exception as e:
         port_state.update({'ok':False,'error':str(e)[:160]})
@@ -3202,6 +3347,44 @@ def _etc_install_run(reason: str = 'startup'):
         except Exception:
             pass
         return (-1, '')
+
+def ensure_lan_syn_bypass():
+    """[Ver 2.69] Tu ap dung mien syn_flood cho SYN tu br-lan luc KHOI DONG app.py.
+
+    Vi sao o day: router cu update qua GUI chay update_repo_from_remote() cua BAN CU
+    (khong biet apply_xxtouch_bypass.sh moi), va /etc/init.d/proxy-manager-v1 tren may
+    cu do install.sh cu sinh ra, co the khong goi script nay. Neu chi trong vao init.d
+    thi may cu len 2.69 van lag GUI (SYN bi syn_flood 25/s drop). Goi tu app.py => chi
+    can app.py moi chay len la co, khong phu thuoc ban cu. Script idempotent.
+    Kem: dong bo init.d tu etc/init.d/proxy-manager-v1 neu ban dang cai thieu buoc nay."""
+    log = BASE_DIR / 'logs' / 'lan_syn_bypass.log'
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        sh = BASE_DIR / 'apply_xxtouch_bypass.sh'
+        out = ''
+        if sh.exists():
+            try: os.chmod(str(sh), 0o755)
+            except Exception: pass
+            r = subprocess.run(['sh', str(sh)], timeout=30, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            out = 'bypass rc=%s %s' % (r.returncode, (r.stdout or b'').decode('utf-8', 'replace')[:300])
+        else:
+            out = 'bypass BO QUA: thieu %s' % sh
+        src = BASE_DIR / 'etc' / 'init.d' / 'proxy-manager-v1'
+        dst = Path('/etc/init.d/proxy-manager-v1')
+        try:
+            if src.exists() and dst.exists():
+                cur = dst.read_text(encoding='utf-8', errors='replace')
+                if 'apply_xxtouch_bypass.sh' not in cur:
+                    shutil.copy2(str(dst), str(dst) + '.bak_v269')
+                    shutil.copy2(str(src), str(dst))
+                    os.chmod(str(dst), 0o755)
+                    out += ' | init.d dong bo (backup .bak_v269)'
+        except Exception as e:
+            out += ' | init.d loi: %s' % str(e)[:120]
+        with open(log, 'a', encoding='utf-8') as fh:
+            fh.write('%s %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), out.strip()))
+    except Exception:
+        pass
 
 def ensure_etc_installed():
     """[Ver 2.49] Tu trien khai etc/ luc KHOI DONG: kill-switch + ban tproxy da sua +
@@ -4394,22 +4577,21 @@ def pppoe_glider_forward_alive(sid, port=None, _cache=None):
             try: s.close()
             except Exception: pass
     except Exception as probe_err:
-        # [Ver 2.66 QA fix] Trước đây: bắt MỌI lỗi rồi `return True`. Khi glider treo,
-        # wrap_socket ném SSLEOFError nhưng helper vẫn báo sống -> watchdog
-        # không bao giờ restart. Nay phân biệt rõ:
-        #   - EOF/reset/refused/stop iteration  => glider treo thật  -> False
-        #   - timeout (chưa chắc)              -> True  (không restart)
+        # [Ver 2.67 QA fix] Phân biệt rõ 4 trạng thái:
+        #   1. ConnectionRefusedError -> glider CHƯA KỊP BIND (mới khởi động) => sống, KHÔNG restart
+        #   2. timeout                 -> chưa chắc chết => sống, KHÔNG restart
+        #   3. SSLEOFError/reset       -> bind xong nhưng forward chết => CHẾT, restart
+        #   4. lỗi khác               -> không chắc, không restart
+        # Bản v2.66 đoán sai: refused rơi vào nhánh ConnectionError => return False
+        # => watchdog coi glider chưa bind là chết, kill rồi khởi động lại liên tục.
         import socket as _s
-        err_name = type(probe_err).__name__
-        if isinstance(probe_err, (_s.timeout, TimeoutError)):
+        if isinstance(probe_err, ConnectionRefusedError):
             return True
         if isinstance(probe_err, ssl.SSLError):
-            # SSLEOFError / UNEXPECTED_EOF / ConnectionReset = glider treo forward
             return False
-        if isinstance(probe_err, ConnectionError):
+        if isinstance(probe_err, ConnectionResetError):
             return False
-        return False
-        # Không probe được thì coi như chưa chắc chết; chỉ restart khi chắc EOF/reset.
+        return True
         return True
 
 def pppoe_glider_restart(sid, sessions=None):
@@ -4493,6 +4675,12 @@ def gencore_watchdog_loop():
     while True:
         try:
             time.sleep(60)
+            try:
+                _h = ensure_wan_port_not_bridged()
+                if _h.get('changed'):
+                    _wd_log('[HEAL] eth0 WAN bi nhet vao br-lan -> da go ra %s' % _h)
+            except Exception:
+                pass
             thr = _wd_thresholds()
             cnt = _wd_conntrack_counts()
             if cnt is None:
@@ -4935,7 +5123,7 @@ class Handler(BaseHTTPRequestHandler):
                         except Exception: pass
                     res=call_old_gui('/api/router/pppoe',method='DELETE',data={'ids':fixed})
                     res=dict(res or {}); res['delete_requested']=fixed
-                    res['ports_returned']=[pppoe_return_port(x) for x in sorted(ports)]
+                    res['ports_returned']=[pppoe_return_port(x, fixed) for x in sorted(ports)]
                     return self._send_json(res)
                 if action == 'reset':
                     return self._send_json(call_old_gui('/api/router/pppoe/reset', method='PUT', data=payload.get('data') or {}))
@@ -4945,51 +5133,20 @@ class Handler(BaseHTTPRequestHandler):
                     rd=dict(rd)
                     try: sid=int(str(rd.get('id')).strip())
                     except Exception: return self._send_json({'ok':False,'error':'id khong hop le'})
-                    iface='if_%03d'%sid
-                    result={'ok':True,'rotate_id':sid,'redial':{'ok':False,'iface':iface}}
-                    # 1) goi rotate cua server goc (doi MAC macvlan)
-                    try:
-                        res=call_old_gui('/api/router/pppoe/rotate',method='PUT',data=rd)
-                        result.update(dict(res or {}))
-                    except Exception as e:
-                        result['rotate_err']=str(e)[:160]
-                    # 2) quay lai phien nhanh: ifdown/ifup, cho IP moi
-                    try:
-                        subprocess.run(['ifdown',iface],timeout=20,capture_output=True)
-                        time.sleep(1)
-                        subprocess.run(['ifup',iface],timeout=20,capture_output=True)
-                        # ISP mat ~18-20s sau redial moi cap IP moi; cho toi da 135s.
-                        # Truoc day chi cho 24s nen thuong tra ve IP rong du IP da ve.
-                        ips=[]
-                        for _ in range(45):
-                            time.sleep(3)
-                            try:
-                                st=json.loads(subprocess.check_output(['ifstatus',iface],text=True,timeout=5))
-                                ips=st.get('ipv4-address') or []
-                            except Exception:
-                                ips=[]
-                            if ips: break
-                        result['wan_ip']=ips[0].get('address','') if ips else ''
-                        result['up']=bool(ips)
-                        result['redial']={'ok':True,'iface':iface}
-                    except Exception as e:
-                        result['redial']={'ok':False,'iface':iface,'error':str(e)[:160]}
-                    # 3) ghi lai moc thoi gian doi IP vao ip_log.json
-                    if result.get('wan_ip'):
-                        try:
-                            PPPOE_IP_LOG.parent.mkdir(parents=True,exist_ok=True)
-                            d={}
-                            if PPPOE_IP_LOG.exists():
-                                d=json.loads(PPPOE_IP_LOG.read_text(encoding='utf-8')) or {}
-                            d[str(sid)]={'ip':result['wan_ip'],'ts':time.time()}
-                            PPPOE_IP_LOG.write_text(json.dumps(d,ensure_ascii=False),encoding='utf-8')
+                    if sid < 1 or sid > 999: return self._send_json({'ok':False,'error':'id khong hop le'})
+                    # [Ver 2.69] tra ngay, chay nen; GUI poll action=rotate_status
+                    return self._send_json(rotate_start(sid, rd, lambda d: call_old_gui('/api/router/pppoe/rotate',method='PUT',data=d)))
+                if action == 'rotate_status':
+                    ids=[]
+                    for x in (payload.get('ids') or []):
+                        try: ids.append(int(str(x).strip()))
                         except Exception: pass
-                    return self._send_json(result)
+                    return self._send_json({'ok':True,'jobs':rotate_status(ids or None)})
                 if action == 'proxy':
                     return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
                 if action == 'enable':
                     return self._send_json(call_old_gui('/api/router/enable_pppoe', method='POST', data=payload.get('data') or {}))
-                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|proxy|enable)'})
+                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|rotate_status|proxy|enable)'})
             if path == '/api/vpn/action':
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()
@@ -5206,6 +5363,8 @@ if __name__ == '__main__':
     ensure_etc_installed()
     ensure_vpn_deps_async()
     _ss_seed_backups()
+    ensure_wan_port_not_bridged()
+    ensure_lan_syn_bypass()
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()

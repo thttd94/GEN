@@ -1,3 +1,28 @@
+## Ver 2.69 (2026-10-21) - xoay IP chạy nền + khôi phục widget phần cứng + fix gốc lag GUI
+
+- Xoay IP: đo thật 2 phiên — BRAS nhà mạng không trả PADO ~5–5.5 phút sau khi ngắt
+  (#3 đổi MAC 5.5 phút, #4 không đổi MAC 321 s) => đổi MAC không phải nguyên nhân.
+  Bản cũ chờ đồng bộ 135 s nên luôn báo `up=false` dù IP thật sự đã đổi.
+- `action=rotate` trả ngay (~0.05 s), thread nền đổi MAC + ifdown/ifup đúng phiên,
+  chờ tối đa `ROTATE_WAIT_MAX_S=480`. Bấm lại khi đang xoay => `already`, không chạy chồng.
+- `action=rotate_status` (ids tuỳ chọn): GUI poll 5 s, cột trạng thái hiện
+  "⏳ đang xoay Ns" / "✔ đã đổi IP" / "✖ xoay lỗi"; tải lại trang vẫn theo dõi tiếp.
+- "Xoay IP tất cả" gửi song song (trước đây tuần tự, 32 phiên ~1 giờ+).
+- Ghi `ip_log.json` có khoá (nhiều thread cùng ghi).
+- Khôi phục widget thông số máy góc phải (nhiệt độ CPU, %CPU, RAM, Disk, uptime; tooltip
+  RAM MB/Disk GB/load) ở cả 3 trang — bị mất ở commit 3fb5837 khi khôi phục HTML từ base v2.52.
+  Backend `/api/pm/sysinfo` vẫn còn, chỉ mất phần giao diện.
+- Lag GUI gốc: fw4 `syn_flood` 25/s burst 50 dùng chung toàn router, nền đã ~28 SYN/s
+  => SYN LAN->router bị rớt, treo 1/3/7/21 s. `apply_xxtouch_bypass.sh` đọc IP LAN lúc chạy
+  và ghi `/usr/share/nftables.d/chain-pre/input/10-genrouter-lan-syn.nft`: SYN từ br-lan
+  giới hạn riêng từng IP 200/s burst 400, WAN giữ nguyên `syn_flood`. Bỏ IP 192.14 cứng
+  trong install.sh. Đo client: song song 27 request 21 s timeout -> 1.17 s, 0 lỗi.
+
+## Ver 2.68 (2026-10-21) - eth0 luôn là WAN
+
+- eth0 bị nhét vào br-lan làm 32 macvlan PPPoE chết. `ensure_wan_port_not_bridged()`
+  lúc start + mỗi 60 s; `pppoe_return_port` không bao giờ trả eth0 về LAN.
+
 
 ## Ver 2.66 (2026-10-20) - glider watchdog tự chữa + GUI khóa nút xóa proxy
 

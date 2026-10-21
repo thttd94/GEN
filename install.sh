@@ -134,16 +134,8 @@ mkdir -p "$APP_DIR/xxtouch_jobs/data" "$APP_DIR/xxtouch_jobs/log" "$APP_DIR/xxto
 chmod 755 "$APP_DIR/app.py"
 [ -f "$APP_DIR/setup_data_disk.sh" ] && chmod 755 "$APP_DIR/setup_data_disk.sh"
 
-cat > "$APP_DIR/apply_xxtouch_bypass.sh" <<EOF
-#!/bin/sh
-set -eu
-LAN_IP="${LAN_IP}"
-LAN_CIDR="${LAN_CIDR}"
-if iptables -t mangle -C GENROUTER -s "$LAN_CIDR" -d "$LAN_IP/32" -p tcp -j RETURN 2>/dev/null; then
-  exit 0
-fi
-iptables -t mangle -I GENROUTER 1 -s "$LAN_CIDR" -d "$LAN_IP/32" -p tcp -j RETURN
-EOF
+# [Ver 2.68] Script doc IP LAN luc chay + mien syn_flood cho LAN; khong ghi cung IP luc cai nua.
+cp "$SCRIPT_DIR/apply_xxtouch_bypass.sh" "$APP_DIR/apply_xxtouch_bypass.sh"
 chmod 755 "$APP_DIR/apply_xxtouch_bypass.sh"
 "$APP_DIR/apply_xxtouch_bypass.sh" || true
 

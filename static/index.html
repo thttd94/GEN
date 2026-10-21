@@ -1868,5 +1868,54 @@
   refreshPppoeSessions();
   setInterval(() => refreshPppoeSessions(), 30000);
 </script>
+<style>/* Widget thong so may thoi gian thuc (goc phai): nhiet do CPU, %CPU, RAM, disk, uptime. */
+.sysbar{position:fixed;top:10px;right:12px;z-index:9999;display:flex;gap:6px;align-items:center;background:rgba(8,19,31,.88);border:1px solid #1f4255;border-radius:999px;padding:5px 12px;font-size:11.5px;color:#bde7fa;font-family:'Segoe UI',system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.45);white-space:nowrap}
+.sysbar b{color:#fff;font-weight:700}
+.sysbar .hot{color:#ff8aa5}
+.sysbar .warm{color:#ffc94d}
+.sysbar .ok{color:#4ff0bd}
+.sysbar .sep{opacity:.35}
+.sysbar.sysbar-inline{position:static;top:auto;right:auto;box-shadow:none;padding:6px 12px;font-size:12px}
+@media (max-width:640px){.sysbar{font-size:10px;padding:4px 9px;top:auto;bottom:10px}}
+</style>
+<script>// Widget thong so may: fetch /api/pm/sysinfo moi 5s, hien goc phai.
+(function () {
+  if (document.getElementById('sysbar')) return;
+  var bar = document.createElement('div');
+  bar.id = 'sysbar'; bar.className = 'sysbar';
+  bar.textContent = '…';
+  var host = document.querySelector('.titlebar-right');
+  if (host) { bar.classList.add('sysbar-inline'); host.insertBefore(bar, host.firstChild); }
+  else document.body.appendChild(bar);
+  function fmtUp(s) {
+    s = s | 0;
+    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    return (d ? d + 'd' : '') + (h ? h + 'h' : '') + m + 'm';
+  }
+  async function tick() {
+    try {
+      var r = await fetch('/api/pm/sysinfo', {cache: 'no-store'});
+      var d = await r.json();
+      if (!d || !d.ok) { bar.textContent = 'máy: ?'; return; }
+      var t = d.temp_c, tc = t == null ? '—' : (t >= 75 ? 'hot' : t >= 60 ? 'warm' : 'ok');
+      var c = d.cpu_pct, cc = c == null ? '—' : (c >= 85 ? 'hot' : c >= 60 ? 'warm' : 'ok');
+      var m = (d.mem || {}).pct, mc = m == null ? '—' : (m >= 90 ? 'hot' : m >= 75 ? 'warm' : 'ok');
+      var dk = (d.disks && d.disks[0]) || {}, dp = dk.pct, dc = dp == null ? '—' : (dp >= 90 ? 'hot' : dp >= 80 ? 'warm' : 'ok');
+      bar.innerHTML = '🌡 <b class="' + tc + '">' + (t == null ? '—' : t + '°C') + '</b><span class="sep">|</span>'
+        + 'CPU <b class="' + cc + '">' + (c == null ? '—' : c + '%') + '</b><span class="sep">|</span>'
+        + 'RAM <b class="' + mc + '">' + (m == null ? '—' : m + '%') + '</b><span class="sep">|</span>'
+        + 'Disk <b class="' + dc + '">' + (dp == null ? '—' : dp + '%') + '</b><span class="sep">|</span>'
+        + '⏱ ' + fmtUp(d.uptime_s || 0);
+      bar.title = 'CPU: ' + (c == null ? '—' : c + '% x' + (d.cpu_count || '?'))
+        + ' | RAM: ' + ((d.mem || {}).used_mb || '?') + '/' + ((d.mem || {}).total_mb || '?') + 'MB'
+        + ' | Disk: ' + (dk.used_gb != null ? dk.used_gb + '/' + dk.total_gb + 'GB (' + dk.mount + ')' : '—')
+        + ' | Load: ' + ((d.load || []).join(' ') || '—')
+        + ' | Uptime: ' + fmtUp(d.uptime_s || 0);
+    } catch (e) { bar.textContent = 'máy: ?'; }
+  }
+  tick();
+  setInterval(tick, 5000);
+})();
+</script>
 </body>
 </html>
