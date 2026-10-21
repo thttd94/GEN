@@ -289,6 +289,15 @@
           </div>
                   </div>
         <div class="sub" id="countLabel" style="font-weight:800;">0 rows</div>
+        <label class="sub" for="pageSizeSelect" style="margin-left:10px;font-weight:700">Hiển thị</label>
+        <select id="pageSizeSelect" onchange="setPageSize(this.value)" style="width:auto;margin-left:4px" title="Số máy hiển thị mỗi trang">
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="0">Tất cả</option>
+        </select>
         <div id="pager" style="display:flex;align-items:center;gap:2px;margin-left:10px"></div>
       </div>
 
@@ -786,11 +795,31 @@
     }
 
     let currentPage = 1;
-    const PAGE_SIZE = 50;
+    // [Ver 2.73] So may moi trang chon duoc (50/100/200/500/1000/Tat ca), nho theo trinh duyet.
+    // 0 = tat ca (khong phan trang).
+    const PAGE_SIZE_OPTIONS = [50, 100, 200, 500, 1000, 0];
+    let PAGE_SIZE = 50;
+    try {
+      const saved = parseInt(localStorage.getItem('pm_page_size') || '', 10);
+      if (PAGE_SIZE_OPTIONS.includes(saved)) PAGE_SIZE = saved;
+    } catch (e) {}
+    function pageSizeOf(total) { return PAGE_SIZE > 0 ? PAGE_SIZE : Math.max(1, total); }
+    function setPageSize(v) {
+      const n = parseInt(v, 10);
+      if (!PAGE_SIZE_OPTIONS.includes(n)) return;
+      // giu may dau tien dang xem van nam trong trang moi
+      const firstIdx = (currentPage - 1) * pageSizeOf(getVisibleRows().length);
+      PAGE_SIZE = n;
+      try { localStorage.setItem('pm_page_size', String(n)); } catch (e) {}
+      currentPage = Math.floor(firstIdx / pageSizeOf(getVisibleRows().length)) + 1;
+      render();
+    }
     function renderPager(total) {
+      const sel = document.getElementById('pageSizeSelect');
+      if (sel && sel.value !== String(PAGE_SIZE)) sel.value = String(PAGE_SIZE);
       const el = document.getElementById('pager');
       if (!el) return;
-      const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      const pages = Math.max(1, Math.ceil(total / pageSizeOf(total)));
       if (currentPage > pages) currentPage = pages;
       if (pages <= 1) { el.innerHTML = ''; return; }
       el.innerHTML = '<button class="btn small" ' + (currentPage <= 1 ? 'disabled' : '')
@@ -813,10 +842,11 @@
       document.getElementById('countLabel').textContent = `${visibleRows.length} rows`;
       if (currentProjectTab !== 'proxy') return;
       renderPager(visibleRows.length);
-      const pageRows = visibleRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+      const ps = pageSizeOf(visibleRows.length);
+      const pageRows = visibleRows.slice((currentPage - 1) * ps, currentPage * ps);
       document.getElementById('rows').innerHTML = pageRows.map((row, idx) => `
         <tr>
-          <td>${(currentPage - 1) * PAGE_SIZE + idx + 1}</td>
+          <td>${(currentPage - 1) * ps + idx + 1}</td>
           <td class="mono">${esc(row.mac || '')}</td>
           <td class="mono">${esc(row.ip)}</td>
           <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>

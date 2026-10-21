@@ -1,3 +1,10 @@
+## Ver 2.73 (2026-10-21) - Chon so may hien thi moi trang
+
+- Them o chon `Hien thi` canh so rows: 50 / 100 / 200 / 500 / 1000 / Tat ca (khong phan trang).
+- Nho lua chon theo trinh duyet (`localStorage pm_page_size`), F5 / tat-mo giu nguyen. Mac dinh 50.
+- Doi so may/trang giu may dau tien dang xem trong trang moi; STT van dung theo vi tri.
+- Kiem: Edge CDP + mock 1234 may: mac dinh 50, doi 100/1000/tat ca, trang cuoi 234 may, F5 nho 200, gia tri la bi bo qua: 9/9 PASS.
+
 ## Ver 2.72 (2026-10-21) - GUI mo len nhay dung cau hinh dang apply
 
 - Loi: F5 / tat-mo lai GUI luon mo CAU HINH 1 du router dang apply cau hinh khac (Gen17 dang apply 2).
