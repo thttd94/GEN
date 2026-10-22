@@ -120,6 +120,7 @@
     .top-work-grid { display:grid; grid-template-columns: 1fr 1.15fr 1.05fr 0.95fr; gap:14px; padding:14px; border-bottom:1px solid var(--grid-line); background:linear-gradient(180deg,var(--grid1) 0%,var(--grid2) 100%); align-items:stretch; }
     .top-work-card { display:flex; flex-direction:column; gap:9px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 13px 13px; box-shadow:0 1px 3px var(--shadow-card); min-width:0; }
     .notes-summary-empty { color:#9ca3af; }
+    .bulkbar[hidden] { display:none !important; }
     .bulkbar { display:grid; grid-template-columns: 1fr; gap:12px; padding:0; border-bottom:1px solid var(--line-2); background:linear-gradient(180deg,var(--bulk1) 0%,var(--bulk2) 100%); }
     .bulk-card { display:grid; gap:8px; align-content:start; }
     .bulk-card-title { display:flex; align-items:center; gap:8px; font-size:11.5px; font-weight:800; letter-spacing:.4px; color:var(--text-head); text-transform:uppercase; line-height:22px; padding-bottom:8px; border-bottom:1px dashed var(--line-dash); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -283,7 +284,7 @@
         <div class="meta-right"><div class="lic-line" id="licBar" style="display:none"></div></div>
       </div>
 
-      <div class="bulkbar">
+      <div class="bulkbar" id="bulkbar" hidden>
         <div class="top-work-grid">
           <div class="top-work-card">
             <div class="bulk-card-title"><span class="t-ico t-ico-blue">🎯</span>Gán 1 proxy · mọi cấu hình</div>
@@ -325,6 +326,7 @@
 
       <div class="notes-wrap" style="padding-top:10px;padding-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <button type="button" class="btn small" id="bulkToggleBtn" onclick="toggleBulkbar()" aria-controls="bulkbar" aria-expanded="false">▸ Hiện khung Gán</button>
           <div class="view-tabs">
             <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
             <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
@@ -1121,6 +1123,27 @@
         btn.disabled = false;
       }
     }
+
+    // [Ver 2.80] Khung Gan (1 proxy / hang loat / VPN / Note) mac dinh AN de danh cho bang thiet bi.
+    // Nho trang thai bang localStorage.
+    function setBulkbar(show) {
+      const bar = document.getElementById('bulkbar');
+      const btn = document.getElementById('bulkToggleBtn');
+      if (!bar || !btn) return;
+      bar.hidden = !show;
+      btn.setAttribute('aria-expanded', show ? 'true' : 'false');
+      btn.textContent = show ? '▾ Ẩn khung Gán' : '▸ Hiện khung Gán';
+      try { localStorage.setItem('pm_bulkbar_show', show ? '1' : '0'); } catch (e) {}
+    }
+    function toggleBulkbar() {
+      const bar = document.getElementById('bulkbar');
+      setBulkbar(!!(bar && bar.hidden));
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      let show = false;
+      try { show = localStorage.getItem('pm_bulkbar_show') === '1'; } catch (e) {}
+      setBulkbar(show);
+    });
 
     function pppoeFaceHtml(cur) {
       const v = String(cur || '');
