@@ -57,6 +57,25 @@
   tr.eth-row td:first-child { box-shadow:inset 4px 0 0 var(--eth-c); }
   tr.eth-row td.eth-port { color:var(--eth-c); font-weight:800; }
   tr.eth-first td { border-top:2px solid var(--eth-b); }
+  /* [Ver 2.81] Trang thai cong vat ly + thu gon tung cum cong */
+  .port-list { display:flex; flex-wrap:wrap; gap:8px; }
+  .port-chip { display:inline-flex; align-items:center; gap:7px; background:#0a1826; border:1px solid var(--line); border-radius:10px; padding:5px 11px; font-size:12.5px; }
+  .port-chip .dot { width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
+  .port-chip .dot.on { background:#22c55e; box-shadow:0 0 7px rgba(34,197,94,.8); }
+  .port-chip .dot.off { background:#ef4444; box-shadow:0 0 7px rgba(239,68,68,.7); }
+  .port-chip .role { font-size:10.5px; font-weight:800; letter-spacing:.5px; border-radius:6px; padding:1px 6px; }
+  .port-chip .role.wan { background:rgba(251,146,60,.16); color:#fdba74; border:1px solid rgba(251,146,60,.5); }
+  .port-chip .role.lan { background:rgba(56,189,248,.14); color:#7dd3fc; border:1px solid rgba(56,189,248,.45); }
+  .port-chip .spd { color:var(--dim); font-size:11px; }
+  tr.eth-head td { background:var(--eth-bg); border-top:2px solid var(--eth-b); cursor:pointer; user-select:none; padding:7px 9px; }
+  tr.eth-head td:hover { filter:brightness(1.25); }
+  tr.eth-head .car { display:inline-block; width:14px; color:var(--eth-c); font-weight:800; }
+  tr.eth-head b { color:var(--eth-c); margin-right:10px; }
+  tr.eth-head .on { color:#4ff0bd; font-weight:700; margin-right:8px; }
+  tr.eth-head .off { color:#ff8aa5; font-weight:700; margin-right:8px; }
+  .eth-chip { cursor:pointer; }
+  .eth-chip.collapsed { opacity:.55; }
+  #reloadBtn[disabled] { opacity:.6; cursor:wait; }
   @media (max-width:640px){ .grid2{grid-template-columns:1fr} }
 </style>
 </head>
@@ -71,15 +90,15 @@
 </div>
 
 <div class="card">
-  <h2><span class="h-ico">📡</span>Trạng thái PPPoE</h2>
-  <div id="pppoe-status" class="muted">đang tải…</div>
+  <h2><span class="h-ico">📡</span>Trạng thái cổng</h2>
+  <div id="pppoe-status" class="port-list muted">đang tải…</div>
   <div style="margin-top:10px" id="enable-row"></div>
 </div>
 
 <div class="card">
   <h2><span class="h-ico">🛰</span>Danh sách phiên</h2>
   <div class="list-head">
-    <button class="ok" onclick="refresh()">🔄 Tải lại</button>
+    <button class="ok" id="reloadBtn" onclick="refresh(true)">🔄 Tải lại</button>
     <button onclick="rotateAll()">🔀 Xoay IP tất cả</button>
     <button class="bad" onclick="delAll()">🗑 Xóa tất cả phiên</button>
     <div class="eth-sum" id="eth-sum"></div>
@@ -148,18 +167,29 @@ async function api(action, extra={}) {
 }
 
 async function loadStatus() {
+  // [Ver 2.81] Hien trang thai TAT CA cong vat ly: WAN/LAN + cham xanh (co day) / do (mat day).
+  const el = document.getElementById('pppoe-status');
   try {
-    const r = await (await fetch('/api/pppoe/status')).json();
+    const r = await (await fetch('/api/pppoe/ports', {cache:'no-store'})).json();
+    const ports = (r && r.ports) || [];
+    el.classList.remove('muted');
+    el.innerHTML = ports.length ? ports.map(p =>
+      `<span class="port-chip" title="${esc(p.name)}: ${p.up ? 'đang cắm dây' : 'mất dây / tắt'}">`
+      + `<span class="dot ${p.up ? 'on' : 'off'}" role="img" aria-label="${p.up ? 'on' : 'off'}"></span>`
+      + `<b>${esc(p.name)}</b><span class="role ${p.role === 'wan' ? 'wan' : 'lan'}">${p.role === 'wan' ? 'WAN' : 'LAN'}</span>`
+      + (p.speed ? `<span class="spd">${esc(p.speed)}</span>` : '') + `</span>`).join('')
+      : '<span class="muted">Không đọc được danh sách cổng.</span>';
+  } catch(e){ el.textContent = 'mất kết nối'; }
+  // Thong tin PPPoE goc van can cho nut Bat/Tat PPPoE (user/pass) - chay nen, khong chan.
+  fetch('/api/pppoe/status').then(x => x.json()).then(r => {
     const d = (r && r.data && (r.data.data || r.data)) || {};
-    const el = document.getElementById('pppoe-status');
     const en = d.enable;
-    el.innerHTML = `Chế độ: <b>${en ? 'PPPoE' : 'DHCP'}</b> · User: <b>${esc(d.username || '—')}</b> · Cổng: <b>${esc(d.device || 'eth0')}</b> · Proxy: <b>${d.proxy_support ? 'hỗ trợ' : 'không'}</b>`;
     document.getElementById('enable-row').innerHTML =
       (en ? `<button class="bad" onclick="setEnable(false)">Tắt PPPoE (về DHCP)</button>`
           : `<button class="ok" onclick="setEnable(true)">Bật PPPoE</button>`)
       + ` <span class="muted">Bật/tắt cần user+pass (lấy từ form tạo phiên hoặc nhập khi bấm).</span>`;
     window._pppoe_info = d;
-  } catch(e){ document.getElementById('pppoe-status').textContent = 'mất kết nối'; }
+  }).catch(() => {});
 }
 async function loadDevices() {
   try {
@@ -176,12 +206,39 @@ async function loadDevices() {
   } catch(e){}
 }
 
-async function refresh() {
-  if (BUSY) return;
-  await loadStatus(); await loadDevices();
+// [Ver 2.81] Thu gon / mo tung cum cong; nho trang thai bang localStorage.
+const ETH_COLLAPSED = new Set((() => { try { return JSON.parse(localStorage.getItem('pp_eth_collapsed') || '[]'); } catch(e) { return []; } })());
+function toggleEth(port) {
+  if (ETH_COLLAPSED.has(port)) ETH_COLLAPSED.delete(port); else ETH_COLLAPSED.add(port);
+  try { localStorage.setItem('pp_eth_collapsed', JSON.stringify([...ETH_COLLAPSED])); } catch(e) {}
+  const hide = ETH_COLLAPSED.has(port);
+  document.querySelectorAll('tr.eth-row').forEach(tr => { if (tr.dataset.port === port) tr.hidden = hide; });
+  document.querySelectorAll('[data-eth-toggle]').forEach(el => {
+    if (el.dataset.ethToggle !== port) return;
+    el.classList.toggle('collapsed', hide);
+    const car = el.querySelector('.car'); if (car) car.textContent = hide ? '▸' : '▾';
+    el.setAttribute('aria-expanded', hide ? 'false' : 'true');
+  });
+}
+
+let REFRESHING = false;
+async function refresh(manual) {
+  if (BUSY || REFRESHING) return;
+  REFRESHING = true;
+  const btn = document.getElementById('reloadBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Đang tải…'; }
+  try { await refreshInner(); }
+  finally {
+    REFRESHING = false;
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Tải lại'; }
+  }
+}
+async function refreshInner() {
+  // Trang thai cong + danh sach cong cho form chay SONG SONG, khong chan bang phien.
+  loadStatus(); loadDevices();
   let list = [];
   try {
-    const r = await (await fetch('/api/pppoe/list')).json();
+    const r = await (await fetch('/api/pppoe/list', {cache:'no-store'})).json();
     const d = (r && r.data && (r.data.data || r.data));
     list = Array.isArray(d) ? d : (d ? (d.sessions || d.list || []) : []);
   } catch(e){ document.getElementById('upd').textContent = 'mất kết nối'; return; }
@@ -206,7 +263,8 @@ async function refresh() {
   document.getElementById('eth-sum').innerHTML = ports.map(p => {
     const g = list.filter(s => portOf(s) === p);
     const on = g.filter(isUp).length;
-    return `<span class="eth-chip" style="${ethVars[p]}"><b>${esc(p)}</b>`
+    const col = ETH_COLLAPSED.has(p);
+    return `<span class="eth-chip${col ? ' collapsed' : ''}" style="${ethVars[p]}" data-eth-toggle="${esc(p)}" role="button" tabindex="0" aria-expanded="${col ? 'false' : 'true'}" title="Bấm để thu gọn / mở cụm ${esc(p)}" onclick="toggleEth(this.dataset.ethToggle)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleEth(this.dataset.ethToggle)}"><span class="car">${col ? '▸' : '▾'}</span><b>${esc(p)}</b>`
       + `<span class="on">● ${on} online</span><span class="off">○ ${g.length - on} off</span>`
       + `<span class="tot">Σ ${g.length}</span></span>`;
   }).join('');
@@ -220,6 +278,15 @@ async function refresh() {
     const id = s.id ?? s.wan_id ?? '';
     const pk = portOf(s);
     const first = pk !== lastPort; lastPort = pk;
+    const col = ETH_COLLAPSED.has(pk);
+    let head = '';
+    if (first) {
+      const g = list.filter(x => portOf(x) === pk);
+      const on = g.filter(isUp).length;
+      head = `<tr class="eth-head" style="${ethVars[pk]}" data-eth-toggle="${esc(pk)}" tabindex="0" aria-expanded="${col ? 'false' : 'true'}" onclick="toggleEth(this.dataset.ethToggle)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleEth(this.dataset.ethToggle)}">`
+        + `<td colspan="9"><span class="car">${col ? '▸' : '▾'}</span><b>${esc(pk)}</b>`
+        + `<span class="on">● ${on} online</span><span class="off">○ ${g.length - on} off</span><span class="muted">Σ ${g.length} phiên — bấm để thu gọn / mở</span></td></tr>`;
+    }
     const iface = s.interface || s.iface || (id !== '' ? `if_${String(id).padStart(3,'0')}` : '—');
     const up = isUp(s);
     const st = up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
@@ -227,7 +294,7 @@ async function refresh() {
     const proxy = s.socks5 || s.socks_proxy || s.proxy || '';
     const port = String(s.device || '').split('.')[0] || '—';
     const tm = s.last_changed || s.ip_changed_at || '';
-    return `<tr class="eth-row${first ? ' eth-first' : ''}" style="${ethVars[pk]}"><td><b>${esc(id)}</b></td><td class="eth-port">${esc(port)}</td><td class="muted">${esc(iface)}</td>`
+    return head + `<tr class="eth-row" data-port="${esc(pk)}" style="${ethVars[pk]}"${col ? ' hidden' : ''}><td><b>${esc(id)}</b></td><td class="eth-port">${esc(port)}</td><td class="muted">${esc(iface)}</td>`
       + `<td>${esc(s.username || '')}</td>`
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
       + `<td>${st} <span data-rot="${esc(id)}">${rotCell(id)}</span></td>`

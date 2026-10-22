@@ -3124,6 +3124,48 @@ def check_proxy_batch(items, session='1', max_workers=64):
 # day eth0 vao br-lan, macvlan dev_xxx khong claim duoc, toan bo PPPoE chet.
 PPPOE_WAN_FIXED = 'eth0'
 
+def router_physical_ports():
+    """[Ver 2.81] Cong vat ly cua router: ten, vai tro WAN/LAN, dang co day (up) hay khong.
+    Doc thang /sys/class/net (khong goi server 9000) nen nhanh va khong treo.
+    LAN = cong dang la slave cua br-lan; con lai = WAN."""
+    base = Path('/sys/class/net')
+    try:
+        names = sorted((p.name for p in base.iterdir()), key=lambda n: (re.sub(r'\d+$', '', n), int((re.findall(r'\d+$', n) or ['0'])[0])))
+    except Exception:
+        return []
+    try:
+        uci_lan = set(_lan_ports_get())
+    except Exception:
+        uci_lan = set()
+    out = []
+    for n in names:
+        p = base / n
+        if not (p / 'device').exists() or n == 'lo':
+            continue  # chi lay cong vat ly (bo br-lan, macvlan, tun, ppp...)
+        try:
+            master = os.path.basename(os.readlink(str(p / 'master')))
+        except Exception:
+            master = ''
+        role = 'lan' if (master == 'br-lan' or (not master and n in uci_lan)) else 'wan'
+        up = False
+        try:
+            up = (p / 'carrier').read_text().strip() == '1'
+        except Exception:
+            try:
+                up = (p / 'operstate').read_text().strip() == 'up'
+            except Exception:
+                up = False
+        speed = ''
+        if up:
+            try:
+                sp = int((p / 'speed').read_text().strip())
+                if sp > 0:
+                    speed = f'{sp // 1000}G' if sp >= 1000 and sp % 1000 == 0 else f'{sp}M'
+            except Exception:
+                pass
+        out.append({'name': n, 'role': role, 'up': up, 'speed': speed})
+    return out
+
 def _lan_ports_get():
     cur=subprocess.check_output(['uci','-q','get','network.@device[0].ports'],text=True,timeout=5).strip()
     return [x for x in cur.split() if x]
@@ -4960,6 +5002,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(pppoe_runtime_enrich(call_old_gui('/api/router/pppoe')))
             except Exception as ex:
                 return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
+        if path == '/api/pppoe/ports':
+            return self._send_json({'ok': True, 'ports': router_physical_ports()})
         if path == '/api/pppoe/status':
             try:
                 return self._send_json(call_old_gui('/api/router/status_pppoe'))
