@@ -45,6 +45,18 @@
   .wan-ok { color:#ffc94d; font-weight:800; letter-spacing:.3px; text-shadow:0 0 10px rgba(255,201,77,.35); }
   .muted { color:var(--dim); font-size:12px; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
+  /* [Ver 2.79] Cum theo cong Ethx: moi cong 1 mau trong suot rieng */
+  .list-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .eth-sum { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
+  .eth-chip { display:inline-flex; align-items:center; gap:8px; border-radius:10px; padding:5px 11px; font-size:12px; border:1px solid var(--eth-b); background:var(--eth-bg); }
+  .eth-chip b { color:var(--eth-c); font-size:13px; }
+  .eth-chip .on { color:#4ff0bd; font-weight:700; }
+  .eth-chip .off { color:#ff8aa5; font-weight:700; }
+  .eth-chip .tot { color:var(--txt); font-weight:700; }
+  tr.eth-row td { background:var(--eth-bg); }
+  tr.eth-row td:first-child { box-shadow:inset 4px 0 0 var(--eth-c); }
+  tr.eth-row td.eth-port { color:var(--eth-c); font-weight:800; }
+  tr.eth-first td { border-top:2px solid var(--eth-b); }
   @media (max-width:640px){ .grid2{grid-template-columns:1fr} }
 </style>
 </head>
@@ -66,10 +78,11 @@
 
 <div class="card">
   <h2><span class="h-ico">🛰</span>Danh sách phiên</h2>
-  <div style="margin-bottom:12px">
+  <div class="list-head">
     <button class="ok" onclick="refresh()">🔄 Tải lại</button>
     <button onclick="rotateAll()">🔀 Xoay IP tất cả</button>
     <button class="bad" onclick="delAll()">🗑 Xóa tất cả phiên</button>
+    <div class="eth-sum" id="eth-sum"></div>
   </div>
   <table>
       <thead><tr><th>ID</th><th>Port</th><th>Interface</th><th>User PPPoE</th><th>WAN IP</th><th>Trạng thái</th><th>Thời gian</th><th>Proxy</th><th style="width:220px">Hành động</th></tr></thead>
@@ -177,18 +190,44 @@ async function refresh() {
   const tb = document.getElementById('tb');
   if (!list.length) {
     tb.innerHTML = '<tr><td colspan="9" class="muted">Chưa có phiên nào — tạo bằng form bên dưới.</td></tr>';
+    document.getElementById('eth-sum').innerHTML = '';
     return;
   }
+  // [Ver 2.79] Gom theo cong Ethx (eth0, eth1...), moi cong 1 mau; dem online/off/tong.
+  const portOf = s => String(s.device || '').split('.')[0] || '—';
+  const isUp = s => !!(s.up === true || s.status === 'up' || s.status === 'online' || s.online === true);
+  const ports = [...new Set(list.map(portOf))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+  const ETH_COLORS = ['56,189,248', '167,139,250', '52,211,153', '251,146,60', '244,114,182', '250,204,21', '45,212,191', '248,113,113'];
+  const ethVars = {};
+  ports.forEach((p, i) => {
+    const c = ETH_COLORS[i % ETH_COLORS.length];
+    ethVars[p] = `--eth-c:rgb(${c});--eth-b:rgba(${c},.55);--eth-bg:rgba(${c},.09)`;
+  });
+  document.getElementById('eth-sum').innerHTML = ports.map(p => {
+    const g = list.filter(s => portOf(s) === p);
+    const on = g.filter(isUp).length;
+    return `<span class="eth-chip" style="${ethVars[p]}"><b>${esc(p)}</b>`
+      + `<span class="on">● ${on} online</span><span class="off">○ ${g.length - on} off</span>`
+      + `<span class="tot">Σ ${g.length}</span></span>`;
+  }).join('');
+  list = [...list].sort((a, b) => {
+    const pa = ports.indexOf(portOf(a)), pb = ports.indexOf(portOf(b));
+    if (pa !== pb) return pa - pb;
+    return (parseInt(a.id ?? a.wan_id, 10) || 0) - (parseInt(b.id ?? b.wan_id, 10) || 0);
+  });
+  let lastPort = null;
   tb.innerHTML = list.map(s => {
     const id = s.id ?? s.wan_id ?? '';
+    const pk = portOf(s);
+    const first = pk !== lastPort; lastPort = pk;
     const iface = s.interface || s.iface || (id !== '' ? `if_${String(id).padStart(3,'0')}` : '—');
-    const up = (s.up ?? s.status === 'up' ?? s.online);
+    const up = isUp(s);
     const st = up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
     const ip = s.ip || s.wan_ip || s.public_ip || '';
     const proxy = s.socks5 || s.socks_proxy || s.proxy || '';
     const port = String(s.device || '').split('.')[0] || '—';
     const tm = s.last_changed || s.ip_changed_at || '';
-    return `<tr><td><b>${esc(id)}</b></td><td>${esc(port)}</td><td class="muted">${esc(iface)}</td>`
+    return `<tr class="eth-row${first ? ' eth-first' : ''}" style="${ethVars[pk]}"><td><b>${esc(id)}</b></td><td class="eth-port">${esc(port)}</td><td class="muted">${esc(iface)}</td>`
       + `<td>${esc(s.username || '')}</td>`
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
       + `<td>${st} <span data-rot="${esc(id)}">${rotCell(id)}</span></td>`

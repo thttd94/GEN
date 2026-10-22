@@ -200,9 +200,13 @@
     .lock-btn { background:#06b6d4; color:#fff; border:0; border-radius:10px; padding:10px 18px; font-weight:800; cursor:pointer; }
     #licBar { font-size:12px; padding:4px 10px; align-self:center; }
     /* IP public cua phien PPPoE dang chon: noi bat canh dropdown */
-    .pppoe-ip { display:inline-block; margin-left:6px; padding:2px 8px; border-radius:6px; background:#fef3c7; color:#b45309; border:1px solid #f59e0b; font-family:ui-monospace,Menlo,monospace; font-weight:800; font-size:13px; vertical-align:middle; user-select:all; }
-    .pppoe-ip:empty { display:none; }
-    body.dark .pppoe-ip { background:#3a2a05; color:#fbbf24; border-color:#b45309; }
+    /* [Ver 2.79] To mau IP NGAY TRONG o chon PPPoE: select chu trong suot + lop chu de len tren */
+    .pp-wrap { position:relative; display:inline-block; vertical-align:middle; }
+    .pp-wrap select { color:transparent; }
+    .pp-wrap select option { color:var(--text); }
+    .pp-face { position:absolute; left:11px; right:28px; top:50%; transform:translateY(-50%); pointer-events:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:14px; color:var(--text); }
+    .pp-face .pp-ipv { color:#d97706; font-weight:800; font-family:ui-monospace,Menlo,monospace; }
+    body.dark .pp-face .pp-ipv { color:#fbbf24; }
     /* ---- Sac thai ngu nghia rieng cho giao dien TOI ---- */
     body.dark .check-ok { color:#4ade80; }
     body.dark .check-bad { color:#f87171; }
@@ -940,10 +944,10 @@
                  ${vpnOptionsHtml(row.proxy)}
                </select></td>`
             : (String(row.proxyType || 'socks5').toLowerCase()==='pppoe')
-            ? `<td style="white-space:nowrap;"><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="width:270px;max-width:none;">
+            ? `<td style="white-space:nowrap;"><span class="pp-wrap"><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="width:270px;max-width:none;">
                  <option value="" ${(!String(row.proxy || '').startsWith('pppoe:')) ? 'selected' : ''}>— chọn PPPoE —</option>
                  ${pppoeOptionsHtml(row.proxy)}
-               </select><span class="pppoe-ip" title="IP public cua phien PPPoE">${esc(pppoeIpOf(row.proxy))}</span> <button class="btn small" onclick="rotatePPPoE(this)" title="Xoay IP phien PPPoE may nay dang chon (mat mang ~5 phut)">🔄 Xoay IP</button><span class="pppoe-rot sub"></span> <button class="btn small" onclick="suggestPPPoE(this)" title="Tự động chọn phiên PPPoE chưa được gán">💡 Đề xuất</button></td>`
+               </select><span class="pp-face">${pppoeFaceHtml(row.proxy)}</span></span> <button class="btn small" onclick="rotatePPPoE(this)" title="Xoay IP phien PPPoE may nay dang chon (mat mang ~5 phut)">🔄 Xoay IP</button><span class="pppoe-rot sub"></span> <button class="btn small" onclick="suggestPPPoE(this)" title="Tự động chọn phiên PPPoE chưa được gán">💡 Đề xuất</button></td>`
             : `<td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>`}
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
@@ -1070,7 +1074,8 @@
     function paintPppoeRot() {
       document.querySelectorAll('select[data-field="proxy"]').forEach(sel => {
         const v = String(sel.value || '');
-        const span = sel.parentElement && sel.parentElement.querySelector('.pppoe-rot');
+        const td = sel.closest('td');
+        const span = td && td.querySelector('.pppoe-rot');
         if (!span) return;
         span.textContent = v.startsWith('pppoe:') ? pppoeRotText(parseInt(v.slice(6), 10)) : '';
       });
@@ -1094,7 +1099,8 @@
       PPPOE_ROT_TIMER = setTimeout(step, 3000);
     }
     async function rotatePPPoE(btn) {
-      const sel = btn.parentElement && btn.parentElement.querySelector('select[data-field="proxy"]');
+      const td0 = btn.closest('td');
+      const sel = td0 && td0.querySelector('select[data-field="proxy"]');
       const v = String((sel && sel.value) || '');
       if (!v.startsWith('pppoe:')) { setStatus('May nay chua chon phien PPPoE'); return; }
       const sid = parseInt(v.slice(6), 10);
@@ -1114,6 +1120,13 @@
       } finally {
         btn.disabled = false;
       }
+    }
+
+    function pppoeFaceHtml(cur) {
+      const v = String(cur || '');
+      if (!v.startsWith('pppoe:')) return '— chọn PPPoE —';
+      const ip = pppoeIpOf(v);
+      return 'PPPoE #' + esc(v.slice(6)) + (ip ? ' (<span class="pp-ipv">' + esc(ip) + '</span>)' : '');
     }
 
     function pppoeIpOf(cur) {
@@ -1436,8 +1449,8 @@
       }
       persistDraft(currentSession);
       if (el.dataset.field === 'proxy' && el.parentElement) {
-        const badge = el.parentElement.querySelector('.pppoe-ip');
-        if (badge) badge.textContent = pppoeIpOf(el.value);
+        const face = el.parentElement.querySelector('.pp-face');
+        if (face) face.innerHTML = pppoeFaceHtml(el.value);
       }
       if ((el.dataset.field === 'proxyType' || el.dataset.field === 'proxy') && row) {
         applyVpnChange(row, prevAcc);
