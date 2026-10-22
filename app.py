@@ -530,6 +530,32 @@ def get_repo_version_info():
         latest_label = current_label
     return {'ok': True, 'current_commit': current_commit, 'current_short': current_short, 'current_subject': current_subject, 'current_label': current_label, 'latest_commit': latest_commit, 'latest_short': latest_short, 'latest_subject': latest_subject, 'latest_label': latest_label, 'has_update': has_update, 'branch': branch, 'remote_url': remote_url, 'remote_error': remote_error, 'update_codes': ensure_update_codes_for_version(latest_subject or latest_label or current_label)}
 
+def _pin_recovery_277(before_label):
+    """[Ver 2.78] Ban phuc hoi CHINH = Ver 2.77: luu VINH VIEN 1 lan truoc khi bi ghi de.
+    Ten khac gen_app_pre_* nen khong bi vong xoa ban cu dung toi.
+    Phuc hoi: tar -xzf <file> -C /opt/proxy-manager-v1 && /etc/init.d/proxy-manager-v1 restart"""
+    if not re.match(r'^\s*(Ver\s*)?2\.77\b', str(before_label or ''), re.IGNORECASE):
+        return ''
+    import tarfile
+    base = Path('/data/genrouter_backups') if Path('/data').is_dir() else Path('/root/genrouter_backups')
+    pin_dir = base / 'pinned'
+    pin = pin_dir / 'gen_app_v2.77_recovery.tgz'
+    try:
+        if pin.exists() and pin.stat().st_size > 0:
+            return str(pin)
+        pin_dir.mkdir(parents=True, exist_ok=True)
+        tmp = pin.with_name(pin.name + '.tmp')
+        with tarfile.open(tmp, 'w:gz') as tf:
+            for name in ('app.py', 'VERSION.txt', 'static', 'tools', 'etc', 'rollback_version.sh', 'gen_update.sh', 'install.sh', 'setup_data_disk.sh'):
+                p = BASE_DIR / name
+                if p.exists():
+                    tf.add(str(p), arcname=name)
+        os.replace(tmp, pin)
+        os.chmod(pin, 0o444)
+        return str(pin)
+    except Exception:
+        return ''
+
 def update_repo_from_remote(password: str):
     before_label = ''
     try:
@@ -566,6 +592,10 @@ def update_repo_from_remote(password: str):
         if latest_label:
             version_text = latest_label if not latest_short else f'{latest_label} ({latest_short})'
             (extract_dir / 'VERSION.txt').write_text(version_text + '\n', encoding='utf-8')
+        try:
+            _pin_recovery_277(before_label)
+        except Exception:
+            pass
         # [Ver 2.70] Thu muc co du lieu runtime: chep DE (merge), KHONG xoa truoc.
         # Truoc day rmtree => moi lan update mat xxtouch_jobs/data, log, tmp.
         _merge_dirs = {'xxtouch_jobs', 'logs', 'presets', 'persist'}
@@ -2040,13 +2070,15 @@ def extract_rows(data, session='1'):
         meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
         outbound = outbounds.get(tag, {}) if tag else {}
         ob_type = str((outbound or {}).get('type', '')).strip().lower() if isinstance(outbound, dict) else ''
-        if tag and ob_type == 'direct':
+        # PPPoE luu outbound dang 'socks' (glider) hoac 'block' (glider chua san sang),
+        # nen phai xet pppoe_account TRUOC kieu outbound; neu khong se hien thanh socks5
+        # va lan Luu sau xoa mat pppoe_account.
+        pppoe_acc = str((meta or {}).get('pppoe_account', '') or '').strip() if tag else ''
+        if pppoe_acc:
+            proxy_val, ptype = ('pppoe:' + pppoe_acc, 'pppoe')
+        elif tag and ob_type == 'direct':
             vpn_acc = str((meta or {}).get('vpn_account', '') or '').strip() or vpn_map.get(ip, '')
-            pppoe_acc = str((meta or {}).get('pppoe_account', '') or '').strip()
-            if pppoe_acc:
-                proxy_val, ptype = ('pppoe:' + pppoe_acc, 'pppoe')
-            else:
-                proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
+            proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
         else:
             proxy_val, ptype = (format_proxy(outbound), format_proxy_type(outbound))
         rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': True})
@@ -2139,6 +2171,21 @@ def apply_rows_to_data(data, rows_by_tag, session='1'):
     update_session_rows_meta(session, touched_rows)
     return data
 
+_PPPOE_LAN_HOST_CACHE = {'ip': '', 'ts': 0.0}
+
+def _pppoe_glider_lan_host():
+    """IP LAN cua chinh router nay cho glider PPPoE (truoc day hard-code 192.15.0.1).
+    Cache 300s vi set_outbound_proxy goi theo tung dong may."""
+    import time as _t
+    now = _t.time()
+    if _PPPOE_LAN_HOST_CACHE['ip'] and now - _PPPOE_LAN_HOST_CACHE['ts'] < 300:
+        return _PPPOE_LAN_HOST_CACHE['ip']
+    ip = get_current_router_lan_ip()
+    if ip:
+        _PPPOE_LAN_HOST_CACHE.update(ip=ip, ts=now)
+        return ip
+    return _PPPOE_LAN_HOST_CACHE['ip'] or '192.15.0.1'
+
 def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5'):
     idx = outbound_idx.get(tag)
     if idx is None:
@@ -2159,7 +2206,7 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
             import urllib.parse as _u
             u = _u.urlparse(raw if '://' in raw else 'socks5://' + raw)
             host = (u.hostname or '').strip()
-            if host in ('0.0.0.0', '127.0.0.1', 'localhost', ''): host = '192.15.0.1'
+            if host in ('0.0.0.0', '127.0.0.1', 'localhost', ''): host = _pppoe_glider_lan_host()
             user = _u.unquote(u.username or ''); pw = _u.unquote(u.password or ''); port = int(u.port or 0)
             if host and port and user and pw:
                 outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': host, 'server_port': port, 'username': user, 'password': pw, 'version': '5'}

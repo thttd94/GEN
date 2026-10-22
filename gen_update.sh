@@ -198,6 +198,31 @@ else
   log "GEN_NO_BACKUP=1 -> bo qua backup"
 fi
 
+# [Ver 2.78] BAN PHUC HOI CHINH = Ver 2.77: luu VINH VIEN 1 lan, truoc khi bi ghi de.
+# Ten/thu muc khac gen_app_pre_* nen KHONG nam trong vong xoa ban cu o tren (giu nguyen).
+# Phuc hoi: tar -xzf <file> -C /opt/proxy-manager-v1 && /etc/init.d/proxy-manager-v1 restart
+case "$OLD_V" in
+  "Ver 2.77"*|"2.77"*)
+    if [ -d /data ]; then PIN_DIR=/data/genrouter_backups/pinned; else PIN_DIR=/root/genrouter_backups/pinned; fi
+    PIN="$PIN_DIR/gen_app_v2.77_recovery.tgz"
+    if [ -s "$PIN" ]; then
+      log "ban phuc hoi 2.77 da co: $PIN"
+    elif mkdir -p "$PIN_DIR" 2>/dev/null; then
+      items=""
+      for x in app.py VERSION.txt static tools etc rollback_version.sh gen_update.sh install.sh setup_data_disk.sh; do
+        [ -e "$APP_DIR/$x" ] && items="$items $x"
+      done
+      # shellcheck disable=SC2086
+      if tar -czf "$PIN.tmp" -C "$APP_DIR" $items 2>/dev/null && mv "$PIN.tmp" "$PIN"; then
+        chmod 444 "$PIN" 2>/dev/null
+        log "LUU VINH VIEN ban phuc hoi 2.77: $PIN ($(du -k "$PIN" | awk '{print $1}') KB)"
+      else
+        rm -f "$PIN.tmp"; err "khong luu duoc ban phuc hoi 2.77 -> tiep tuc update"
+      fi
+    fi
+    ;;
+esac
+
 # apply code files (targeted, preserve runtime state)
 for f in app.py rollback_version.sh setup_data_disk.sh update.sh install.sh start.sh full_system_backup.sh gen_update.sh restore_version_online.sh; do
   [ -f "$PKG/$f" ] && cp "$PKG/$f" "$APP_DIR/$f"
