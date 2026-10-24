@@ -145,6 +145,19 @@ def _rotate_worker(sid, rd, call_rotate):
                 PPPOE_IP_LOG.write_text(json.dumps(d, ensure_ascii=False), encoding='utf-8')
         except Exception:
             pass
+        # 4) [Ver 2.82] Khoi dong lai glider cua phien NGAY khi co IP moi.
+        # Do that Gen15 2026-10-24: glider 0.16.4 giu cong pppoe cu (ifindex cu),
+        # sau ifdown/ifup forward EOF -> may mat mang toi khi watchdog 3 phut
+        # quet toi (71-160s) hoac bam Apply. Kill glider cung cat ket noi cu cua
+        # client nen client tu ket noi lai qua IP moi.
+        try:
+            if time.time() - _GLIDER_RECENT.get(int(sid), 0) > 20:
+                gr = pppoe_glider_restart(sid)
+                gr['reason'] = 'xoay IP'
+                _pppoe_wd_log('GLIDER-ROTATE phien %d: %s' % (sid, gr))
+                _rotate_job_set(sid, glider_restart=bool(gr.get('ok')))
+        except Exception as ge:
+            _rotate_job_set(sid, glider_err=str(ge)[:120])
         with _ROTATE_LOCK:
             old = (_ROTATE_JOBS.get(sid) or {}).get('old_ip', '')
         _rotate_job_set(sid, state='done', wan_ip=ip, changed=bool(old and ip != old),
@@ -2211,6 +2224,15 @@ def set_outbound_proxy(outbounds, outbound_idx, tag, proxy, proxy_type='socks5')
             if host and port and user and pw:
                 outbounds[idx] = {'tag': tag, 'type': 'socks', 'server': host, 'server_port': port, 'username': user, 'password': pw, 'version': '5'}
                 return
+        # [Ver 2.82] Khong lay duoc proxy glider (9000 loi + khong doc duoc glider):
+        # truoc day ghi 'block' im lang => Apply 'thanh cong' ma may mat mang.
+        # Nay giu outbound cu neu dung la glider cua phien nay, va bao loi len GUI.
+        old = outbounds[idx] if isinstance(outbounds[idx], dict) else {}
+        exp_port = pppoe_glider_port(sid)
+        if old.get('type') == 'socks' and exp_port and int(old.get('server_port') or 0) == exp_port and old.get('username'):
+            _PPPOE_APPLY_MISS.append({'tag': tag, 'sid': sid, 'kept': True})
+            return
+        _PPPOE_APPLY_MISS.append({'tag': tag, 'sid': sid, 'kept': False})
         outbounds[idx] = {'tag': tag, 'type': 'block'}
         return
     server, port, user, password = parse_proxy(proxy)
@@ -2464,34 +2486,100 @@ def apply_ip_identity_config(data, text, session='1'):
     rebuild_gencore_rules(data, tag_to_ip_map)
     return data
 
-def pppoe_session_proxies():
-    """Doc proxy glider cua tung phien PPPoE tu server goc 9000.
-    Tra ve {id: {socks, http}} — best effort, cache 60s."""
-    import time
-    now = time.time()
-    cache = getattr(pppoe_session_proxies, '_cache', None)
-    if cache and now - cache[0] < 60:
-        return cache[1]
+_PPPOE_APPLY_MISS = []
+
+def _pppoe_glider_procs():
+    """[Ver 2.82] {sid: {pid, start, socks, http}} doc tu /proc/*/cmdline cua glider.
+    Nguon local, khong phu thuoc server goc 9000."""
     out = {}
     try:
-        r = call_old_gui('/api/router/pppoe')
-        raw = (r or {}).get('data')
-        if isinstance(raw, dict):
-            raw = raw.get('data', raw)
-        lst = raw if isinstance(raw, list) else (raw.get('sessions') or raw.get('list') or [] if isinstance(raw, dict) else [])
-        for s in lst or []:
-            if not isinstance(s, dict):
+        boot = 0.0
+        with open('/proc/stat') as fh:
+            for ln in fh:
+                if ln.startswith('btime'):
+                    boot = float(ln.split()[1]); break
+        hz = os.sysconf('SC_CLK_TCK') or 100
+        for pid in os.listdir('/proc'):
+            if not pid.isdigit():
                 continue
-            sid = str(s.get('id', s.get('wan_id', ''))).strip()
-            if not sid:
+            try:
+                with open('/proc/%s/cmdline' % pid, 'rb') as fh:
+                    args = [a.decode('utf-8', 'replace') for a in fh.read().split(b'\0') if a]
+            except Exception:
                 continue
-            out[sid] = {
-                'socks': str(s.get('socks5') or s.get('socks_proxy') or s.get('proxy') or '').strip(),
-                'http': str(s.get('http_proxy') or s.get('http') or '').strip(),
-            }
+            if not args or os.path.basename(args[0]) != 'glider':
+                continue
+            listens, sid = [], None
+            for i, a in enumerate(args):
+                if a == '-listen' and i + 1 < len(args):
+                    listens.append(args[i + 1])
+                m = re.search(r'interface=pppoe-if_(\d+)', a)
+                if m:
+                    sid = int(m.group(1))
+            if sid is None:
+                continue
+            try:
+                with open('/proc/%s/stat' % pid) as fh:
+                    st = fh.read().rsplit(')', 1)[-1].split()
+                start = boot + int(st[19]) / hz
+            except Exception:
+                start = 0.0
+            socks = next((x for x in listens if x.startswith('socks5://')), '')
+            http = next((x for x in listens if x.startswith('http://')), '')
+            if socks:
+                out[sid] = {'pid': int(pid), 'start': start, 'socks': socks, 'http': http}
     except Exception:
         pass
-    pppoe_session_proxies._cache = (now, out)
+    return out
+
+def pppoe_session_proxies():
+    """Doc proxy glider cua tung phien PPPoE. Tra ve {id: {socks, http}}.
+    [Ver 2.82] Truoc day 9000 loi/cham 1 lan => cache {} 60s => moi may PPPoE
+    bi ghi 'block' (Apply luc duoc luc khong). Nay: thu 9000 toi da 3 lan,
+    thieu phien nao thi lay tu cmdline glider dang chay, chi cache ket qua co du lieu."""
+    now = time.time()
+    cache = getattr(pppoe_session_proxies, '_cache', None)
+    if cache and cache[1] and now - cache[0] < 60:
+        return cache[1]
+    out = {}
+    err = ''
+    for attempt in range(3):
+        try:
+            r = call_old_gui('/api/router/pppoe')
+            raw = (r or {}).get('data')
+            if isinstance(raw, dict):
+                raw = raw.get('data', raw)
+            lst = raw if isinstance(raw, list) else (raw.get('sessions') or raw.get('list') or [] if isinstance(raw, dict) else [])
+            for s in lst or []:
+                if not isinstance(s, dict):
+                    continue
+                sid = str(s.get('id', s.get('wan_id', ''))).strip()
+                if not sid:
+                    continue
+                socks = str(s.get('socks5') or s.get('socks_proxy') or s.get('proxy') or '').strip()
+                if not socks:
+                    continue
+                out[sid] = {'socks': socks, 'http': str(s.get('http_proxy') or s.get('http') or '').strip()}
+            if out:
+                break
+            err = '9000 tra danh sach rong'
+        except Exception as e:
+            err = str(e)[:120]
+        if attempt < 2:
+            time.sleep(1.5)
+    n9000 = len(out)
+    for sid, g in _pppoe_glider_procs().items():
+        k = str(sid)
+        if k not in out:
+            out[k] = {'socks': g['socks'], 'http': g['http']}
+    pppoe_session_proxies._last = {'from_9000': n9000, 'from_glider': len(out) - n9000, 'error': '' if n9000 else err}
+    if n9000 == 0 and err:
+        try:
+            _ss_log('PPPOE-PROXY: 9000 loi (%s) -> lay %d phien tu cmdline glider' % (err, len(out)))
+        except Exception:
+            pass
+    if out:
+        pppoe_session_proxies._cache = (now, out)
     return out
 
 def build_old_gui_update_proxy_payload_from_rows(rows):
@@ -2894,6 +2982,11 @@ def run_apply(session: str, rows_override=None):
 def _run_apply_inner(session: str, rows_override=None):
     preset_source = SESSION_FILES[session]
     results = []
+    del _PPPOE_APPLY_MISS[:]
+    try:
+        pppoe_session_proxies._cache = None  # Apply luon doc moi, khong dung cache cu
+    except Exception:
+        pass
     preset_data = load_json(preset_source)
     if str(preset_source) != str(RUNTIME_SOURCE_FILE):
         save_gencore_json(RUNTIME_SOURCE_FILE, preset_data)
@@ -2919,6 +3012,18 @@ def _run_apply_inner(session: str, rows_override=None):
     if dns_migrated:
         save_gencore_json(RUNTIME_SOURCE_FILE, runtime_data)
         results.append({'cmd': 'migrate proxy DNS servers to DoH 443', 'ok': True, 'target': str(RUNTIME_SOURCE_FILE), 'count': dns_migrated})
+    if _PPPOE_APPLY_MISS:
+        kept = sum(1 for m in _PPPOE_APPLY_MISS if m.get('kept'))
+        blocked = [m.get('tag') for m in _PPPOE_APPLY_MISS if not m.get('kept')]
+        info = getattr(pppoe_session_proxies, '_last', {}) or {}
+        results.append({'cmd': 'PPPoE: lay proxy glider', 'ok': not blocked,
+                        'error': ('%d may PPPoE khong lay duoc proxy glider (phien chua len?) => block: %s. 9000: %s' % (
+                            len(blocked), ', '.join(blocked[:8]), info.get('error') or 'ok')) if blocked else '',
+                        'kept_old': kept})
+        try:
+            _ss_log('PPPOE-APPLY session=%s miss=%d kept=%d blocked=%s src=%s' % (session, len(_PPPOE_APPLY_MISS), kept, blocked[:8], info))
+        except Exception:
+            pass
     rows = extract_rows(runtime_data, session=session)
     payload = build_old_gui_update_proxy_payload_from_rows(rows)
     real_proxy_count = sum(1 for v in payload.values() if isinstance(v, dict))
@@ -4689,16 +4794,28 @@ def pppoe_glider_forward_alive(sid, port=None, _cache=None):
         return True
         return True
 
+_GLIDER_RECENT = {}
+
 def pppoe_glider_restart(sid, sessions=None):
     # Khởi động lại glider của phien: kill PID đang giữ port rồi chạy lại wrapper gốc.
     try:
         port = pppoe_glider_port(sid)
         iface = 'if_%03d' % int(sid)
         iface = 'pppoe-%s' % iface
+        # [Ver 2.82] Lay listen URL TRUOC khi kill: 9000 loi thi dung cmdline glider cu.
+        gp = _pppoe_glider_procs().get(int(sid)) or {}
+        su, hp, user, pw, sport = pppoe_session_credentials(sid, sessions)
+        if not su and gp.get('socks'):
+            su, hp = gp['socks'], gp.get('http') or ''
+        _GLIDER_RECENT[int(sid)] = time.time()
         subprocess.run(
             'for p in $(netstat -tlnp 2>/dev/null | grep ":%d " | grep -oE "[0-9]+/glider" | cut -d/ -f1); do kill -9 $p 2>/dev/null; done; sleep 1' % port,
             shell=True, timeout=10)
-        su, hp, user, pw, sport = pppoe_session_credentials(sid, sessions)
+        if gp.get('pid'):
+            try:
+                os.kill(int(gp['pid']), 9)
+            except Exception:
+                pass
         if su:
             subprocess.Popen(['/etc/genrouter/core/run_glider.sh', su, hp or su, iface],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -4746,6 +4863,50 @@ def pppoe_glider_watchdog_check():
     except Exception as e:
         _pppoe_wd_log('glider watchdog loi: %s' % e)
         return []
+
+def pppoe_glider_stale_check():
+    """[Ver 2.82] Glider khoi dong TRUOC khi cong pppoe len lai (xoay IP, BRAS ngat,
+    ifup lai) => glider van giu cong/IP cu, forward EOF, may mat mang.
+    So thoi diem cong len (ubus uptime) voi thoi diem glider start; cu hon => restart.
+    Re: 1 lan ubus dump + doc /proc, khong probe mang."""
+    fixed = []
+    try:
+        dump = json.loads(subprocess.check_output(
+            ['ubus', 'call', 'network.interface', 'dump'], text=True, timeout=5))
+    except Exception:
+        return fixed
+    now = time.time()
+    procs = _pppoe_glider_procs()
+    for x in dump.get('interface', []):
+        n = str(x.get('interface') or '')
+        if not n.startswith('if_') or n.endswith('_6') or not x.get('up'):
+            continue
+        if not (x.get('ipv4-address') or []):
+            continue
+        try:
+            sid = int(n.split('_', 1)[1])
+        except Exception:
+            continue
+        g = procs.get(sid)
+        if not g or not g.get('start'):
+            continue
+        if_up = now - float(x.get('uptime') or 0)
+        # glider start som hon cong >5s, cong da len >=3s (cho IP on dinh)
+        if g['start'] < if_up - 5 and now - if_up >= 3 and now - _GLIDER_RECENT.get(sid, 0) > 20:
+            r = pppoe_glider_restart(sid)
+            r['reason'] = 'glider cu hon cong (IP doi)'
+            _pppoe_wd_log('GLIDER-STALE phien %d: %s' % (sid, r))
+            fixed.append(r)
+    return fixed
+
+def pppoe_glider_stale_loop():
+    time.sleep(40)
+    while True:
+        try:
+            pppoe_glider_stale_check()
+        except Exception as e:
+            _pppoe_wd_log('glider stale loi: %s' % str(e)[:80])
+        time.sleep(10)
 
 def _pppoe_wd_log(msg):
     try:
@@ -5472,6 +5633,7 @@ if __name__ == '__main__':
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
+    threading.Thread(target=pppoe_glider_stale_loop, daemon=True, name='glider-stale').start()
     class _GUIServer(ThreadingHTTPServer):
         # [Ver 2.63] Backlog mac dinh cua socketserver la 5. Khi GUI go dong thoi
         # nhieu request (bảng + /api/pppoe/list + /api/vpn/status + badge), SYN

@@ -1,3 +1,12 @@
+## Ver 2.82 (2026-10-24) - Xoay IP co mang ngay + Apply PPPoE on dinh
+
+- Xoay IP: glider 0.16.4 giu cong pppoe cu sau ifdown/ifup => may mat mang 71-160s (do that Gen15) toi khi watchdog 3 phut hoac Apply.
+  Nay _rotate_worker khoi dong lai glider ngay khi co IP moi (log GLIDER-ROTATE).
+- Them luong glider-stale (10s/lan, chi doc ubus + /proc): glider start truoc thoi diem cong len lai (BRAS ngat, ifup ngoai GUI) => restart (log GLIDER-STALE). Chong lap 20s/phien.
+- Apply PPPoE: pppoe_session_proxies() truoc day cache ket qua rong 60s khi 9000 loi => moi may PPPoE bi ghi lock, Apply luc duoc luc khong.
+  Nay thu 9000 toi da 3 lan, thieu phien thi lay tu cmdline glider dang chay, chi cache khi co du lieu, Apply luon doc moi.
+- Khong lay duoc proxy: giu outbound glider cu neu dung port phien; con lai moi lock va bao loi do tren GUI (PPPoE: lay proxy glider).
+- pppoe_glider_restart dung lai listen URL tu cmdline glider khi 9000 loi.
 ## Ver 2.77 (2026-10-21) - Tu mo rong phan vung root (auto)
 
 - `tools/disk_expand.sh` viet lai, them `--auto` / `--auto-bg`. `etc_install.sh` goi `--auto-bg` (chay nen sau 90s, cho update xong).
