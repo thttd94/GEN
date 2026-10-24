@@ -163,11 +163,12 @@ function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&
 function log(msg){ document.getElementById('log').textContent = msg; }
 // [Ver 2.84] Proxy WAN cua phien: IP_WAN:port_socks5:user:pass (dung tu ngoai Internet).
 function wanProxy(s, ip){
-  const m = String(s.socks5 || s.socks_proxy || s.proxy || '').match(/^socks5?:\/\/(?:([^:@]*):([^@]*)@)?[^:]+:(\d+)/i);
+  // [Ver 2.85] pass co the chua '@' => lay toi '@' CUOI CUNG (truoc host:port).
+  const m = String(s.socks5 || s.socks_proxy || s.proxy || '').match(/^socks5?:\/\/(?:([^:@]*):(.*)@)?([^@:\/]+):(\d+)\/?$/i);
   if (!ip || !m) return '';
   let u = m[1] || '', p = m[2] || '';
   try { u = decodeURIComponent(u); p = decodeURIComponent(p); } catch(_e) {}
-  return ip + ':' + m[3] + (u ? ':' + u + ':' + p : '');
+  return ip + ':' + m[4] + (u ? ':' + u + ':' + p : '');
 }
 // Bam vao dong proxy => copy. HTTP LAN khong co navigator.clipboard => fallback execCommand.
 function copyPx(el){

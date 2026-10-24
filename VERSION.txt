@@ -1,1 +1,1 @@
-Ver 2.84 (/pppoe cot Proxy hien proxy WAN dang IP:port:user:pass, bam vao la copy; bo ghi chu sau Chan local)
+Ver 2.85 (/pppoe proxy WAN hien dung pass co ky tu @)

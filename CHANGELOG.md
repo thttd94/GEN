@@ -1,3 +1,7 @@
+## Ver 2.85 (2026-10-24) - Sua proxy WAN pass co '@'
+
+- /pppoe cot Proxy: pass chua '@' bi cat o '@' dau tien => chuoi copy sai pass, proxy bao auth fail (do that Gen15 phien 129). Nay lay toi '@' cuoi cung.
+
 ## Ver 2.84 (2026-10-24) - Proxy WAN de copy
 
 - /pppoe cot Proxy: hien proxy WAN socks5 dang `IP:port:user:pass` (IP WAN phien), khong con proxy local 0.0.0.0. Bam vao dong (hoac Enter) la copy.
