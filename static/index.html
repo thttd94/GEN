@@ -2053,8 +2053,17 @@
         cb.disabled = false;
         if (mode === 'two-way') {
           cb.checked = true;
-          el.textContent = l2 === 'yes' ? 'đang chặn' : 'đang chặn (chưa nạp, tự sửa trong 1 phút)';
-          el.style.color = l2 === 'yes' ? '#16a34a' : '#d97706';
+          // [Ver 2.83] Router chi chan duoc giua cac CONG cua br-lan. 1 cong (moi may qua switch/AP)
+          // => khong co tac dung, phai bat cach ly tren switch/AP.
+          const ports = Array.isArray(r && r.lan_ports) ? r.lan_ports : null;
+          const drops = (r && typeof r.drop_pkts === 'number') ? r.drop_pkts : null;
+          if (l2 === 'yes' && ports && ports.length <= 1) {
+            el.textContent = 'KHÔNG có tác dụng: LAN chỉ 1 cổng (' + (ports[0] || '?') + '), máy qua switch/AP thấy nhau trực tiếp – bật cách ly trên switch/AP';
+            el.style.color = '#d97706';
+          } else {
+            el.textContent = l2 === 'yes' ? ('đang chặn' + (drops !== null ? ' · đã chặn ' + drops + ' gói' : '')) : 'đang chặn (chưa nạp, tự sửa trong 1 phút)';
+            el.style.color = l2 === 'yes' ? '#16a34a' : '#d97706';
+          }
         } else if (mode === 'off') {
           cb.checked = false;
           el.textContent = 'local thấy nhau';

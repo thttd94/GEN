@@ -1,3 +1,15 @@
+## Ver 2.83 (2026-10-24) - Proxy PPPoE ra Internet
+
+- Proxy glider tung phien dung duoc tu ngoai Internet: <IP WAN phien N>:15000+N-1 (socks5) / 30000+N-1 (http), user/pass cua phien.
+  Luong glider-stale (10s) tu giu: rule fw4 input `genrouter-pxwan` (file /usr/share/nftables.d/chain-pre/input/20-genrouter-pxwan.nft)
+  + policy route `ip rule pref 95 from <IP phien> lookup 20000+N` / `default dev pppoe-if_N table 20000+N`. IP doi/phien xoa tu cap nhat/don. Log `PXWAN sync`.
+  Phien IP CGNAT (172.16/12, 100.64/10...) GUI to cam: nha mang chan, ngoai khong vao duoc.
+- Doi proxy: 9000 doi id kieu so, GUI gui chuoi => `400 Invalid body`. Nay ep so; chan user/pass trong. Reset cung ep so.
+- Loi tu 9000 hien ly do that thay vi chi `HTTP 400`; `{success:false}` bao loi thay vi OK.
+- Cot Status online/offline: lease DHCP 30 ngay khong phan anh may song. Nay theo ARP br-lan (REACHABLE/DELAY/PROBE, STALE <= 300s).
+- Cap nhat: thu lai 4 lan cach 5s khi loi DNS `[Errno -3] Try again` (gencore restart giu port 53).
+- Chan local: canh bao khong co tac dung khi br-lan chi 1 cong (may qua switch/AP thay nhau truc tiep); hien so goi da chan.
+
 ## Ver 2.82 (2026-10-24) - Xoay IP co mang ngay + Apply PPPoE on dinh
 
 - Xoay IP: glider 0.16.4 giu cong pppoe cu sau ifdown/ifup => may mat mang 71-160s (do that Gen15) toi khi watchdog 3 phut hoac Apply.

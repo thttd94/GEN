@@ -268,6 +268,40 @@ def sysinfo_json():
     except Exception:
         out['load'] = []
     return out
+def _http_error_text(e):
+    """[Ver 2.83] 'HTTP 400: <ly do cua server goc>' thay vi chi 'HTTP 400'."""
+    msg = ''
+    try:
+        body = e.read().decode('utf-8', 'replace')
+        try:
+            j = json.loads(body)
+            msg = str(j.get('error') or j.get('message') or '') if isinstance(j, dict) else ''
+        except Exception:
+            msg = body.strip()
+    except Exception:
+        pass
+    msg = msg[:200]
+    if 'enable pppoe mode' in msg:
+        msg += ' (router chua bat che do PPPoE o GUI goc 9000)'
+    return ('HTTP %s: %s' % (e.code, msg)) if msg else ('HTTP %s' % e.code)
+
+def _vendor_result(r):
+    """[Ver 2.83] 9000 tra 200 + {success:false,message} khi loi nghiep vu => bao ok=false."""
+    out = dict(r or {}) if isinstance(r, dict) else {'ok': True, 'data': r}
+    d = out.get('data')
+    if isinstance(d, dict) and d.get('success') is False:
+        out['ok'] = False
+        out['error'] = str(d.get('message') or d.get('error') or 'server goc tu choi')[:200]
+    return out
+
+def _is_private_ipv4(ip):
+    try:
+        import ipaddress
+        a = ipaddress.ip_address(ip)
+        return a.is_private or a in ipaddress.ip_network('100.64.0.0/10')
+    except Exception:
+        return False
+
 def pppoe_runtime_enrich(raw):
     try:
         data=raw.get('data') if isinstance(raw,dict) else raw
@@ -301,6 +335,10 @@ def pppoe_runtime_enrich(raw):
                         iplog[key]={'ip':cur_ip,'ts':now}
                         dirty=True
                     x['last_changed']=time.strftime('%d/%m %H:%M:%S',time.localtime((iplog.get(key) or {}).get('ts',now)))
+                    # [Ver 2.83] Proxy dung tu ngoai Internet: IP WAN cua phien + port glider.
+                    x['wan_socks']='%s:%d'%(cur_ip,15000+sid-1)
+                    x['wan_http']='%s:%d'%(cur_ip,30000+sid-1)
+                    x['wan_private']=_is_private_ipv4(cur_ip)
                     x['ip_ts']=(iplog.get(key) or {}).get('ts',0)
                 else:
                     x['last_changed']='—'
@@ -597,8 +635,17 @@ def update_repo_from_remote(password: str):
             shutil.rmtree(tmp_root, ignore_errors=True)
         tmp_root.mkdir(parents=True, exist_ok=True)
         req = urllib.request.Request(archive_url, headers={'User-Agent': 'proxy-manager-updater'})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            archive_path.write_bytes(resp.read())
+        # [Ver 2.83] DNS router tat vai giay moi lan gencore restart (port 53 do gencore
+        # giu) => '[Errno -3] Try again'. Thu lai 4 lan, cach 5s.
+        for _att in range(4):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    archive_path.write_bytes(resp.read())
+                break
+            except (urllib.error.URLError, OSError) as _de:
+                if isinstance(_de, urllib.error.HTTPError) or _att == 3:
+                    raise
+                time.sleep(5)
         shutil.unpack_archive(str(archive_path), str(tmp_root), 'gztar')
         if not extract_dir.exists():
             raise RuntimeError('Không giải nén được gói update')
@@ -1979,7 +2026,48 @@ def load_device_map():
                 row['status'] = 'online' if online else 'offline'
         except Exception:
             pass
+    # [Ver 2.83] Lease DHCP khong phan anh online that: leasetime 30d => may tat van
+    # 'online' 30 ngay; may IP tinh/khong xin lai lease => 'offline' (Gen15: 15 lease
+    # vs 187 ARP song). Nay ARP (neighbour) la nguon chinh, lease chi bo sung MAC.
+    arp = _arp_online_map()
+    if arp is not None:
+        for ip, row in device_map.items():
+            row['status'] = 'online' if ip in arp else 'offline'
+        for ip, mac in arp.items():
+            if ip not in device_map:
+                device_map[ip] = {'mac': normalize_mac(mac), 'status': 'online'}
+            elif not device_map[ip].get('mac'):
+                device_map[ip]['mac'] = normalize_mac(mac)
     return device_map
+
+ARP_ONLINE_MAX_S = 300
+
+def _arp_online_map():
+    """{ip: mac} cac may LAN dang song theo bang neighbour cua br-lan.
+    Song = REACHABLE/DELAY/PROBE, hoac STALE ma lan xac nhan cuoi <= 300s.
+    Tra None neu khong doc duoc (giu cach cu theo lease)."""
+    try:
+        out = subprocess.check_output(['ip', '-s', '-4', 'neigh', 'show', 'dev', 'br-lan'],
+                                      text=True, timeout=5, stderr=subprocess.DEVNULL)
+    except Exception:
+        return None
+    res = {}
+    for ln in out.splitlines():
+        p = ln.split()
+        if len(p) < 3 or 'lladdr' not in p:
+            continue
+        ip = p[0]
+        mac = p[p.index('lladdr') + 1] if p.index('lladdr') + 1 < len(p) else ''
+        st = p[-1].upper()
+        if st in ('FAILED', 'INCOMPLETE', 'NONE'):
+            continue
+        ok = st in ('REACHABLE', 'DELAY', 'PROBE', 'PERMANENT')
+        if not ok and st == 'STALE':
+            m = re.search(r'used\s+(\d+)/(\d+)/(\d+)', ln)
+            ok = bool(m) and int(m.group(2)) <= ARP_ONLINE_MAX_S
+        if ok:
+            res[ip] = mac
+    return res
 
 def build_route_ip_to_tag(data):
     route_by_ip = {}
@@ -4899,13 +4987,100 @@ def pppoe_glider_stale_check():
             fixed.append(r)
     return fixed
 
+PXWAN_NFT_FILE = Path('/usr/share/nftables.d/chain-pre/input/20-genrouter-pxwan.nft')
+PXWAN_NFT_RULE = 'iifname "pppoe-if_*" tcp dport { 15000-15999, 30000-30999 } accept comment "genrouter-pxwan"'
+PXWAN_RULE_PREF = 95
+PXWAN_TABLE_BASE = 20000
+
+def pppoe_wan_proxy_sync():
+    """[Ver 2.83] Proxy glider dung tu NGOAI Internet qua IP WAN cua tung phien:
+      <IP WAN phien N>:15000+N-1 (socks5) / 30000+N-1 (http), user/pass cua phien.
+    Can 2 thu (da test tay tren Gen15 2026-10-24, if_034 tu ngoai: timeout -> OK):
+      1) fw4 input cho phep tcp 15000-15999/30000-30999 tu pppoe-if_* (zone wan khong
+         chua pppoe-if_* nen redirect co san cua vendor khong bao gio khop).
+      2) Policy route: goi tra loi tu IP WAN phien N phai ra dung pppoe-if_N
+         (khong thi theo default route qua phien khac => BRAS drop).
+    Idempotent; chi chay lenh khi khac trang thai. 2 lenh doc / chu ky."""
+    changed = []
+    # 1) firewall: file include (song qua fw4 reload) + chen ngay neu thieu
+    try:
+        want = PXWAN_NFT_RULE + '\n'
+        if not PXWAN_NFT_FILE.exists() or PXWAN_NFT_FILE.read_text() != want:
+            PXWAN_NFT_FILE.parent.mkdir(parents=True, exist_ok=True)
+            PXWAN_NFT_FILE.write_text(want)
+            changed.append('nft-file')
+        cur = subprocess.run(['nft', 'list', 'chain', 'inet', 'fw4', 'input'], capture_output=True, text=True, timeout=5).stdout
+        if cur and 'genrouter-pxwan' not in cur:
+            subprocess.run(['nft', 'insert', 'rule', 'inet', 'fw4', 'input'] + _nft_split(PXWAN_NFT_RULE), capture_output=True, timeout=5)
+            changed.append('nft-live')
+    except Exception as e:
+        changed.append('nft-err:%s' % str(e)[:60])
+    # 2) policy route theo IP WAN tung phien
+    try:
+        dump = json.loads(subprocess.check_output(['ubus', 'call', 'network.interface', 'dump'], text=True, timeout=5))
+    except Exception:
+        return changed
+    want = {}
+    for x in dump.get('interface', []):
+        n = str(x.get('interface') or '')
+        if not n.startswith('if_') or n.endswith('_6') or not x.get('up'):
+            continue
+        ips = x.get('ipv4-address') or []
+        if not ips:
+            continue
+        try:
+            sid = int(n.split('_', 1)[1])
+        except Exception:
+            continue
+        want[sid] = ips[0].get('address', '')
+    rules = subprocess.run(['ip', '-4', 'rule', 'show', 'pref', str(PXWAN_RULE_PREF)], capture_output=True, text=True, timeout=5).stdout
+    have = set()
+    for ln in rules.splitlines():
+        m = re.search(r'from (\S+) lookup (\d+)', ln)
+        if m:
+            have.add((m.group(1), int(m.group(2))))
+    routes = subprocess.run(['ip', '-4', 'route', 'show', 'table', 'all'], capture_output=True, text=True, timeout=5).stdout
+    have_rt = set()
+    for ln in routes.splitlines():
+        m = re.match(r'default dev pppoe-if_(\d+) table (\d+)', ln.strip())
+        if m and int(m.group(2)) == PXWAN_TABLE_BASE + int(m.group(1)):
+            have_rt.add(int(m.group(1)))
+    batch = []
+    want_rules = {(ip, PXWAN_TABLE_BASE + sid) for sid, ip in want.items() if ip}
+    for ip, t in sorted(have - want_rules):
+        batch.append('rule del pref %d from %s lookup %d' % (PXWAN_RULE_PREF, ip, t))
+    for sid, ip in sorted(want.items()):
+        t = PXWAN_TABLE_BASE + sid
+        if sid not in have_rt:
+            batch.append('route replace default dev pppoe-if_%03d table %d' % (sid, t))
+        if ip and (ip, t) not in have:
+            batch.append('rule add pref %d from %s lookup %d' % (PXWAN_RULE_PREF, ip, t))
+    if batch:
+        subprocess.run(['ip', '-force', '-batch', '-'], input='\n'.join(batch) + '\n', capture_output=True, text=True, timeout=20)
+        changed.append('ip:%d' % len(batch))
+    return changed
+
+def _nft_split(rule):
+    import shlex
+    return shlex.split(rule)
+
 def pppoe_glider_stale_loop():
     time.sleep(40)
+    _last_px = ''
     while True:
         try:
             pppoe_glider_stale_check()
         except Exception as e:
             _pppoe_wd_log('glider stale loi: %s' % str(e)[:80])
+        try:
+            ch = pppoe_wan_proxy_sync()
+            if ch:
+                s = ','.join(ch)
+                if s != _last_px or any(c.startswith('nft') for c in ch):
+                    _pppoe_wd_log('PXWAN sync: %s' % s)
+                _last_px = s
+        except Exception as e:
+            _pppoe_wd_log('PXWAN loi: %s' % str(e)[:80])
         time.sleep(10)
 
 def _pppoe_wd_log(msg):
@@ -5391,7 +5566,10 @@ class Handler(BaseHTTPRequestHandler):
                     res['ports_returned']=[pppoe_return_port(x, fixed) for x in sorted(ports)]
                     return self._send_json(res)
                 if action == 'reset':
-                    return self._send_json(call_old_gui('/api/router/pppoe/reset', method='PUT', data=payload.get('data') or {}))
+                    rd = dict(payload.get('data') or {})
+                    try: rd['id'] = int(str(rd.get('id')).strip())
+                    except Exception: return self._send_json({'ok': False, 'error': 'id khong hop le'})
+                    return self._send_json(_vendor_result(call_old_gui('/api/router/pppoe/reset', method='PUT', data=rd)))
                 if action == 'rotate':
                     rd=payload.get('data') or {}
                     if isinstance(rd,str): rd={'id':rd}
@@ -5408,7 +5586,22 @@ class Handler(BaseHTTPRequestHandler):
                         except Exception: pass
                     return self._send_json({'ok':True,'jobs':rotate_status(ids or None)})
                 if action == 'proxy':
-                    return self._send_json(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=payload.get('data') or {}))
+                    # [Ver 2.83] 9000 doi id KIEU SO: gui "35" (chuoi) => 400 Invalid body
+                    # (do that Gen15). GUI cu lay id tu o input nen luon la chuoi.
+                    rd = dict(payload.get('data') or {})
+                    try: rd['id'] = int(str(rd.get('id')).strip())
+                    except Exception: return self._send_json({'ok': False, 'error': 'id phien khong hop le'})
+                    rd['username'] = str(rd.get('username') or '').strip()
+                    rd['password'] = str(rd.get('password') or '')
+                    if not rd['username'] or not rd['password']:
+                        return self._send_json({'ok': False, 'error': 'nhap du USER PROXY va PASS PROXY moi'})
+                    res = _vendor_result(call_old_gui('/api/router/pppoe/proxy', method='PUT', data=rd))
+                    if res.get('ok'):
+                        # glider phai chay lai voi user/pass moi; vendor tu lam, nhung
+                        # bo cache de Apply sau lay dung thong tin moi.
+                        try: pppoe_session_proxies._cache = None
+                        except Exception: pass
+                    return self._send_json(res)
                 if action == 'enable':
                     return self._send_json(call_old_gui('/api/router/enable_pppoe', method='POST', data=payload.get('data') or {}))
                 return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|rotate_status|proxy|enable)'})
@@ -5422,7 +5615,20 @@ class Handler(BaseHTTPRequestHandler):
                         mode = 'status'
                     if mode not in ('status', 'hide', 'show', 'two-way', 'one-way', 'off'):
                         return self._send_json({'ok': False, 'error': 'mode khong hop le (hide|show|off)'})
-                    return self._send_json(vpn_run(['isolate', mode]))
+                    r_iso = vpn_run(['isolate', mode])
+                    # [Ver 2.83] Chan local chi co tac dung giua cac CONG cua br-lan. Moi may
+                    # chung 1 cong (qua switch/AP) => router khong thay goi client<->client.
+                    try:
+                        r_iso['lan_ports'] = sorted(os.listdir('/sys/class/net/br-lan/brif'))
+                    except Exception:
+                        r_iso['lan_ports'] = []
+                    try:
+                        o_iso = subprocess.run(['nft', 'list', 'table', 'bridge', 'client_isolate'], capture_output=True, text=True, timeout=5).stdout
+                        m_iso = re.search(r'counter packets (\d+)', o_iso)
+                        r_iso['drop_pkts'] = int(m_iso.group(1)) if m_iso else None
+                    except Exception:
+                        r_iso['drop_pkts'] = None
+                    return self._send_json(r_iso)
                 if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
                     return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
                 if action == 'up':
@@ -5522,7 +5728,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({'ok': False, 'error': f'action khong ho tro: {action}'})
             return self._send_json({'error': 'Not found'}, 404)
         except urllib.error.HTTPError as e:
-            return self._send_json({'ok': False, 'error': f'HTTP {e.code}'}, 400)
+            # [Ver 2.83] Giu ly do that cua server goc 9000 (truoc day chi con 'HTTP 400',
+            # vd mat 'Invalid body' / 'you must enable pppoe mode').
+            return self._send_json({'ok': False, 'error': _http_error_text(e)}, 400)
         except Exception as e:
             return self._send_json({'error': str(e)}, 400)
 # Ver 2.47 — chot V2-c: cac file config "ngu dong" trong /etc/genrouter/config.

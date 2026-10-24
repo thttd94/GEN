@@ -299,7 +299,7 @@ async function refreshInner() {
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
       + `<td>${st} <span data-rot="${esc(id)}">${rotCell(id)}</span></td>`
       + `<td class="muted" style="font-size:11px;white-space:nowrap">${esc(tm || '—')}</td>`
-      + `<td class="muted" style="font-size:11px">${esc(proxy)}</td>`
+      + `<td class="muted" style="font-size:11px">${esc(proxy)}${s.wan_socks ? `<br><span title="Dùng từ ngoài Internet (user/pass của phiên)" style="color:${s.wan_private ? '#d97706' : '#16a34a'}">WAN: socks5 ${esc(s.wan_socks)} · http ${esc(s.wan_http)}${s.wan_private ? ' (IP nội bộ nhà mạng – ngoài không vào được)' : ''}</span>` : ''}</td>`
       + `<td><button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
       + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;
   }).join('');
@@ -458,7 +458,11 @@ function paintRot(){
 async function setProxy() {
   const id = document.getElementById('o-id').value.trim();
   if (!id) { log('nhập ID phiên'); return; }
-  const data = {id, username: document.getElementById('o-puser').value.trim(), password: document.getElementById('o-ppass').value};
+  // [Ver 2.83] 9000 doi id kieu SO ("35" => 400 Invalid body).
+  const nid = parseInt(id, 10);
+  if (!Number.isFinite(nid) || nid < 1) { log('ID phiên không hợp lệ'); return; }
+  const data = {id: nid, username: document.getElementById('o-puser').value.trim(), password: document.getElementById('o-ppass').value};
+  if (!data.username || !data.password) { log('nhập đủ USER PROXY và PASS PROXY mới'); return; }
   try { const r = await api('proxy', {data}); log('proxy #' + id + ': ' + JSON.stringify(r).slice(0, 500)); }
   catch(e){ log('lỗi: ' + e.message); }
   refresh();
