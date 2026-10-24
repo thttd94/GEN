@@ -162,9 +162,11 @@ let SESSIONS = [], BUSY = false;
 function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function log(msg){ document.getElementById('log').textContent = msg; }
 // [Ver 2.84] Proxy WAN cua phien: IP_WAN:port_socks5:user:pass (dung tu ngoai Internet).
-function wanProxy(s, ip){
+// [Ver 2.86] kind='http' => lay tu s.http (http://user:pass@0.0.0.0:30xxx).
+function wanProxy(s, ip, kind){
   // [Ver 2.85] pass co the chua '@' => lay toi '@' CUOI CUNG (truoc host:port).
-  const m = String(s.socks5 || s.socks_proxy || s.proxy || '').match(/^socks5?:\/\/(?:([^:@]*):(.*)@)?([^@:\/]+):(\d+)\/?$/i);
+  const raw = kind === 'http' ? (s.http || s.http_proxy || '') : (s.socks5 || s.socks_proxy || s.proxy || '');
+  const m = String(raw).match(/^(?:socks5?|https?):\/\/(?:([^:@]*):(.*)@)?([^@:\/]+):(\d+)\/?$/i);
   if (!ip || !m) return '';
   let u = m[1] || '', p = m[2] || '';
   try { u = decodeURIComponent(u); p = decodeURIComponent(p); } catch(_e) {}
@@ -319,6 +321,7 @@ async function refreshInner() {
     const ip = s.ip || s.wan_ip || s.public_ip || '';
     // [Ver 2.84] Proxy WAN dang IP:port:user:pass (lay user/pass tu socks5://user:pass@0.0.0.0:port).
     const proxy = wanProxy(s, ip);
+    const proxyHttp = wanProxy(s, ip, 'http');
     const port = String(s.device || '').split('.')[0] || '—';
     const tm = s.last_changed || s.ip_changed_at || '';
     return head + `<tr class="eth-row" data-port="${esc(pk)}" style="${ethVars[pk]}"${col ? ' hidden' : ''}><td><b>${esc(id)}</b></td><td class="eth-port">${esc(port)}</td><td class="muted">${esc(iface)}</td>`
@@ -326,8 +329,12 @@ async function refreshInner() {
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
       + `<td>${st} <span data-rot="${esc(id)}">${rotCell(id)}</span></td>`
       + `<td class="muted" style="font-size:11px;white-space:nowrap">${esc(tm || '—')}</td>`
-      + (proxy
-        ? `<td role="button" tabindex="0" title="Bấm để copy" data-copy="${esc(proxy)}" onclick="copyPx(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();copyPx(this)}" style="font-size:11px;font-family:monospace;white-space:nowrap;cursor:pointer${s.wan_private ? ';color:#d97706' : ''}">${esc(proxy)}</td>`
+      // [Ver 2.86] 2 dong: Socks5 / HTTPS, bam dong nao copy IP:port:user:pass cua loai do.
+      + ((proxy || proxyHttp)
+        ? `<td style="font-size:11px;font-family:monospace;white-space:nowrap${s.wan_private ? ';color:#d97706' : ''}">`
+          + [['Socks5', proxy], ['HTTPS', proxyHttp]].filter(x => x[1]).map(([lb, v]) =>
+              `<div role="button" tabindex="0" title="Bấm để copy ${lb}" data-copy="${esc(v)}" onclick="copyPx(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();copyPx(this)}" style="cursor:pointer;padding:1px 2px;border-radius:3px"><b>${lb}:</b> ${esc(v)}</div>`).join('')
+          + `</td>`
         : '<td class="muted">—</td>')
       + `<td><button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
       + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;

@@ -1,3 +1,7 @@
+## Ver 2.86 (2026-10-24) - Proxy WAN 2 dong Socks5 / HTTPS
+
+- /pppoe cot Proxy: 2 dong `Socks5: IP:15xxx:user:pass` va `HTTPS: IP:30xxx:user:pass` (IP WAN phien). Bam (hoac Enter) dong nao copy dung dong do.
+
 ## Ver 2.85 (2026-10-24) - Sua proxy WAN pass co '@'
 
 - /pppoe cot Proxy: pass chua '@' bi cat o '@' dau tien => chuoi copy sai pass, proxy bao auth fail (do that Gen15 phien 129). Nay lay toi '@' cuoi cung.
