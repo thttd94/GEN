@@ -1,1 +1,1 @@
-Ver 2.83 (proxy PPPoE dung tu ngoai Internet qua IP WAN tung phien; doi proxy het loi HTTP 400; cot Status theo ARP; update thu lai khi loi DNS; canh bao Chan local khi LAN 1 cong)
+Ver 2.84 (/pppoe cot Proxy hien proxy WAN dang IP:port:user:pass, bam vao la copy; bo ghi chu sau Chan local)

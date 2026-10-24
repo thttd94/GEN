@@ -161,6 +161,31 @@ let SESSIONS = [], BUSY = false;
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function log(msg){ document.getElementById('log').textContent = msg; }
+// [Ver 2.84] Proxy WAN cua phien: IP_WAN:port_socks5:user:pass (dung tu ngoai Internet).
+function wanProxy(s, ip){
+  const m = String(s.socks5 || s.socks_proxy || s.proxy || '').match(/^socks5?:\/\/(?:([^:@]*):([^@]*)@)?[^:]+:(\d+)/i);
+  if (!ip || !m) return '';
+  let u = m[1] || '', p = m[2] || '';
+  try { u = decodeURIComponent(u); p = decodeURIComponent(p); } catch(_e) {}
+  return ip + ':' + m[3] + (u ? ':' + u + ':' + p : '');
+}
+// Bam vao dong proxy => copy. HTTP LAN khong co navigator.clipboard => fallback execCommand.
+function copyPx(el){
+  const t = el.getAttribute('data-copy') || '';
+  if (!t) return;
+  const done = () => { log('Đã copy: ' + t); el.style.background = '#dcfce7'; setTimeout(() => { el.style.background = ''; }, 600); };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(t).then(done, () => fallbackCopy(t) && done());
+  } else if (fallbackCopy(t)) done();
+  else log('Không copy được, bôi đen để copy tay');
+}
+function fallbackCopy(t){
+  const ta = document.createElement('textarea');
+  ta.value = t; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.left = '-9999px';
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch(_e) {}
+  document.body.removeChild(ta); return ok;
+}
 async function api(action, extra={}) {
   const r = await fetch('/api/pppoe/action', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({action}, extra))});
   return r.json();
@@ -291,7 +316,8 @@ async function refreshInner() {
     const up = isUp(s);
     const st = up ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
     const ip = s.ip || s.wan_ip || s.public_ip || '';
-    const proxy = s.socks5 || s.socks_proxy || s.proxy || '';
+    // [Ver 2.84] Proxy WAN dang IP:port:user:pass (lay user/pass tu socks5://user:pass@0.0.0.0:port).
+    const proxy = wanProxy(s, ip);
     const port = String(s.device || '').split('.')[0] || '—';
     const tm = s.last_changed || s.ip_changed_at || '';
     return head + `<tr class="eth-row" data-port="${esc(pk)}" style="${ethVars[pk]}"${col ? ' hidden' : ''}><td><b>${esc(id)}</b></td><td class="eth-port">${esc(port)}</td><td class="muted">${esc(iface)}</td>`
@@ -299,7 +325,9 @@ async function refreshInner() {
       + `<td>${ip ? `<b class="wan-ok">${esc(ip)}</b>` : '<span class="muted">—</span>'}</td>`
       + `<td>${st} <span data-rot="${esc(id)}">${rotCell(id)}</span></td>`
       + `<td class="muted" style="font-size:11px;white-space:nowrap">${esc(tm || '—')}</td>`
-      + `<td class="muted" style="font-size:11px">${esc(proxy)}${s.wan_socks ? `<br><span title="Dùng từ ngoài Internet (user/pass của phiên)" style="color:${s.wan_private ? '#d97706' : '#16a34a'}">WAN: socks5 ${esc(s.wan_socks)} · http ${esc(s.wan_http)}${s.wan_private ? ' (IP nội bộ nhà mạng – ngoài không vào được)' : ''}</span>` : ''}</td>`
+      + (proxy
+        ? `<td role="button" tabindex="0" title="Bấm để copy" data-copy="${esc(proxy)}" onclick="copyPx(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();copyPx(this)}" style="font-size:11px;font-family:monospace;white-space:nowrap;cursor:pointer${s.wan_private ? ';color:#d97706' : ''}">${esc(proxy)}</td>`
+        : '<td class="muted">—</td>')
       + `<td><button onclick="fillId('${esc(id)}');rotateOne()">🔀 Xoay IP</button>`
       + `<button class="bad" onclick="delOne('${esc(id)}')">Xóa</button></td></tr>`;
   }).join('');

@@ -1,3 +1,8 @@
+## Ver 2.84 (2026-10-24) - Proxy WAN de copy
+
+- /pppoe cot Proxy: hien proxy WAN socks5 dang `IP:port:user:pass` (IP WAN phien), khong con proxy local 0.0.0.0. Bam vao dong (hoac Enter) la copy.
+- Chan local: bo ghi chu canh bao sau trang thai (ve nhu 2.82).
+
 ## Ver 2.83 (2026-10-24) - Proxy PPPoE ra Internet
 
 - Proxy glider tung phien dung duoc tu ngoai Internet: <IP WAN phien N>:15000+N-1 (socks5) / 30000+N-1 (http), user/pass cua phien.
