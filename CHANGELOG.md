@@ -1,3 +1,9 @@
+## Ver 2.91 (2026-10-25) - Phan luong ten mien
+
+- GUI 9001: nut `Phan luong` canh `Chan local` + nut `Danh sach` (sua ten mien, chon duong: phien PPPoE so N hoac Chan). Mac dinh TAT, danh sach mac dinh 23 ten mien (googlevideo, fbcdn, tiktokcdn, ibyteimg, ytimg, gstatic, googleapis, apple, icloud...).
+- Bat: rule `gen_split` (domain/domain_suffix + IP may dang co proxy socks/http) dat truoc rule proxy_*; ten mien trong danh sach di outbound `gen_split` thay vi proxy tinh tien. May VPN, may chua gan khong bi anh huong. Tu cap nhat moi lan Apply/doi IP.
+- Bat/tat/luu: ghi runtime + moi preset, `genrunner check` loi thi tra lai file cu; OK thi restart gencore (chap vai giay). Phien PPPoE chua len khi Apply: giu outbound cu, khong co thi tam bo rule (may van di proxy chinh). API `GET/POST /api/pm/split`, log `SPLIT`.
+
 ## Ver 2.90 (2026-10-25) - Apply toan VPN nap config ngay
 
 - Apply cau hinh khong co proxy that (toan VPN => `UPDATE-PROXY-SKIPPED`) truoc day khong bao gencore nap config moi: may vua gan bi chan toi khi watchdog STALE-CONFIG restart (1-4 phut). Nay restart gencore nen sau 3s, gop nhieu lan Apply lien tiep thanh 1 lan; chi restart khi `genrunner check` OK. Log `APPLY-RELOAD`. Restart lam ca router chap vai giay.

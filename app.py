@@ -2363,6 +2363,241 @@ def remap_ip_by_tag(data):
     rebuild_gencore_rules(data, mapping)
     return data
 
+SPLIT_TAG = 'gen_split'
+SPLIT_DEFAULT_DOMAINS = [
+    '*.googlevideo.com', '*.fbcdn.net', '*.tiktokcdn.com', '*.ibyteimg.com', '*.tiktokcdn-us.com',
+    '*.bromite.org', '*.ytimg.com', '*.ggpht.com', '*.gvt1.com', '*.gvt2.com', '*.googleusercontent.com',
+    '*.fonts.gstatic.com', '*.gstatic.com', '*.googleapis.com', '*.googlezip.net', '*.cdn-apple.com',
+    '*.apple.com', '*.icloud.com', '*.byteeffecttos-g.com', 'dl.google.com', 'downloadwa.b-cdn.net',
+    '*.azureedge.net', 'www.gstatic.com',
+]
+_SPLIT_DOMAIN_RE = re.compile(r'^(\*\.)?[a-z0-9_-]+(\.[a-z0-9_-]+)+$')
+
+def parse_split_domains(text):
+    """[Ver 2.91] Danh sach ten mien phan luong: '*.x' = x + moi ten mien con, 'a.b' = dung ten do."""
+    items = text if isinstance(text, list) else re.split(r'[\s,;]+', str(text or ''))
+    out, bad = [], []
+    for raw in items:
+        d = str(raw or '').strip().lower().rstrip('.')
+        if not d:
+            continue
+        if not _SPLIT_DOMAIN_RE.match(d):
+            bad.append(str(raw).strip())
+            continue
+        if d not in out:
+            out.append(d)
+    if bad:
+        raise ValueError('Ten mien khong hop le: ' + ', '.join(bad[:10]))
+    if len(out) > 500:
+        raise ValueError('Toi da 500 ten mien')
+    return out
+
+def get_split_config():
+    try:
+        meta = load_session_state().get('__meta__', {})
+        c = meta.get('split', {}) if isinstance(meta, dict) else {}
+    except Exception:
+        c = {}
+    if not isinstance(c, dict):
+        c = {}
+    doms = c.get('domains')
+    if not isinstance(doms, list):
+        doms = list(SPLIT_DEFAULT_DOMAINS)
+    return {'enabled': bool(c.get('enabled')), 'target': str(c.get('target') or ''), 'domains': [str(d) for d in doms]}
+
+def set_split_config(cfg):
+    state = load_session_state()
+    meta = state.setdefault('__meta__', {})
+    if not isinstance(meta, dict):
+        meta = {}
+        state['__meta__'] = meta
+    meta['split'] = {'enabled': bool(cfg.get('enabled')), 'target': str(cfg.get('target') or ''), 'domains': list(cfg.get('domains') or [])}
+    save_session_state(state)
+
+def _split_match_fields(domains):
+    suffix, exact = [], []
+    for d in domains or []:
+        d = str(d).strip().lower()
+        if not d:
+            continue
+        if d.startswith('*.'):
+            if d[2:] not in suffix:
+                suffix.append(d[2:])
+        elif d not in exact:
+            exact.append(d)
+    # 'www.gstatic.com' da nam trong '*.gstatic.com' => bo cho gon
+    exact = [d for d in exact if not any(d == x or d.endswith('.' + x) for x in suffix)]
+    f = {}
+    if exact:
+        f['domain'] = exact
+    if suffix:
+        f['domain_suffix'] = suffix
+    return f
+
+def build_split_outbound(target, old=None):
+    """Outbound cua duong tach. 'block' = chan; 'pppoe:N' = SOCKS glider cua phien N."""
+    t = str(target or '').strip().lower()
+    if t == 'block':
+        return {'tag': SPLIT_TAG, 'type': 'block'}
+    if t.startswith('pppoe:'):
+        sid = t.split(':', 1)[1].strip()
+        if not sid.isdigit() or not (1 <= int(sid) <= 999):
+            raise ValueError('So phien PPPoE khong hop le')
+        exp = pppoe_glider_port(sid)
+        if isinstance(old, dict) and old.get('type') == 'socks' and int(old.get('server_port') or 0) == exp and old.get('username'):
+            return dict(old)
+        obs = [{'tag': SPLIT_TAG, 'type': 'block'}]
+        n0 = len(_PPPOE_APPLY_MISS)
+        set_outbound_proxy(obs, {SPLIT_TAG: 0}, SPLIT_TAG, 'pppoe:' + sid, 'pppoe')
+        del _PPPOE_APPLY_MISS[n0:]
+        if obs[0].get('type') != 'socks':
+            raise ValueError('Khong lay duoc proxy glider cua phien PPPoE %s (phien chua len?)' % sid)
+        return obs[0]
+    raise ValueError('Chua chon duong tach (PPPoE hoac Chan)')
+
+def ensure_split_rules(data, cfg=None, strict=False):
+    """[Ver 2.91] Phan luong: ten mien media/CDN cua may dang di proxy (socks/http) => di outbound
+    gen_split (phien PPPoE rieng / chan) thay vi proxy tinh tien theo dung luong.
+    - Rule dat NGAY TRUOC rule proxy_* dau tien (first-match-wins), chi ap cho IP dang co proxy that:
+      may VPN (ra khoi gencore tu mangle) va may chua gan (block) khong bi mo duong.
+    - Khong lay duoc proxy PPPoE (non-strict): giu outbound cu neu co, khong thi bo rule (may van
+      di proxy chinh, khong mat mang).
+    Tra ve 1 neu doi config."""
+    try:
+        cfg = cfg or get_split_config()
+        route = data.setdefault('route', {})
+        rules = list(route.get('rules') or [])
+        obs = list(data.get('outbounds') or [])
+        before = json.dumps([rules, obs], sort_keys=True)
+        old_ob = next((o for o in obs if isinstance(o, dict) and o.get('tag') == SPLIT_TAG), None)
+        rules = [r for r in rules if not (isinstance(r, dict) and r.get('outbound') == SPLIT_TAG)]
+        obs = [o for o in obs if not (isinstance(o, dict) and o.get('tag') == SPLIT_TAG)]
+        fields = _split_match_fields(cfg.get('domains'))
+        if cfg.get('enabled') and fields:
+            ob_type = {str(o.get('tag')): str(o.get('type', '')).lower() for o in obs if isinstance(o, dict)}
+            ips = []
+            for r in rules:
+                if not (isinstance(r, dict) and r.get('action') == 'route' and str(r.get('outbound', '')).startswith('proxy_')):
+                    continue
+                ip = r.get('source_ip_cidr')
+                if isinstance(ip, str) and ip.strip() and ob_type.get(str(r['outbound'])) in ('socks', 'http') and ip.strip() not in ips:
+                    ips.append(ip.strip())
+            ob = None
+            if ips:
+                try:
+                    ob = build_split_outbound(cfg.get('target'), old_ob)
+                except ValueError as e:
+                    if strict:
+                        raise
+                    ob = old_ob
+                    try:
+                        _ss_log('SPLIT: %s => %s' % (e, 'giu outbound cu' if ob else 'tam bo rule, may di proxy chinh'))
+                    except Exception:
+                        pass
+            if ob:
+                pos = len(rules)
+                for i, r in enumerate(rules):
+                    if (isinstance(r, dict) and r.get('action') == 'route' and str(r.get('outbound', '')).startswith('proxy_')) or is_route_deny_rule(r):
+                        pos = i
+                        break
+                rule = {'action': 'route', 'outbound': SPLIT_TAG, 'source_ip_cidr': ips}
+                rule.update(fields)
+                rules.insert(pos, rule)
+                obs.append(ob)
+        route['rules'] = rules
+        data['outbounds'] = obs
+        return 0 if json.dumps([rules, obs], sort_keys=True) == before else 1
+    except ValueError:
+        if strict:
+            raise
+        return 0
+    except Exception as e:
+        if strict:
+            raise
+        try:
+            _ss_log('SPLIT loi: %s' % e)
+        except Exception:
+            pass
+        return 0
+
+def split_applied_count(doc):
+    for r in ((doc or {}).get('route') or {}).get('rules') or []:
+        if isinstance(r, dict) and r.get('outbound') == SPLIT_TAG:
+            v = r.get('source_ip_cidr')
+            return len(v) if isinstance(v, list) else 1
+    return 0
+
+def split_public_state():
+    cfg = get_split_config()
+    try:
+        applied = split_applied_count(load_json(RUNTIME_SOURCE_FILE))
+    except Exception:
+        applied = 0
+    return {'ok': True, 'enabled': cfg['enabled'], 'target': cfg['target'], 'domains': cfg['domains'], 'applied': applied}
+
+def split_update(payload):
+    """Bat/tat/sua phan luong: ghi runtime + moi preset, genrunner check (loi => tra lai file cu),
+    roi restart gencore nen. Tra ve trang thai moi."""
+    new = dict(get_split_config())
+    if 'domains' in payload:
+        new['domains'] = parse_split_domains(payload.get('domains'))
+    if 'target' in payload:
+        t = str(payload.get('target') or '').strip().lower()
+        if t and t != 'block' and not re.match(r'^pppoe:\d{1,3}$', t):
+            raise ValueError('Duong tach khong hop le')
+        new['target'] = t
+    if 'enabled' in payload:
+        new['enabled'] = bool(payload.get('enabled'))
+    if new['enabled']:
+        if not new['domains']:
+            raise ValueError('Danh sach ten mien trong')
+        build_split_outbound(new['target'])
+    if _apply_lock_active():
+        raise ValueError('Dang Apply, thu lai sau vai giay')
+    files = [RUNTIME_SOURCE_FILE]
+    if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
+        files.append(RUNTIME_FILE)
+    files += list(SESSION_FILES.values())
+    runtime_names = {str(RUNTIME_SOURCE_FILE), str(RUNTIME_FILE)}
+    backups, changed_runtime = {}, False
+    _apply_lock_acquire('split')
+    try:
+        try:
+            for f in files:
+                p = Path(f)
+                if not p.exists() or str(p) in backups:
+                    continue
+                raw = p.read_text(encoding='utf-8')
+                doc = json.loads(raw)
+                if ensure_split_rules(doc, cfg=new, strict=True):
+                    backups[str(p)] = raw
+                    save_gencore_json(p, doc)
+                    if str(p) in runtime_names:
+                        changed_runtime = True
+            if changed_runtime and GENRUNNER.exists():
+                proc = subprocess.run([str(GENRUNNER), 'check', '-c', str(RUNTIME_SOURCE_FILE)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+                if proc.returncode != 0:
+                    raise ValueError('genrunner check loi, da tra lai config cu: ' + ((proc.stderr or proc.stdout or '').strip()[:300]))
+        except Exception:
+            for f, raw in backups.items():
+                try:
+                    _ss_atomic_write(Path(f), raw)
+                except Exception:
+                    pass
+            raise
+        set_split_config(new)
+    finally:
+        _apply_lock_release()
+    if changed_runtime:
+        threading.Thread(target=gencore_restart_detached, args=('split',), daemon=True).start()
+    try:
+        _ss_log('SPLIT: enabled=%s target=%s domains=%d files=%d restart=%s' % (new['enabled'], new['target'] or '-', len(new['domains']), len(backups), changed_runtime))
+    except Exception:
+        pass
+    out = split_public_state()
+    out['restarted'] = changed_runtime
+    return out
+
 def rebuild_gencore_rules(data, tag_to_ip_map):
     dns = data.setdefault('dns', {})
     route = data.setdefault('route', {})
@@ -2415,6 +2650,8 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     # Ver 2.39: server DNS local phai co detour='direct', neu khong
     # hijack-dns bat lai goi cua chinh sing-box => loopback => mat DNS.
     ensure_dns_local_detour(data)
+    # Ver 2.91: phan luong (neu bat) phai rebuild cung, IP ap dung theo may dang co proxy.
+    ensure_split_rules(data)
     return data
 
 def _record_vpn_declaration(ipaddr, account):
@@ -3301,6 +3538,11 @@ def _run_apply_inner(session: str, rows_override=None):
         results.append({'cmd': 'save posted proxy assignments to preset and gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE), 'count': len(rows_by_tag)})
     else:
         runtime_data = load_json(RUNTIME_SOURCE_FILE)
+    if ensure_split_rules(runtime_data):
+        save_gencore_json(RUNTIME_SOURCE_FILE, runtime_data)
+        if str(preset_source) != str(RUNTIME_SOURCE_FILE):
+            save_gencore_json(preset_source, runtime_data)
+        results.append({'cmd': 'cap nhat phan luong', 'ok': True, 'applied': split_applied_count(runtime_data)})
     dns_migrated = migrate_proxy_dns_servers(runtime_data)
     # Ver 2.41: apply cung phai bao dam detour cua DNS local, neu khong
     # config vua ghi se lai roi vao vong lap hijack-dns (mat DNS toan bo).
@@ -5574,6 +5816,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'error': 'License inactive or expired', 'license_required': True}, 403)
         if path == '/':
             return self._send_file(STATIC_DIR / 'index.html')
+        if path == '/api/pm/split':
+            return self._send_json(split_public_state())
         if path == '/api/pm/sessions':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             # [Ver 2.72] tra kem cau hinh DANG APPLY: GUI mo len (F5/tat-mo) phai nhay dung
@@ -5685,6 +5929,11 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b'{}'
         payload = json.loads(body.decode('utf-8') or '{}')
         try:
+            if path == '/api/pm/split':
+                try:
+                    return self._send_json(split_update(payload if isinstance(payload, dict) else {}))
+                except ValueError as se:
+                    return self._send_json({'ok': False, 'error': str(se)})
             if path == '/api/pm/sessions/create':
                 session_id = str(payload.get('session', '')).strip()
                 source_session = str(payload.get('source_session', current if (current := payload.get('current_session')) else '1')).strip() or '1'

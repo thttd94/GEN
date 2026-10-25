@@ -336,6 +336,32 @@
             Chặn local
             <span id="isolateState" class="sub" style="font-weight:600">đang tải…</span>
           </label>
+          <label id="splitWrap" style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;font-weight:700" title="Bật: tên miền trong danh sách (video, ảnh, CDN) của máy đang đi proxy sẽ đi đường riêng (phiên PPPoE) hoặc bị chặn, không tốn dung lượng proxy. Máy VPN không bị ảnh hưởng.">
+            <input type="checkbox" id="splitToggle" onchange="setSplit(this.checked)" style="width:16px;height:16px" disabled>
+            Phân luồng
+            <span id="splitState" class="sub" style="font-weight:600">đang tải…</span>
+          </label>
+          <button type="button" class="btn small" id="splitPanelBtn" onclick="toggleSplitPanel()" aria-controls="splitPanel" aria-expanded="false">Danh sách</button>
+          <div id="splitPanel" role="dialog" aria-label="Phân luồng" hidden style="position:fixed;top:70px;right:20px;z-index:1000;width:380px;max-width:calc(100vw - 40px);background:#fff;color:#111;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:12px;">
+            <div style="font-weight:800;margin-bottom:6px;">Phân luồng (tên miền đi đường riêng)</div>
+            <label for="splitDomains" class="sub">Mỗi dòng 1 tên miền. <code>*.abc.com</code> = abc.com + mọi tên miền con.</label>
+            <textarea id="splitDomains" rows="14" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px;" oninput="this.dataset.dirty='1'"></textarea>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
+              <label for="splitTarget" style="font-weight:700;">Đi đường</label>
+              <select id="splitTarget" onchange="document.getElementById('splitPppoe').disabled = this.value !== 'pppoe'">
+                <option value="">— chọn —</option>
+                <option value="pppoe">Phiên PPPoE</option>
+                <option value="block">Chặn</option>
+              </select>
+              <label for="splitPppoe" class="sub">số</label>
+              <input id="splitPppoe" type="number" min="1" max="999" style="width:70px;" disabled>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+              <button type="button" class="btn small" onclick="resetSplitDomains()">Mặc định</button>
+              <button type="button" class="btn small" onclick="toggleSplitPanel(false)">Đóng</button>
+              <button type="button" class="btn small" onclick="saveSplit()" style="font-weight:800;">Lưu</button>
+            </div>
+          </div>
                   </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap;">
         <div class="sub" id="countLabel" style="font-weight:800;white-space:nowrap;">0 rows</div>
@@ -2132,6 +2158,101 @@
       await loadIsolate();
     }
 
+    // [Ver 2.91] Phan luong: ten mien media/CDN cua may dang di proxy => di phien PPPoE rieng / chan.
+    const SPLIT_DEFAULT = ['*.googlevideo.com','*.fbcdn.net','*.tiktokcdn.com','*.ibyteimg.com','*.tiktokcdn-us.com','*.bromite.org','*.ytimg.com','*.ggpht.com','*.gvt1.com','*.gvt2.com','*.googleusercontent.com','*.fonts.gstatic.com','*.gstatic.com','*.googleapis.com','*.googlezip.net','*.cdn-apple.com','*.apple.com','*.icloud.com','*.byteeffecttos-g.com','dl.google.com','downloadwa.b-cdn.net','*.azureedge.net','www.gstatic.com'];
+    let splitEnabled = false;
+    async function loadSplit() {
+      const cb = document.getElementById('splitToggle');
+      const el = document.getElementById('splitState');
+      if (!cb || !el) return;
+      try {
+        const r = await fetchJSON('/api/pm/split');
+        if (!r || r.ok === false) throw new Error((r && r.error) || 'loi');
+        splitEnabled = !!r.enabled;
+        cb.disabled = false;
+        cb.checked = splitEnabled;
+        const ta = document.getElementById('splitDomains');
+        if (ta && !ta.dataset.dirty) ta.value = (r.domains || []).join('\n');
+        const t = String(r.target || '');
+        const sel = document.getElementById('splitTarget');
+        const num = document.getElementById('splitPppoe');
+        if (sel) sel.value = t.startsWith('pppoe:') ? 'pppoe' : (t === 'block' ? 'block' : '');
+        if (num) { num.disabled = !t.startsWith('pppoe:'); if (t.startsWith('pppoe:')) num.value = t.slice(6); }
+        const tgt = t === 'block' ? 'chặn' : (t.startsWith('pppoe:') ? 'PPPoE #' + t.slice(6) : 'chưa chọn đường');
+        el.textContent = splitEnabled ? (tgt + ', ' + (r.applied || 0) + ' máy') : 'tắt';
+        el.style.color = splitEnabled ? (r.applied ? '#16a34a' : '#d97706') : '';
+      } catch (e) {
+        el.textContent = 'không rõ – hãy Cập nhật lên bản mới';
+        el.style.color = '#dc2626';
+      }
+    }
+    function splitTargetValue() {
+      const sel = document.getElementById('splitTarget');
+      const num = document.getElementById('splitPppoe');
+      const v = sel ? sel.value : '';
+      if (v === 'block') return 'block';
+      if (v === 'pppoe') {
+        const n = parseInt((num && num.value) || '', 10);
+        return Number.isInteger(n) && n >= 1 ? 'pppoe:' + n : '';
+      }
+      return '';
+    }
+    function toggleSplitPanel(force) {
+      const p = document.getElementById('splitPanel');
+      const b = document.getElementById('splitPanelBtn');
+      if (!p) return;
+      const show = typeof force === 'boolean' ? force : p.hidden;
+      p.hidden = !show;
+      if (b) b.setAttribute('aria-expanded', show ? 'true' : 'false');
+      if (show) { const ta = document.getElementById('splitDomains'); if (ta) ta.focus(); }
+    }
+    function resetSplitDomains() {
+      const ta = document.getElementById('splitDomains');
+      if (!ta) return;
+      ta.value = SPLIT_DEFAULT.join('\n');
+      ta.dataset.dirty = '1';
+    }
+    async function postSplit(body) {
+      const r = await fetchJSON('/api/pm/split', { method:'POST', body: JSON.stringify(body) });
+      if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi không rõ');
+      return r;
+    }
+    async function setSplit(on) {
+      const cb = document.getElementById('splitToggle');
+      const el = document.getElementById('splitState');
+      const body = { enabled: on };
+      if (on) {
+        const t = splitTargetValue();
+        if (!t) { cb.checked = false; toggleSplitPanel(true); setStatus('Chọn đường đi (phiên PPPoE hoặc Chặn) rồi bật lại'); return; }
+        body.target = t;
+      }
+      if (!confirm((on ? 'BẬT' : 'TẮT') + ' phân luồng?\nRouter sẽ khởi động lại gencore, cả router chập mạng vài giây.')) { cb.checked = !on; return; }
+      cb.disabled = true;
+      el.textContent = 'đang đổi…';
+      el.style.color = '';
+      try {
+        await postSplit(body);
+        setStatus(on ? 'Đã BẬT phân luồng' : 'Đã TẮT phân luồng');
+      } catch (e) {
+        setStatus('Phân luồng lỗi: ' + e.message);
+      }
+      await loadSplit();
+    }
+    async function saveSplit() {
+      const ta = document.getElementById('splitDomains');
+      const body = { domains: ta ? ta.value : '', target: splitTargetValue() };
+      if (splitEnabled && !confirm('Lưu phân luồng đang bật?\nRouter sẽ khởi động lại gencore, cả router chập mạng vài giây.')) return;
+      try {
+        await postSplit(body);
+        if (ta) delete ta.dataset.dirty;
+        setStatus('Đã lưu danh sách phân luồng');
+        toggleSplitPanel(false);
+      } catch (e) {
+        setStatus('Phân luồng lỗi: ' + e.message);
+      }
+      await loadSplit();
+    }
+
     let BOOT_META = null;
     async function bootstrap() {
       // Chi cho session list + session hien tai chan bootstrap. Meta/network/license
@@ -2146,6 +2267,7 @@
       if (versionCheckTimer) clearInterval(versionCheckTimer);
       versionCheckTimer = setInterval(() => refreshVersionInfo(true), 60000);
       loadIsolate();
+      loadSplit();
       const sessData = await fetchSessionsList(false);
       // [Ver 2.72] Mo len (F5 / tat-mo lai) phai nhay dung cau hinh DANG APPLY tren router,
       // khong ve mac dinh 1. active_session tra cung /api/pm/sessions (khong cho meta).
