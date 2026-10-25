@@ -1,3 +1,8 @@
+## Ver 2.87 (2026-10-25) - May PPPoE tu nhan pass proxy moi
+
+- Doi user/pass proxy phien PPPoE: glider chay pass moi nhung outbound proxy_* trong gencore.json van giu pass cu => auth fail, may mat mang toi khi Apply tay (do that Gen15 25/10: may 968 / phien 129).
+  Nay luong glider-stale (10s) so outbound socks tro ve glider (port 15000-15999) voi cmdline glider dang chay; lech => sua runtime + preset, restart gencore (toi da 1 lan/60s, bo qua khi dang Apply). Log `PXCRED`.
+
 ## Ver 2.86 (2026-10-24) - Proxy WAN 2 dong Socks5 / HTTPS
 
 - /pppoe cot Proxy: 2 dong `Socks5: IP:15xxx:user:pass` va `HTTPS: IP:30xxx:user:pass` (IP WAN phien). Bam (hoac Enter) dong nao copy dung dong do.

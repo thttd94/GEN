@@ -1,1 +1,1 @@
-Ver 2.86 (/pppoe cot Proxy 2 dong Socks5 / HTTPS, bam dong nao copy dang IP:port:user:pass cua loai do)
+Ver 2.87 (doi user/pass proxy phien PPPoE xong may gan phien tu cap nhat pass moi, khong mat mang, khong can Apply tay)

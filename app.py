@@ -5060,6 +5060,78 @@ def pppoe_wan_proxy_sync():
         changed.append('ip:%d' % len(batch))
     return changed
 
+_PXCRED_LAST_RESTART = [0.0]
+
+def pppoe_outbound_creds_sync():
+    """[Ver 2.87] Doi user/pass proxy phien PPPoE => glider chay pass MOI, nhung outbound
+    proxy_* trong gencore.json (may gan phien do) van giu pass CU => auth fail, may mat
+    mang (do that Gen15 25/10: may 968 / phien 129, gencore len8 vs glider len11/len9).
+    Moi 10s: so outbound socks tro ve glider (port 15000-15999) voi cmdline glider dang
+    chay; lech => sua outbound (runtime + preset), restart gencore (toi da 1 lan/60s,
+    bo qua khi dang Apply). Tra ve so outbound da sua."""
+    if _apply_lock_active():
+        return 0
+    gl = _pppoe_glider_procs()
+    if not gl:
+        return 0
+    import urllib.parse as _u
+    want = {}
+    for sid, g in gl.items():
+        try:
+            u = _u.urlparse(g['socks'])
+            user = _u.unquote(u.username or ''); pw = _u.unquote(u.password or ''); port = int(u.port or 0)
+        except Exception:
+            continue
+        # glider vua start (<5s) co the dang doi lai => doi chu ky sau
+        if user and pw and port and time.time() - float(g.get('start') or 0) > 5:
+            want[port] = (user, pw, sid)
+    if not want:
+        return 0
+    lan = _pppoe_glider_lan_host()
+    files = [RUNTIME_SOURCE_FILE]
+    if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
+        files.append(RUNTIME_FILE)
+    files += [p for p in SESSION_FILES.values()]
+    fixed_runtime, fixed_tags = 0, []
+    for f in files:
+        try:
+            if not Path(f).exists():
+                continue
+            doc = load_json(f)
+        except Exception:
+            continue
+        n = 0
+        for ob in doc.get('outbounds', []) or []:
+            if not isinstance(ob, dict) or ob.get('type') != 'socks':
+                continue
+            if str(ob.get('server') or '') not in (lan, '127.0.0.1', '0.0.0.0'):
+                continue
+            w = want.get(int(ob.get('server_port') or 0))
+            if not w or (ob.get('username'), ob.get('password')) == (w[0], w[1]):
+                continue
+            ob['username'], ob['password'] = w[0], w[1]
+            n += 1
+            if f in (RUNTIME_SOURCE_FILE, RUNTIME_FILE):
+                fixed_tags.append('%s<-phien%d' % (ob.get('tag'), w[2]))
+        if n:
+            save_gencore_json(f, doc)
+            if f in (RUNTIME_SOURCE_FILE, RUNTIME_FILE):
+                fixed_runtime += n
+    if fixed_runtime:
+        tags = sorted(set(fixed_tags))
+        _pppoe_wd_log('PXCRED: %d outbound giu pass proxy cu => da cap nhat theo glider: %s' % (len(tags), ', '.join(tags[:10])))
+        try:
+            pppoe_session_proxies._cache = None
+        except Exception:
+            pass
+        now = time.time()
+        if now - _PXCRED_LAST_RESTART[0] >= 60:
+            _PXCRED_LAST_RESTART[0] = now
+            # gencore khong tu nap lai config => restart de RAM nhan pass moi
+            gencore_restart_detached('pxcred')
+            _pppoe_wd_log('PXCRED: restart gencore de nap pass moi')
+    return fixed_runtime
+
 def _nft_split(rule):
     import shlex
     return shlex.split(rule)
@@ -5081,6 +5153,10 @@ def pppoe_glider_stale_loop():
                 _last_px = s
         except Exception as e:
             _pppoe_wd_log('PXWAN loi: %s' % str(e)[:80])
+        try:
+            pppoe_outbound_creds_sync()
+        except Exception as e:
+            _pppoe_wd_log('PXCRED loi: %s' % str(e)[:80])
         time.sleep(10)
 
 def _pppoe_wd_log(msg):
