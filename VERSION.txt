@@ -1,1 +1,1 @@
-Ver 2.91 (Phan luong: nut bat/tat + danh sach ten mien media/CDN di phien PPPoE rieng hoac chan, tiet kiem dung luong proxy)
+Ver 2.92 (Theo doi luong: xem ten mien nao di Proxy / Tach, bao nhieu MB, theo tung may)

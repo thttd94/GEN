@@ -342,6 +342,33 @@
             <span id="splitState" class="sub" style="font-weight:600">đang tải…</span>
           </label>
           <button type="button" class="btn small" id="splitPanelBtn" onclick="toggleSplitPanel()" aria-controls="splitPanel" aria-expanded="false">Danh sách</button>
+          <button type="button" class="btn small" id="flowPanelBtn" onclick="toggleFlowPanel()" aria-controls="flowPanel" aria-expanded="false">Theo dõi luồng</button>
+          <div id="flowPanel" role="dialog" aria-label="Theo dõi luồng" hidden style="position:fixed;top:70px;right:20px;z-index:1001;width:760px;max-width:calc(100vw - 40px);max-height:calc(100vh - 100px);overflow:auto;background:#fff;color:#111;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div style="font-weight:800;">Theo dõi luồng (tên miền đi đường nào, bao nhiêu MB)</div>
+              <button type="button" class="btn small" onclick="toggleFlowPanel(false)" aria-label="Đóng">✕</button>
+            </div>
+            <div id="flowOff" hidden style="margin-top:8px;">
+              <div class="sub">Đang tắt. Bật sẽ khởi động lại gencore (router chập vài giây). Chỉ đọc số liệu trong router, không mở cổng ra ngoài.</div>
+              <button type="button" class="btn small" onclick="setFlow('enable')" style="margin-top:6px;font-weight:800;">Bật theo dõi</button>
+            </div>
+            <div id="flowOn" hidden>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <label for="flowIp" style="font-weight:700;">Máy (IP)</label>
+                <select id="flowIp" onchange="loadFlow()"><option value="">Tất cả</option></select>
+                <button type="button" class="btn small" onclick="setFlow('reset')">Xoá số đếm</button>
+                <button type="button" class="btn small" onclick="setFlow('disable')">Tắt theo dõi</button>
+                <span id="flowSince" class="sub"></span>
+              </div>
+              <div id="flowTotals" style="margin-top:8px;font-weight:700;" aria-live="polite"></div>
+              <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;">
+                <thead><tr style="text-align:left;border-bottom:1px solid #cbd5e1;"><th scope="col">Tên miền</th><th scope="col">Máy</th><th scope="col">Đi đường</th><th scope="col" style="text-align:right;">Tải xuống</th><th scope="col" style="text-align:right;">Tải lên</th><th scope="col" style="text-align:right;">Kết nối</th></tr></thead>
+                <tbody id="flowRows"></tbody>
+              </table>
+              <div class="sub" style="margin-top:6px;">Đọc mỗi 2 giây. Kết nối đóng giữa 2 lần đọc có thể thiếu vài KB cuối. Số đếm reset khi gencore khởi động lại.</div>
+            </div>
+            <div id="flowErr" class="sub" style="color:#dc2626;margin-top:6px;"></div>
+          </div>
           <div id="splitPanel" role="dialog" aria-label="Phân luồng" hidden style="position:fixed;top:70px;right:20px;z-index:1000;width:380px;max-width:calc(100vw - 40px);background:#fff;color:#111;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:12px;">
             <div style="font-weight:800;margin-bottom:6px;">Phân luồng (tên miền đi đường riêng)</div>
             <label for="splitDomains" class="sub">Mỗi dòng 1 tên miền. <code>*.abc.com</code> = abc.com + mọi tên miền con.</label>
@@ -2251,6 +2278,76 @@
         setStatus('Phân luồng lỗi: ' + e.message);
       }
       await loadSplit();
+    }
+
+    // [Ver 2.92] Theo doi luong: doc Clash API cua gencore qua /api/pm/flow.
+    let flowTimer = null;
+    function fmtMB(b) {
+      const n = Number(b || 0);
+      if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+      if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+      return (n / 1024).toFixed(0) + ' KB';
+    }
+    const FLOW_KIND = { proxy: 'Proxy', split: 'Tách', direct: 'Trực tiếp', other: 'Khác' };
+    const FLOW_COLOR = { proxy: '#dc2626', split: '#16a34a', direct: '#2563eb', other: '#6b7280' };
+    function toggleFlowPanel(force) {
+      const p = document.getElementById('flowPanel');
+      const b = document.getElementById('flowPanelBtn');
+      if (!p) return;
+      const show = typeof force === 'boolean' ? force : p.hidden;
+      p.hidden = !show;
+      if (b) b.setAttribute('aria-expanded', show ? 'true' : 'false');
+      if (flowTimer) { clearInterval(flowTimer); flowTimer = null; }
+      if (show) { loadFlow(); flowTimer = setInterval(loadFlow, 3000); }
+    }
+    function renderFlow(r) {
+      const off = document.getElementById('flowOff');
+      const on = document.getElementById('flowOn');
+      const err = document.getElementById('flowErr');
+      off.hidden = !!r.enabled;
+      on.hidden = !r.enabled;
+      err.textContent = r.enabled && r.error ? ('Chưa đọc được gencore: ' + r.error + ' (vừa bật thì chờ vài giây; nếu lâu, hãy Apply lại)') : '';
+      if (!r.enabled) return;
+      const sel = document.getElementById('flowIp');
+      const cur = sel.value;
+      const ips = r.ips || [];
+      const want = '<option value="">Tất cả</option>' + ips.map(ip => `<option value="${esc(ip)}">${esc(ip)}</option>`).join('');
+      if (sel.dataset.sig !== ips.join(',')) { sel.innerHTML = want; sel.dataset.sig = ips.join(','); sel.value = cur; }
+      const t = r.totals || {};
+      const sum = (t.proxy || 0) + (t.split || 0) + (t.direct || 0) + (t.other || 0);
+      const pct = k => sum ? Math.round((t[k] || 0) * 100 / sum) + '%' : '0%';
+      document.getElementById('flowTotals').innerHTML =
+        `<span style="color:${FLOW_COLOR.proxy}">Proxy: ${fmtMB(t.proxy)} (${pct('proxy')})</span> · ` +
+        `<span style="color:${FLOW_COLOR.split}">Tách: ${fmtMB(t.split)} (${pct('split')})</span>` +
+        ((t.direct || t.other) ? ` · Khác: ${fmtMB((t.direct || 0) + (t.other || 0))}` : '');
+      document.getElementById('flowSince').textContent = r.since ? ('đếm từ ' + new Date(r.since * 1000).toLocaleTimeString()) : '';
+      document.getElementById('flowRows').innerHTML = (r.rows || []).map(x =>
+        `<tr style="border-bottom:1px solid #eef2f7;"><td style="word-break:break-all;">${esc(x.host)}</td><td>${esc(x.ip)}</td>` +
+        `<td style="color:${FLOW_COLOR[x.kind] || '#111'};font-weight:700;">${esc(FLOW_KIND[x.kind] || x.kind)} <span class="sub">${esc(x.out)}</span></td>` +
+        `<td style="text-align:right;">${fmtMB(x.down)}</td><td style="text-align:right;">${fmtMB(x.up)}</td><td style="text-align:right;">${x.conns}</td></tr>`
+      ).join('') || '<tr><td colspan="6" class="sub">Chưa có kết nối nào.</td></tr>';
+    }
+    async function loadFlow() {
+      const ip = (document.getElementById('flowIp') || {}).value || '';
+      try {
+        const r = await fetchJSON('/api/pm/flow' + (ip ? ('?ip=' + encodeURIComponent(ip)) : ''));
+        if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
+        renderFlow(r);
+      } catch (e) {
+        document.getElementById('flowErr').textContent = 'Lỗi: ' + e.message + ' (router chưa lên bản 2.92?)';
+      }
+    }
+    async function setFlow(action) {
+      if ((action === 'enable' || action === 'disable') && !confirm((action === 'enable' ? 'Bật' : 'Tắt') + ' theo dõi luồng?\nRouter sẽ khởi động lại gencore, cả router chập mạng vài giây.')) return;
+      const ip = (document.getElementById('flowIp') || {}).value || '';
+      try {
+        const r = await fetchJSON('/api/pm/flow', { method:'POST', body: JSON.stringify({ action, ip }) });
+        if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
+        renderFlow(r);
+        setStatus(action === 'reset' ? 'Đã xoá số đếm theo dõi luồng' : (action === 'enable' ? 'Đã bật theo dõi luồng' : 'Đã tắt theo dõi luồng'));
+      } catch (e) {
+        setStatus('Theo dõi luồng lỗi: ' + e.message);
+      }
     }
 
     let BOOT_META = null;

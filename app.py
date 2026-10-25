@@ -2598,6 +2598,231 @@ def split_update(payload):
     out['restarted'] = changed_runtime
     return out
 
+FLOW_API_ADDR = '127.0.0.1:19090'
+FLOW_MAX_KEYS = 5000
+FLOW = {'lock': threading.Lock(), 'agg': {}, 'last': {}, 'since': 0.0, 'last_req': 0.0, 'thread': None, 'err': '', 'polls': 0}
+
+def get_flow_config():
+    try:
+        meta = load_session_state().get('__meta__', {})
+        c = meta.get('flow', {}) if isinstance(meta, dict) else {}
+    except Exception:
+        c = {}
+    return c if isinstance(c, dict) else {}
+
+def _flow_secret(create=False):
+    c = get_flow_config()
+    sec = str(c.get('secret') or '')
+    if not sec and create:
+        sec = base64.urlsafe_b64encode(os.urandom(18)).decode('ascii').rstrip('=')
+    return sec
+
+def set_flow_config(enabled, secret):
+    state = load_session_state()
+    meta = state.setdefault('__meta__', {})
+    if not isinstance(meta, dict):
+        meta = {}
+        state['__meta__'] = meta
+    meta['flow'] = {'enabled': bool(enabled), 'secret': str(secret or '')}
+    save_session_state(state)
+
+def ensure_flow_api(data, cfg=None):
+    """[Ver 2.92] Theo doi luong: bat Clash API cua gencore (sing-box) CHI tren 127.0.0.1, co secret.
+    Tat thi go experimental.clash_api. Tra ve 1 neu doi config."""
+    try:
+        cfg = cfg if cfg is not None else get_flow_config()
+        exp = data.get('experimental')
+        before = json.dumps(exp, sort_keys=True)
+        on = bool(cfg.get('enabled')) and bool(cfg.get('secret'))
+        if on:
+            exp = dict(exp) if isinstance(exp, dict) else {}
+            exp['clash_api'] = {'external_controller': FLOW_API_ADDR, 'secret': str(cfg.get('secret'))}
+            data['experimental'] = exp
+        elif isinstance(exp, dict) and 'clash_api' in exp:
+            exp = dict(exp)
+            exp.pop('clash_api', None)
+            if exp:
+                data['experimental'] = exp
+            else:
+                data.pop('experimental', None)
+        return 0 if json.dumps(data.get('experimental'), sort_keys=True) == before else 1
+    except Exception:
+        return 0
+
+def _flow_kind(chain):
+    c = str(chain or '')
+    if c == SPLIT_TAG:
+        return 'split'
+    if c.startswith('proxy_'):
+        return 'proxy'
+    if c == 'direct':
+        return 'direct'
+    return 'other'
+
+def _flow_fetch():
+    req = urllib.request.Request('http://%s/connections' % FLOW_API_ADDR, headers={'Authorization': 'Bearer ' + _flow_secret()})
+    with urllib.request.urlopen(req, timeout=4) as r:
+        return json.loads(r.read().decode('utf-8', 'replace') or '{}')
+
+def flow_ingest(snapshot, agg, last):
+    """Cong DELTA byte cua tung ket noi (id) vao agg[(ip, host, chain)]. Ket noi da dong bi bo khoi last.
+    Ket noi dong giua 2 lan doc mat phan byte cuoi (< 2s) — sai so nho, ghi ro tren GUI."""
+    seen = set()
+    for c in (snapshot or {}).get('connections') or []:
+        if not isinstance(c, dict):
+            continue
+        cid = str(c.get('id') or '')
+        if not cid:
+            continue
+        seen.add(cid)
+        md = c.get('metadata') or {}
+        ip = str(md.get('sourceIP') or '')
+        host = str(md.get('host') or '') or str(md.get('destinationIP') or '')
+        chains = c.get('chains') or []
+        chain = str(chains[0]) if chains else ''
+        up, down = int(c.get('upload') or 0), int(c.get('download') or 0)
+        pu, pd = last.get(cid, (0, 0))
+        du, dd = max(0, up - pu), max(0, down - pd)
+        last[cid] = (up, down)
+        key = (ip, host, chain)
+        a = agg.get(key)
+        if a is None:
+            if len(agg) >= FLOW_MAX_KEYS:
+                key = (ip, '(khac)', chain)
+                a = agg.get(key)
+            if a is None:
+                a = agg[key] = {'up': 0, 'down': 0, 'conns': 0, 'ids': set()}
+        a['up'] += du
+        a['down'] += dd
+        if cid not in a['ids']:
+            a['ids'].add(cid)
+            a['conns'] += 1
+            if len(a['ids']) > 2000:
+                a['ids'] = set()
+    for cid in list(last):
+        if cid not in seen:
+            last.pop(cid, None)
+
+def _flow_loop():
+    while True:
+        with FLOW['lock']:
+            idle = time.time() - FLOW['last_req'] > 600
+            if idle:
+                FLOW['thread'] = None
+                FLOW['last'] = {}
+                return
+        try:
+            snap = _flow_fetch()
+            with FLOW['lock']:
+                flow_ingest(snap, FLOW['agg'], FLOW['last'])
+                FLOW['err'] = ''
+                FLOW['polls'] += 1
+        except Exception as e:
+            with FLOW['lock']:
+                FLOW['err'] = str(e)[:200]
+        time.sleep(2)
+
+def _flow_touch():
+    with FLOW['lock']:
+        FLOW['last_req'] = time.time()
+        if not FLOW['since']:
+            FLOW['since'] = time.time()
+        if FLOW['thread'] is None:
+            t = threading.Thread(target=_flow_loop, daemon=True, name='flow-monitor')
+            FLOW['thread'] = t
+            t.start()
+
+def flow_reset():
+    with FLOW['lock']:
+        FLOW['agg'] = {}
+        FLOW['since'] = time.time()
+        FLOW['polls'] = 0
+
+def flow_summary(agg, ip=''):
+    ip = str(ip or '').strip()
+    rows, totals = [], {'proxy': 0, 'split': 0, 'direct': 0, 'other': 0}
+    for (sip, host, chain), a in agg.items():
+        if ip and sip != ip:
+            continue
+        b = a['up'] + a['down']
+        k = _flow_kind(chain)
+        totals[k] += b
+        rows.append({'ip': sip, 'host': host, 'out': chain, 'kind': k, 'up': a['up'], 'down': a['down'], 'bytes': b, 'conns': a['conns']})
+    rows.sort(key=lambda r: -r['bytes'])
+    return rows[:300], totals
+
+def flow_public_state(ip=''):
+    cfg = get_flow_config()
+    enabled = bool(cfg.get('enabled'))
+    out = {'ok': True, 'enabled': enabled, 'available': False, 'since': 0, 'rows': [], 'totals': {}, 'ips': [], 'error': ''}
+    if not enabled:
+        return out
+    _flow_touch()
+    with FLOW['lock']:
+        agg = dict(FLOW['agg'])
+        out['since'] = int(FLOW['since'])
+        out['error'] = FLOW['err']
+        out['available'] = FLOW['polls'] > 0 and not FLOW['err']
+    out['rows'], out['totals'] = flow_summary(agg, ip)
+    out['ips'] = sorted({k[0] for k in agg if k[0]}, key=lambda x: [int(p) if p.isdigit() else 0 for p in x.split('.')])
+    return out
+
+def flow_update(payload):
+    action = str(payload.get('action') or '').strip()
+    if action == 'reset':
+        flow_reset()
+        return flow_public_state(payload.get('ip', ''))
+    if action not in ('enable', 'disable'):
+        raise ValueError('action khong hop le')
+    on = action == 'enable'
+    cfg = {'enabled': on, 'secret': _flow_secret(create=True)}
+    if _apply_lock_active():
+        raise ValueError('Dang Apply, thu lai sau vai giay')
+    files = [RUNTIME_SOURCE_FILE]
+    if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
+        files.append(RUNTIME_FILE)
+    files += list(SESSION_FILES.values())
+    runtime_names = {str(RUNTIME_SOURCE_FILE), str(RUNTIME_FILE)}
+    backups, changed_runtime = {}, False
+    _apply_lock_acquire('flow')
+    try:
+        try:
+            for f in files:
+                p = Path(f)
+                if not p.exists() or str(p) in backups:
+                    continue
+                raw = p.read_text(encoding='utf-8')
+                doc = json.loads(raw)
+                if ensure_flow_api(doc, cfg):
+                    backups[str(p)] = raw
+                    save_gencore_json(p, doc)
+                    if str(p) in runtime_names:
+                        changed_runtime = True
+            if changed_runtime and GENRUNNER.exists():
+                proc = subprocess.run([str(GENRUNNER), 'check', '-c', str(RUNTIME_SOURCE_FILE)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+                if proc.returncode != 0:
+                    raise ValueError('genrunner check loi, da tra lai config cu: ' + ((proc.stderr or proc.stdout or '').strip()[:300]))
+        except Exception:
+            for f, raw in backups.items():
+                try:
+                    _ss_atomic_write(Path(f), raw)
+                except Exception:
+                    pass
+            raise
+        set_flow_config(on, cfg['secret'])
+    finally:
+        _apply_lock_release()
+    if changed_runtime:
+        threading.Thread(target=gencore_restart_detached, args=('flow',), daemon=True).start()
+    flow_reset()
+    try:
+        _ss_log('FLOW: enabled=%s files=%d restart=%s' % (on, len(backups), changed_runtime))
+    except Exception:
+        pass
+    out = flow_public_state(payload.get('ip', ''))
+    out['restarted'] = changed_runtime
+    return out
+
 def rebuild_gencore_rules(data, tag_to_ip_map):
     dns = data.setdefault('dns', {})
     route = data.setdefault('route', {})
@@ -2652,6 +2877,7 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     ensure_dns_local_detour(data)
     # Ver 2.91: phan luong (neu bat) phai rebuild cung, IP ap dung theo may dang co proxy.
     ensure_split_rules(data)
+    ensure_flow_api(data)
     return data
 
 def _record_vpn_declaration(ipaddr, account):
@@ -3538,7 +3764,7 @@ def _run_apply_inner(session: str, rows_override=None):
         results.append({'cmd': 'save posted proxy assignments to preset and gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE), 'count': len(rows_by_tag)})
     else:
         runtime_data = load_json(RUNTIME_SOURCE_FILE)
-    if ensure_split_rules(runtime_data):
+    if ensure_split_rules(runtime_data) + ensure_flow_api(runtime_data):
         save_gencore_json(RUNTIME_SOURCE_FILE, runtime_data)
         if str(preset_source) != str(RUNTIME_SOURCE_FILE):
             save_gencore_json(preset_source, runtime_data)
@@ -5818,6 +6044,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/api/pm/split':
             return self._send_json(split_public_state())
+        if path == '/api/pm/flow':
+            q = parse_qs(urlparse(self.path).query or '')
+            return self._send_json(flow_public_state((q.get('ip') or [''])[0]))
         if path == '/api/pm/sessions':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             # [Ver 2.72] tra kem cau hinh DANG APPLY: GUI mo len (F5/tat-mo) phai nhay dung
@@ -5929,6 +6158,11 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b'{}'
         payload = json.loads(body.decode('utf-8') or '{}')
         try:
+            if path == '/api/pm/flow':
+                try:
+                    return self._send_json(flow_update(payload if isinstance(payload, dict) else {}))
+                except ValueError as fe:
+                    return self._send_json({'ok': False, 'error': str(fe)})
             if path == '/api/pm/split':
                 try:
                     return self._send_json(split_update(payload if isinstance(payload, dict) else {}))

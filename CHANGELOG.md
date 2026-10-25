@@ -1,3 +1,9 @@
+## Ver 2.92 (2026-10-25) - Theo doi luong
+
+- GUI 9001: nut `Theo doi luong` canh `Danh sach`. Bat: gencore mo Clash API CHI tren 127.0.0.1:19090 co secret ngau nhien (khong ra LAN/WAN). Bang ten mien / may / duong (Proxy do, Tach xanh) / MB tai xuong-len / so ket noi, loc theo IP, tong Proxy vs Tach (%), nut Xoa so dem. Tu cap nhat 3s khi mo bang.
+- App doc /connections moi 2s, cong DELTA byte theo (IP, ten mien, duong); tu dung doc khi 10 phut khong ai mo bang. Mac dinh TAT. Bat/tat: genrunner check loi thi tra lai file cu, OK thi restart gencore (chap vai giay). API `GET/POST /api/pm/flow`, log `FLOW`.
+- Da thu tren Gen10 (instance gencore tam tren 127.0.0.1, da xoa): sing-box 1.11.6 co `with_clash_api`, /connections tra host + chains, khong secret => 401.
+
 ## Ver 2.91 (2026-10-25) - Phan luong ten mien
 
 - GUI 9001: nut `Phan luong` canh `Chan local` + nut `Danh sach` (sua ten mien, chon duong: phien PPPoE so N hoac Chan). Mac dinh TAT, danh sach mac dinh 23 ten mien (googlevideo, fbcdn, tiktokcdn, ibyteimg, ytimg, gstatic, googleapis, apple, icloud...).
