@@ -1,3 +1,8 @@
+## Ver 2.88 (2026-10-25) - Huy gan tung may + gan may chua cau hinh
+
+- GUI 9001 cot Proxy: nut X cuoi o (socks5/http, VPN, PPPoE) huy gan RIENG may do, luu + Apply ngay; khong phai dung Clear Proxy (xoa het).
+- Tab CHUA CAU HINH: truoc day gan proxy/VPN/PPPoE bi bo qua im lang (may chua co tag proxy_N). Nay khi Luu/Apply, backend tu cap tag proxy_N trong (khong trung tag/so may), them vao danh sach IP chung, rebuild rule moi session; GUI tai lai, may chuyen sang DA CAU HINH. Log `PROMOTE-UNCONFIGURED`. Khong dong bo DHCP static.
+
 ## Ver 2.87 (2026-10-25) - May PPPoE tu nhan pass proxy moi
 
 - Doi user/pass proxy phien PPPoE: glider chay pass moi nhung outbound proxy_* trong gencore.json van giu pass cu => auth fail, may mat mang toi khi Apply tay (do that Gen15 25/10: may 968 / phien 129).

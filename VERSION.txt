@@ -1,1 +1,1 @@
-Ver 2.87 (doi user/pass proxy phien PPPoE xong may gan phien tu cap nhat pass moi, khong mat mang, khong can Apply tay)
+Ver 2.88 (o Proxy co nut X huy gan rieng tung may proxy/VPN/PPPoE; may tab CHUA CAU HINH gan proxy/VPN/PPPoE duoc nhu tab DA CAU HINH)

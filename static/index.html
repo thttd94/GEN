@@ -944,13 +944,13 @@
             ? `<td><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="max-width:200px;">
                  <option value="" ${(!String(row.proxy || '').startsWith('vpn:')) ? 'selected' : ''}>— chọn VPN —</option>
                  ${vpnOptionsHtml(row.proxy)}
-               </select></td>`
+               </select>${unassignBtnHtml(row)}</td>`
             : (String(row.proxyType || 'socks5').toLowerCase()==='pppoe')
             ? `<td style="white-space:nowrap;"><span class="pp-wrap"><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="width:270px;max-width:none;">
                  <option value="" ${(!String(row.proxy || '').startsWith('pppoe:')) ? 'selected' : ''}>— chọn PPPoE —</option>
                  ${pppoeOptionsHtml(row.proxy)}
-               </select><span class="pp-face">${pppoeFaceHtml(row.proxy)}</span></span> <button class="btn small" onclick="rotatePPPoE(this)" title="Xoay IP phien PPPoE may nay dang chon (mat mang ~5 phut)">🔄 Xoay IP</button><span class="pppoe-rot sub"></span> <button class="btn small" onclick="suggestPPPoE(this)" title="Tự động chọn phiên PPPoE chưa được gán">💡 Đề xuất</button></td>`
-            : `<td><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass"></td>`}
+               </select><span class="pp-face">${pppoeFaceHtml(row.proxy)}</span></span> <button class="btn small" onclick="rotatePPPoE(this)" title="Xoay IP phien PPPoE may nay dang chon (mat mang ~5 phut)">🔄 Xoay IP</button><span class="pppoe-rot sub"></span> <button class="btn small" onclick="suggestPPPoE(this)" title="Tự động chọn phiên PPPoE chưa được gán">💡 Đề xuất</button>${unassignBtnHtml(row)}</td>`
+            : `<td style="white-space:nowrap;"><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass" style="width:calc(100% - 34px);">${unassignBtnHtml(row)}</td>`}
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
         </tr>`).join('');
@@ -1770,7 +1770,53 @@
         body: JSON.stringify({ rows: currentRows })
       });
       if (!a || a.ok === false) throw new Error((a && a.error) || 'apply that bai');
+      await reloadIfPromoted(a);
       return a;
+    }
+
+    // [Ver 2.88] Backend vua cap tag proxy_N cho may tab CHUA CAU HINH => tai lai
+    // danh sach (giu tab dang xem) de may chuyen sang DA CAU HINH voi dung tag.
+    async function reloadIfPromoted(resp) {
+      const p = resp && Array.isArray(resp.promoted) ? resp.promoted : [];
+      if (!p.length) return 0;
+      const keep = viewMode;
+      const data = await fetchSessionData(currentSession, true);
+      currentRows = cloneRows(data.rows || []);
+      persistDraft(currentSession);
+      viewMode = keep;
+      render();
+      return p.length;
+    }
+
+    // [Ver 2.88] Nut ✕ cuoi o Proxy: huy gan RIENG may nay (proxy/VPN/PPPoE), khong can Clear Proxy.
+    function unassignBtnHtml(row) {
+      const p = String(row.proxy || '').trim();
+      if (!p || p === 'vpn:' || p === 'pppoe:') return '';
+      return ` <button type="button" class="btn small" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" onclick="unassignRow(this)" title="Hủy gán proxy máy này" aria-label="Hủy gán proxy ${esc(row.ip)}" style="padding:2px 7px;color:#dc2626;font-weight:700;">✕</button>`;
+    }
+    async function unassignRow(btn) {
+      const tag = btn.dataset.tag || '', ip = btn.dataset.ip || '';
+      const row = currentRows.find(r => tag ? r.tag === tag : (!r.tag && String(r.ip || '') === ip));
+      if (!row) { setStatus('Khong tim thay may ' + ip); return; }
+      const prevAcc = effVpnAccount(row);
+      const old = row.proxy;
+      row.proxy = '';
+      try { delete row.pppoe_account; } catch (e) {}
+      try { delete row.vpn_account; } catch (e) {}
+      persistDraft(currentSession);
+      btn.disabled = true;
+      setStatus('Dang huy gan ' + ip + '...');
+      try {
+        if (prevAcc) await applyVpnChange(row, prevAcc);
+        if (row.tag) await applyRowsToBackend([row]);
+        render();
+        setStatus('Da huy gan proxy ' + ip + (row.machine ? ' (may ' + row.machine + ')' : ''));
+      } catch (e) {
+        row.proxy = old;
+        persistDraft(currentSession);
+        render();
+        setStatus('Loi huy gan ' + ip + ': ' + e.message);
+      }
     }
 
     function getSelectedRowsSafe() {
@@ -2029,6 +2075,7 @@
         setStatus('Đang nạp và apply ' + sessionNameOf(session) + '...');
         const data = await fetchJSON(`/api/pm/apply/${session}`, { method:'POST', body: JSON.stringify({ rows: mergedRows }) });
         const bad = Array.isArray(data.results) ? data.results.find(x => x && (x.error || x.ok === false || (typeof x.code === 'number' && x.code !== 0))) : null;
+        try { await reloadIfPromoted(data); } catch (e) {}
         if (bad) {
           setStatus('Apply ' + sessionNameOf(session) + ' lỗi: ' + (bad.cmd || '') + ' ' + (bad.stderr || bad.error || ('code ' + bad.code)));
           return;

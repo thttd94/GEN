@@ -2568,6 +2568,65 @@ def parse_ip_identity_text(text):
     rows.sort(key=lambda x: (machine_num(x.get('machine', '')), proxy_tag_num(x['tag']), x['ip']))
     return rows
 
+_IDENTITY_LOCK = threading.Lock()
+
+def promote_unconfigured_rows(rows, session_id='1'):
+    """[Ver 2.88] Gan proxy/VPN/PPPoE cho may o tab CHUA CAU HINH (chua co tag proxy_N).
+    Truoc day apply_rows_to_data chi xet dong co tag => gan o tab nay bi bo qua im lang.
+    Nay: cap tag proxy_N trong (N khong trung tag lan so may), them dong N|proxy_N|ip vao
+    danh sach IP dung chung, rebuild rule cho moi session. Sua rows tai cho (tag, configured).
+    KHONG dong bo DHCP static (tranh xoa static cua may khac).
+    Tra ve [{ip, tag, machine}]."""
+    cand = []
+    for r in rows or []:
+        if not isinstance(r, dict) or normalize_tag(r.get('tag', '')):
+            continue
+        ip = str(r.get('ip', '')).strip()
+        proxy = str(r.get('proxy', '')).strip()
+        if ip and proxy and proxy not in ('vpn:', 'pppoe:'):
+            cand.append(r)
+    if not cand:
+        return []
+    with _IDENTITY_LOCK:
+        text = get_saved_ip_identity_text(session_id)
+        if not text:
+            # Chua co danh sach IP chung: ghi rieng vai dong se lam mat rule cua may khac.
+            raise ValueError('Chua co danh sach IP/MAC chung - hay cau hinh IP truoc')
+        items = parse_ip_identity_text(text)
+        by_ip = {it['ip']: it for it in items}
+        used_tags = {it['tag'] for it in items}
+        used_m = {str(it.get('machine', '')) for it in items}
+        lines = [format_ip_identity_row(it, include_machine=True) for it in items]
+        promoted, added, n = [], 0, 1
+        for r in cand:
+            ip = str(r.get('ip', '')).strip()
+            it = by_ip.get(ip)
+            if not it:
+                while n <= MAX_PROXY_TAG and ('proxy_%d' % n in used_tags or str(n) in used_m):
+                    n += 1
+                if n > MAX_PROXY_TAG:
+                    raise ValueError('Het tag proxy trong (toi da %d)' % MAX_PROXY_TAG)
+                it = {'machine': str(n), 'tag': 'proxy_%d' % n, 'ip': ip}
+                used_tags.add(it['tag']); used_m.add(it['machine']); by_ip[ip] = it
+                lines.append('%s|%s|%s' % (it['machine'], it['tag'], ip))
+                added += 1
+            r['tag'] = it['tag']
+            r['machine'] = r.get('machine') or it.get('machine', '')
+            r['configured'] = True
+            promoted.append({'ip': ip, 'tag': it['tag'], 'machine': it.get('machine', '')})
+        if added:
+            normalized = set_saved_ip_identity_text(session_id, '\n'.join(lines))
+            for sid, sf in SESSION_FILES.items():
+                if not sf.exists():
+                    continue
+                d = load_json(sf)
+                save_gencore_json(sf, apply_ip_identity_config(d, normalized, session=sid))
+            try:
+                _ss_log('PROMOTE-UNCONFIGURED: them %d may: %s' % (added, ', '.join('%s=%s' % (p['ip'], p['tag']) for p in promoted[:10])))
+            except Exception:
+                pass
+    return promoted
+
 def apply_ip_identity_config(data, text, session='1'):
     rows = parse_ip_identity_text(text)
     tag_to_ip_map = {row['tag']: row['ip'] for row in rows}
@@ -5484,6 +5543,10 @@ class Handler(BaseHTTPRequestHandler):
                 session_id = path.rsplit('/', 1)[-1]
                 if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                     rows = payload.get('rows', [])
+                    try:
+                        promoted = promote_unconfigured_rows(rows, session_id)
+                    except ValueError as pe:
+                        return self._send_json({'ok': False, 'error': str(pe)})
                     rows_by_tag = {str(row['tag']).strip(): row for row in rows if row.get('tag')}
                     data = load_json(SESSION_FILES[session_id])
                     save_gencore_json(SESSION_FILES[session_id], apply_rows_to_data(data, rows_by_tag, session=session_id))
@@ -5496,17 +5559,23 @@ class Handler(BaseHTTPRequestHandler):
                         spawn_proxy_sheet_push()
                     except Exception:
                         pass
-                    return self._send_json({'ok': True, 'session': session_id, 'name': name})
+                    return self._send_json({'ok': True, 'session': session_id, 'name': name, 'promoted': promoted})
             if path.startswith('/api/pm/apply/'):
                 session_id = path.rsplit('/', 1)[-1]
                 if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                     rows_override = payload.get('rows') if isinstance(payload, dict) else None
+                    promoted = []
+                    if isinstance(rows_override, list):
+                        try:
+                            promoted = promote_unconfigured_rows(rows_override, session_id)
+                        except ValueError as pe:
+                            return self._send_json({'ok': False, 'error': str(pe)})
                     results = run_apply(session_id, rows_override=rows_override)
                     try:
                         ACTIVE_SESSION_FILE.write_text(json.dumps({'active': str(session_id)}), encoding='utf-8')
                     except OSError:
                         pass
-                    return self._send_json({'ok': True, 'applied': session_id, 'results': results})
+                    return self._send_json({'ok': True, 'applied': session_id, 'results': results, 'promoted': promoted})
             if path == '/api/pm/clone/1-to-2':
                 save_gencore_json(SESSION_FILES['2'], load_json(SESSION_FILES['1']))
                 state = load_session_state()
