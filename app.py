@@ -2183,16 +2183,26 @@ def extract_rows(data, session='1'):
         else:
             proxy_val, ptype = (format_proxy(outbound), format_proxy_type(outbound))
         rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': True})
-    for ip, dev in sorted(devices.items(), key=lambda kv: kv[0]):
-        ip = str(ip).strip()
+    auto_tags = effective_auto_ip_tags(configured_rows)
+    for ip in sorted(set(str(k).strip() for k in devices) | set(auto_tags)):
         if not ip or ip in configured_ips:
             continue
-        tag = ''
+        dev = devices.get(ip, {}) or {}
+        tag = auto_tags.get(ip, '')
         machine = ''
-        meta = {}
-        outbound = {}
+        meta = session_meta.get(tag, {}) if isinstance(session_meta, dict) and tag else {}
+        outbound = outbounds.get(tag, {}) if tag else {}
+        ob_type = str((outbound or {}).get('type', '')).strip().lower() if isinstance(outbound, dict) else ''
         vpn_acc = vpn_map.get(ip, '')
-        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': 'vpn:' + vpn_acc if vpn_acc else format_proxy(outbound), 'proxyType': 'vpn' if vpn_acc else 'socks5', 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': False})
+        pppoe_acc = str((meta or {}).get('pppoe_account', '') or '').strip() if tag else ''
+        if pppoe_acc:
+            proxy_val, ptype = ('pppoe:' + pppoe_acc, 'pppoe')
+        elif vpn_acc or (tag and ob_type == 'direct'):
+            vpn_acc = str((meta or {}).get('vpn_account', '') or '').strip() or vpn_acc
+            proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
+        else:
+            proxy_val, ptype = (format_proxy(outbound), format_proxy_type(outbound) if outbound else 'socks5')
+        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': False})
     return rows
 
 def migrate_proxy_dns_servers(data):
@@ -2429,6 +2439,8 @@ def _record_vpn_declaration(ipaddr, account):
                 if str(it.get('ip', '')).strip() == str(ipaddr).strip():
                     tag = normalize_tag(it.get('tag', ''))
                     break
+        if not tag:
+            tag = effective_auto_ip_tags().get(str(ipaddr).strip(), '')
         state = load_session_state()
         sess = state.setdefault(str(sid), {})
         if tag:
@@ -2471,6 +2483,8 @@ def _record_vpn_declaration_bulk(pairs):
                 _ip = str(it.get('ip', '')).strip()
                 if _ip:
                     ip2tag[_ip] = normalize_tag(it.get('tag', ''))
+        for _ip, _t in effective_auto_ip_tags().items():
+            ip2tag.setdefault(_ip, _t)
         state = load_session_state()
         sess = state.setdefault(str(sid), {})
         data = load_json(SESSION_FILES[sid])
@@ -2570,66 +2584,167 @@ def parse_ip_identity_text(text):
 
 _IDENTITY_LOCK = threading.Lock()
 
-def promote_unconfigured_rows(rows, session_id='1'):
-    """[Ver 2.88] Gan proxy/VPN/PPPoE cho may o tab CHUA CAU HINH (chua co tag proxy_N).
-    Truoc day apply_rows_to_data chi xet dong co tag => gan o tab nay bi bo qua im lang.
-    Nay: cap tag proxy_N trong (N khong trung tag lan so may), them dong N|proxy_N|ip vao
-    danh sach IP dung chung, rebuild rule cho moi session. Sua rows tai cho (tag, configured).
-    KHONG dong bo DHCP static (tranh xoa static cua may khac).
-    Tra ve [{ip, tag, machine}]."""
-    cand = []
-    for r in rows or []:
-        if not isinstance(r, dict) or normalize_tag(r.get('tag', '')):
+AUTO_TAG_LOG = 'AUTO-TAG'
+
+def get_auto_ip_tags():
+    """[Ver 2.89] {ip: proxy_N} cua may tab CHUA CAU HINH da duoc gan proxy/VPN/PPPoE.
+    Luu RIENG (meta auto_ip_tags), KHONG nam trong danh sach IP chinh => may van o tab CHUA CAU HINH."""
+    try:
+        meta = load_session_state().get('__meta__', {})
+        v = meta.get('auto_ip_tags', {}) if isinstance(meta, dict) else {}
+        if not isinstance(v, dict):
+            return {}
+        return {str(ip).strip(): normalize_tag(t) for ip, t in v.items() if str(ip).strip() and normalize_tag(t)}
+    except Exception:
+        return {}
+
+def set_auto_ip_tags(mapping):
+    state = load_session_state()
+    meta = state.setdefault('__meta__', {})
+    if not isinstance(meta, dict):
+        meta = {}
+        state['__meta__'] = meta
+    meta['auto_ip_tags'] = {ip: mapping[ip] for ip in sorted(mapping)}
+    save_session_state(state)
+
+def effective_auto_ip_tags(identity_items=None):
+    """Bo cac entry trung IP hoac trung tag voi danh sach IP chinh (danh sach chinh luon thang)."""
+    if identity_items is None:
+        try:
+            text = get_saved_ip_identity_text()
+            identity_items = parse_ip_identity_text(text) if text else []
+        except Exception:
+            identity_items = []
+    ips = {str(it.get('ip', '')).strip() for it in identity_items}
+    tags = {normalize_tag(it.get('tag', '')) for it in identity_items}
+    return {ip: t for ip, t in get_auto_ip_tags().items() if ip not in ips and t not in tags}
+
+def _clear_tag_accounts(state, tags):
+    for sid, sess in state.items():
+        if sid == '__meta__' or not isinstance(sess, dict):
             continue
-        ip = str(r.get('ip', '')).strip()
-        proxy = str(r.get('proxy', '')).strip()
-        if ip and proxy and proxy not in ('vpn:', 'pppoe:'):
-            cand.append(r)
-    if not cand:
-        return []
+        for k in list(sess.keys()):
+            if normalize_tag(k) in tags and isinstance(sess[k], dict):
+                sess[k].pop('vpn_account', None)
+                sess[k].pop('pppoe_account', None)
+
+def _rebuild_all_sessions_rules():
+    text = get_saved_ip_identity_text()
+    for sid, sf in SESSION_FILES.items():
+        if not sf.exists():
+            continue
+        d = load_json(sf)
+        save_gencore_json(sf, apply_ip_identity_config(d, text, session=sid))
+
+_IDENTITY_LOCK = threading.Lock()
+
+def sync_auto_ip_tags(rows, session_id='1'):
+    """[Ver 2.89] May tab CHUA CAU HINH (IP khong co trong danh sach IP chinh):
+    - co proxy/VPN/PPPoE: cap tag proxy_N trong (dem tu MAX_PROXY_TAG xuong de it dung so may that),
+      luu vao auto_ip_tags, rebuild rule. May VAN o tab CHUA CAU HINH.
+    - proxy rong (bam X): tra tag, rebuild rule.
+    Sua rows tai cho (tag). Tra ve list thay doi [{ip, tag, action}]."""
+    changes = []
     with _IDENTITY_LOCK:
         text = get_saved_ip_identity_text(session_id)
-        if not text:
-            # Chua co danh sach IP chung: ghi rieng vai dong se lam mat rule cua may khac.
-            raise ValueError('Chua co danh sach IP/MAC chung - hay cau hinh IP truoc')
-        items = parse_ip_identity_text(text)
-        by_ip = {it['ip']: it for it in items}
-        used_tags = {it['tag'] for it in items}
-        used_m = {str(it.get('machine', '')) for it in items}
-        lines = [format_ip_identity_row(it, include_machine=True) for it in items]
-        promoted, added, n = [], 0, 1
-        for r in cand:
+        items = parse_ip_identity_text(text) if text else []
+        id_ips = {it['ip'] for it in items}
+        id_tags = {it['tag'] for it in items}
+        cur = effective_auto_ip_tags(items)
+        for r in rows or []:
+            if not isinstance(r, dict):
+                continue
             ip = str(r.get('ip', '')).strip()
-            it = by_ip.get(ip)
-            if not it:
-                while n <= MAX_PROXY_TAG and ('proxy_%d' % n in used_tags or str(n) in used_m):
-                    n += 1
-                if n > MAX_PROXY_TAG:
-                    raise ValueError('Het tag proxy trong (toi da %d)' % MAX_PROXY_TAG)
-                it = {'machine': str(n), 'tag': 'proxy_%d' % n, 'ip': ip}
-                used_tags.add(it['tag']); used_m.add(it['machine']); by_ip[ip] = it
-                lines.append('%s|%s|%s' % (it['machine'], it['tag'], ip))
-                added += 1
-            r['tag'] = it['tag']
-            r['machine'] = r.get('machine') or it.get('machine', '')
-            r['configured'] = True
-            promoted.append({'ip': ip, 'tag': it['tag'], 'machine': it.get('machine', '')})
-        if added:
-            normalized = set_saved_ip_identity_text(session_id, '\n'.join(lines))
-            for sid, sf in SESSION_FILES.items():
-                if not sf.exists():
-                    continue
-                d = load_json(sf)
-                save_gencore_json(sf, apply_ip_identity_config(d, normalized, session=sid))
+            if not ip or ip in id_ips:
+                continue
+            proxy = str(r.get('proxy', '')).strip()
+            has = bool(proxy) and proxy not in ('vpn:', 'pppoe:')
+            if has:
+                t = cur.get(ip)
+                if not t:
+                    if not text:
+                        raise ValueError('Chua co danh sach IP/MAC chung - hay cau hinh IP truoc')
+                    used = id_tags | set(cur.values())
+                    n = MAX_PROXY_TAG
+                    while n >= 1 and ('proxy_%d' % n) in used:
+                        n -= 1
+                    if n < 1:
+                        raise ValueError('Het tag proxy trong (toi da %d)' % MAX_PROXY_TAG)
+                    t = 'proxy_%d' % n
+                    cur[ip] = t
+                    changes.append({'ip': ip, 'tag': t, 'action': 'assign'})
+                r['tag'] = t
+                r['configured'] = False
+            elif ip in cur:
+                t = cur.pop(ip)
+                changes.append({'ip': ip, 'tag': t, 'action': 'release'})
+                r['tag'] = ''
+        if changes:
+            set_auto_ip_tags(cur)
+            state = load_session_state()
+            _clear_tag_accounts(state, {c['tag'] for c in changes})
+            save_session_state(state)
+            _rebuild_all_sessions_rules()
             try:
-                _ss_log('PROMOTE-UNCONFIGURED: them %d may: %s' % (added, ', '.join('%s=%s' % (p['ip'], p['tag']) for p in promoted[:10])))
+                _ss_log('%s: %s' % (AUTO_TAG_LOG, ', '.join('%s %s=%s' % (c['action'], c['ip'], c['tag']) for c in changes[:20])))
             except Exception:
                 pass
-    return promoted
+    return changes
+
+def migrate_promoted_289():
+    """[Ver 2.89] Ban 2.88 da ghi nham may CHUA CAU HINH vao danh sach IP chinh (log PROMOTE-UNCONFIGURED).
+    Chuyen cac dong do sang auto_ip_tags (GIU NGUYEN tag => rule/proxy khong doi, khong can apply lai).
+    Chay 1 lan (meta promote_migrated_289)."""
+    try:
+        state = load_session_state()
+        meta = state.get('__meta__', {})
+        if isinstance(meta, dict) and meta.get('promote_migrated_289'):
+            return
+        pairs = {}
+        try:
+            for ln in SS_HEAL_LOG.read_text(encoding='utf-8', errors='ignore').splitlines():
+                if 'PROMOTE-UNCONFIGURED' not in ln or 'may:' not in ln:
+                    continue
+                for part in ln.split('may:', 1)[1].split(','):
+                    if '=' in part:
+                        ip, t = [x.strip() for x in part.split('=', 1)]
+                        if ip and normalize_tag(t):
+                            pairs[ip] = normalize_tag(t)
+        except Exception:
+            pairs = {}
+        moved = []
+        if pairs:
+            with _IDENTITY_LOCK:
+                text = get_saved_ip_identity_text()
+                items = parse_ip_identity_text(text) if text else []
+                keep = []
+                auto = get_auto_ip_tags()
+                for it in items:
+                    t = pairs.get(it['ip'])
+                    if t and t == it['tag'] and str(it.get('machine', '')) == str(proxy_tag_num(t)):
+                        auto[it['ip']] = t
+                        moved.append('%s=%s' % (it['ip'], t))
+                    else:
+                        keep.append(it)
+                if moved:
+                    set_saved_ip_identity_text('1', '\n'.join(format_ip_identity_row(it, include_machine=True) for it in keep))
+                    set_auto_ip_tags(auto)
+                    _rebuild_all_sessions_rules()
+        state = load_session_state()
+        state.setdefault('__meta__', {})['promote_migrated_289'] = int(time.time())
+        save_session_state(state)
+        _ss_log('MIGRATE-289: chuyen %d may ve CHUA CAU HINH: %s' % (len(moved), ', '.join(moved)))
+    except Exception as e:
+        try:
+            _ss_log('MIGRATE-289 loi: %s' % e)
+        except Exception:
+            pass
 
 def apply_ip_identity_config(data, text, session='1'):
     rows = parse_ip_identity_text(text)
     tag_to_ip_map = {row['tag']: row['ip'] for row in rows}
+    for _ip, _t in effective_auto_ip_tags(rows).items():
+        tag_to_ip_map.setdefault(_t, _ip)
     rebuild_gencore_rules(data, tag_to_ip_map)
     return data
 
@@ -2826,6 +2941,8 @@ def _session_vpn_desires(session_id, runtime_data):
                     tag_ip[t] = ip
         except Exception:
             tag_ip = {}
+    for _ip, _t in effective_auto_ip_tags().items():
+        tag_ip.setdefault(_t, _ip)
     desires = {}
     adopt = []
     for tag in sorted(direct_tags):
@@ -2894,6 +3011,8 @@ def sync_vpn_state_on_apply(session_id, runtime_data, results):
                         tag_ip[t] = ip
             except Exception:
                 tag_ip = {}
+            for _ip, _t in effective_auto_ip_tags().items():
+                tag_ip.setdefault(_t, _ip)
             for tag, acc in desires_by_tag.items():
                 ip = tag_ip.get(tag, '')
                 if ip:
@@ -5544,7 +5663,7 @@ class Handler(BaseHTTPRequestHandler):
                 if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
                     rows = payload.get('rows', [])
                     try:
-                        promoted = promote_unconfigured_rows(rows, session_id)
+                        promoted = sync_auto_ip_tags(rows, session_id)
                     except ValueError as pe:
                         return self._send_json({'ok': False, 'error': str(pe)})
                     rows_by_tag = {str(row['tag']).strip(): row for row in rows if row.get('tag')}
@@ -5567,7 +5686,7 @@ class Handler(BaseHTTPRequestHandler):
                     promoted = []
                     if isinstance(rows_override, list):
                         try:
-                            promoted = promote_unconfigured_rows(rows_override, session_id)
+                            promoted = sync_auto_ip_tags(rows_override, session_id)
                         except ValueError as pe:
                             return self._send_json({'ok': False, 'error': str(pe)})
                     results = run_apply(session_id, rows_override=rows_override)
@@ -5975,6 +6094,7 @@ def startup_migrate_proxy_dns():
 if __name__ == '__main__':
     _ss_cleanup_stale_tmp()
     ensure_sessions_exist()
+    migrate_promoted_289()
     startup_migrate_proxy_dns()
     ensure_vpn_mgr()
     ensure_vpn_guard()

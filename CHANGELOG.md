@@ -1,3 +1,9 @@
+## Ver 2.89 (2026-10-25) - Sua 2.88: may chua cau hinh khong nhay tab
+
+- 2.88 ghi may tab CHUA CAU HINH vao danh sach IP chinh khi gan => may nhay sang DA CAU HINH (sai). Nay tag proxy_N cua may chua cau hinh luu RIENG (`auto_ip_tags`), lay so tu 1000 tro xuong; danh sach IP chinh khong doi, may van o tab CHUA CAU HINH nhung co mang theo proxy/VPN/PPPoE da gan.
+- Nut X tren may chua cau hinh: bo gan + tra tag. Khi cau hinh IP chinh thuc cho may, danh sach chinh thang, tag tu dong bi bo.
+- Khoi dong lan dau: tu chuyen cac may 2.88 da ghi nham (doc log `PROMOTE-UNCONFIGURED`) ve CHUA CAU HINH, giu nguyen tag nen proxy khong doi. Log `MIGRATE-289`, `AUTO-TAG`.
+
 ## Ver 2.88 (2026-10-25) - Huy gan tung may + gan may chua cau hinh
 
 - GUI 9001 cot Proxy: nut X cuoi o (socks5/http, VPN, PPPoE) huy gan RIENG may do, luu + Apply ngay; khong phai dung Clear Proxy (xoa het).

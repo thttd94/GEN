@@ -1,1 +1,1 @@
-Ver 2.88 (o Proxy co nut X huy gan rieng tung may proxy/VPN/PPPoE; may tab CHUA CAU HINH gan proxy/VPN/PPPoE duoc nhu tab DA CAU HINH)
+Ver 2.89 (may tab CHUA CAU HINH gan proxy/VPN/PPPoE van o tab CHUA CAU HINH; tu chuyen may bi 2.88 ghi nham ve lai)
