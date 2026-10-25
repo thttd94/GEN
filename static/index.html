@@ -375,13 +375,31 @@
             <textarea id="splitDomains" rows="14" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px;" oninput="this.dataset.dirty='1'"></textarea>
             <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
               <label for="splitTarget" style="font-weight:700;">Đi đường</label>
-              <select id="splitTarget" onchange="document.getElementById('splitPppoe').disabled = this.value !== 'pppoe'">
+              <select id="splitTarget" onchange="splitTargetChanged()">
                 <option value="">— chọn —</option>
+                <option value="wan">Mạng chính (WAN)</option>
                 <option value="pppoe">Phiên PPPoE</option>
+                <option value="vpn">VPN</option>
+                <option value="proxy">Proxy nhập tay</option>
                 <option value="block">Chặn</option>
               </select>
-              <label for="splitPppoe" class="sub">số</label>
-              <input id="splitPppoe" type="number" min="1" max="999" style="width:70px;" disabled>
+              <span id="splitPppoeBox" hidden>
+                <label for="splitPppoe" class="sub">số</label>
+                <input id="splitPppoe" type="number" min="1" max="999" style="width:70px;">
+              </span>
+              <span id="splitVpnBox" hidden>
+                <label for="splitVpn" class="sub">tunnel</label>
+                <select id="splitVpn"></select>
+              </span>
+            </div>
+            <div id="splitProxyBox" hidden style="margin-top:6px;">
+              <div style="display:flex;gap:6px;align-items:center;">
+                <label for="splitProxyType" class="sub">Loại</label>
+                <select id="splitProxyType"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select>
+                <label for="splitProxy" class="sub">Proxy</label>
+                <input id="splitProxy" type="text" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;font-family:monospace;font-size:12px;" placeholder="host:port:user:pass hoặc socks5://user:pass@host:port" oninput="this.dataset.dirty='1'">
+              </div>
+              <div id="splitProxyCur" class="sub" style="margin-top:2px;"></div>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
               <button type="button" class="btn small" onclick="resetSplitDomains()">Mặc định</button>
@@ -2203,9 +2221,24 @@
         const t = String(r.target || '');
         const sel = document.getElementById('splitTarget');
         const num = document.getElementById('splitPppoe');
-        if (sel) sel.value = t.startsWith('pppoe:') ? 'pppoe' : (t === 'block' ? 'block' : '');
-        if (num) { num.disabled = !t.startsWith('pppoe:'); if (t.startsWith('pppoe:')) num.value = t.slice(6); }
-        const tgt = t === 'block' ? 'chặn' : (t.startsWith('pppoe:') ? 'PPPoE #' + t.slice(6) : 'chưa chọn đường');
+        const vsel = document.getElementById('splitVpn');
+        const vpnName = t.startsWith('vpn:') ? t.slice(4) : '';
+        if (vsel) {
+          const vs = (r.vpns || []).slice();
+          if (vpnName && !vs.some(v => v.name === vpnName)) vs.push({ name: vpnName, dev: '?', running: false });
+          vsel.innerHTML = vs.length ? vs.map(v => `<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.dev)}${v.running ? '' : ', đang tắt'})</option>`).join('')
+                                     : '<option value="">chưa có VPN</option>';
+          if (vpnName) vsel.value = vpnName;
+        }
+        if (sel && !sel.dataset.dirty) sel.value = t.startsWith('pppoe:') ? 'pppoe' : (vpnName ? 'vpn' : (['wan', 'proxy', 'block'].includes(t) ? t : ''));
+        if (num && t.startsWith('pppoe:')) num.value = t.slice(6);
+        const pt = document.getElementById('splitProxyType');
+        if (pt && r.proxy_type) pt.value = r.proxy_type;
+        const pc = document.getElementById('splitProxyCur');
+        if (pc) pc.textContent = r.proxy ? ('Đang lưu: ' + r.proxy + ' — để trống ô nếu không đổi') : '';
+        splitTargetChanged();
+        const tgt = t === 'block' ? 'chặn' : t === 'wan' ? 'mạng chính' : t === 'proxy' ? ('proxy ' + (r.proxy || ''))
+                  : vpnName ? ('VPN ' + vpnName) : (t.startsWith('pppoe:') ? 'PPPoE #' + t.slice(6) : 'chưa chọn đường');
         el.textContent = splitEnabled ? (tgt + ', ' + (r.applied || 0) + ' máy') : 'tắt';
         el.style.color = splitEnabled ? (r.applied ? '#16a34a' : '#d97706') : '';
       } catch (e) {
@@ -2213,11 +2246,26 @@
         el.style.color = '#dc2626';
       }
     }
+    function splitTargetChanged() {
+      const v = (document.getElementById('splitTarget') || {}).value || '';
+      document.getElementById('splitPppoeBox').hidden = v !== 'pppoe';
+      document.getElementById('splitVpnBox').hidden = v !== 'vpn';
+      document.getElementById('splitProxyBox').hidden = v !== 'proxy';
+    }
+    function splitProxyBody(body) {
+      const inp = document.getElementById('splitProxy');
+      if (body.target === 'proxy' && inp && inp.value.trim()) {
+        body.proxy = inp.value.trim();
+        body.proxy_type = document.getElementById('splitProxyType').value;
+      }
+      return body;
+    }
     function splitTargetValue() {
       const sel = document.getElementById('splitTarget');
       const num = document.getElementById('splitPppoe');
       const v = sel ? sel.value : '';
-      if (v === 'block') return 'block';
+      if (v === 'block' || v === 'wan' || v === 'proxy') return v;
+      if (v === 'vpn') { const n = (document.getElementById('splitVpn') || {}).value || ''; return n ? 'vpn:' + n : ''; }
       if (v === 'pppoe') {
         const n = parseInt((num && num.value) || '', 10);
         return Number.isInteger(n) && n >= 1 ? 'pppoe:' + n : '';
@@ -2250,8 +2298,9 @@
       const body = { enabled: on };
       if (on) {
         const t = splitTargetValue();
-        if (!t) { cb.checked = false; toggleSplitPanel(true); setStatus('Chọn đường đi (phiên PPPoE hoặc Chặn) rồi bật lại'); return; }
+        if (!t) { cb.checked = false; toggleSplitPanel(true); setStatus('Chọn đường đi (WAN, PPPoE, VPN, Proxy hoặc Chặn) rồi bật lại'); return; }
         body.target = t;
+        splitProxyBody(body);
       }
       if (!confirm((on ? 'BẬT' : 'TẮT') + ' phân luồng?\nRouter sẽ khởi động lại gencore, cả router chập mạng vài giây.')) { cb.checked = !on; return; }
       cb.disabled = true;
@@ -2267,11 +2316,13 @@
     }
     async function saveSplit() {
       const ta = document.getElementById('splitDomains');
-      const body = { domains: ta ? ta.value : '', target: splitTargetValue() };
+      const body = splitProxyBody({ domains: ta ? ta.value : '', target: splitTargetValue() });
       if (splitEnabled && !confirm('Lưu phân luồng đang bật?\nRouter sẽ khởi động lại gencore, cả router chập mạng vài giây.')) return;
       try {
         await postSplit(body);
         if (ta) delete ta.dataset.dirty;
+        const pi = document.getElementById('splitProxy');
+        if (pi) { pi.value = ''; delete pi.dataset.dirty; }
         setStatus('Đã lưu danh sách phân luồng');
         toggleSplitPanel(false);
       } catch (e) {

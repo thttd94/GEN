@@ -1,1 +1,1 @@
-Ver 2.92 (Theo doi luong: xem ten mien nao di Proxy / Tach, bao nhieu MB, theo tung may)
+Ver 2.93 (Phan luong: duong tach chon WAN / PPPoE / VPN / Proxy socks5-http nhap tay / Chan)

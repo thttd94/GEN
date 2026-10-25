@@ -1,3 +1,10 @@
+## Ver 2.93 (2026-10-25) - Phan luong: chon moi duong ra internet
+
+- Duong tach them: `Mang chinh (WAN)` (direct, bang main), `VPN <ten>` (bind_interface vao tunN/wgN cua vpn_mgr), `Proxy nhap tay` (socks5/http; nhan `host:port:user:pass`, `host:port`, `socks5://user:pass@host:port`, `http://...`; pass co '@' lay toi '@' cuoi). PPPoE va Chan giu nguyen.
+- GUI hien danh sach VPN cua router (dang tat ghi ro). Proxy da luu hien dang che pass; de trong o = khong doi.
+- VPN chet => tu bo tach, may ve proxy chinh (khong mat video); song lai => tach lai. Thread `split-watch` 30s, doi toi da 1 lan/120s, log `SPLIT-WATCH`.
+- Da thu genrunner check tren Gen10 (ban copy /tmp, da xoa): wan/vpn(tun22)/socks/http deu rc=0. tun22 co route + MASQUERADE.
+
 ## Ver 2.92 (2026-10-25) - Theo doi luong
 
 - GUI 9001: nut `Theo doi luong` canh `Danh sach`. Bat: gencore mo Clash API CHI tren 127.0.0.1:19090 co secret ngau nhien (khong ra LAN/WAN). Bang ten mien / may / duong (Proxy do, Tach xanh) / MB tai xuong-len / so ket noi, loc theo IP, tong Proxy vs Tach (%), nut Xoa so dem. Tu cap nhat 3s khi mo bang.

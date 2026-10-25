@@ -2403,7 +2403,8 @@ def get_split_config():
     doms = c.get('domains')
     if not isinstance(doms, list):
         doms = list(SPLIT_DEFAULT_DOMAINS)
-    return {'enabled': bool(c.get('enabled')), 'target': str(c.get('target') or ''), 'domains': [str(d) for d in doms]}
+    px = c.get('proxy') if isinstance(c.get('proxy'), dict) else {}
+    return {'enabled': bool(c.get('enabled')), 'target': str(c.get('target') or ''), 'domains': [str(d) for d in doms], 'proxy': dict(px)}
 
 def set_split_config(cfg):
     state = load_session_state()
@@ -2411,7 +2412,8 @@ def set_split_config(cfg):
     if not isinstance(meta, dict):
         meta = {}
         state['__meta__'] = meta
-    meta['split'] = {'enabled': bool(cfg.get('enabled')), 'target': str(cfg.get('target') or ''), 'domains': list(cfg.get('domains') or [])}
+    meta['split'] = {'enabled': bool(cfg.get('enabled')), 'target': str(cfg.get('target') or ''), 'domains': list(cfg.get('domains') or []),
+                     'proxy': dict(cfg.get('proxy') or {})}
     save_session_state(state)
 
 def _split_match_fields(domains):
@@ -2434,11 +2436,108 @@ def _split_match_fields(domains):
         f['domain_suffix'] = suffix
     return f
 
-def build_split_outbound(target, old=None):
-    """Outbound cua duong tach. 'block' = chan; 'pppoe:N' = SOCKS glider cua phien N."""
-    t = str(target or '').strip().lower()
-    if t == 'block':
+SPLIT_TARGET_RE = re.compile(r'^(block|wan|proxy|pppoe:\d{1,3}|vpn:[A-Za-z0-9_.-]{1,40})$')
+
+def parse_split_proxy(text, default_type='socks5'):
+    """[Ver 2.93] Proxy duong tach. Nhan:
+       socks5://user:pass@host:port | http://user:pass@host:port | host:port:user:pass | host:port
+    Pass co '@' => lay toi '@' CUOI (giong 2.85)."""
+    raw = str(text or '').strip()
+    if not raw:
+        raise ValueError('Chua nhap proxy')
+    typ = str(default_type or 'socks5').strip().lower()
+    m = re.match(r'^([a-z0-9]+)://(.*)$', raw, re.I)
+    if m:
+        sch = m.group(1).lower()
+        rest = m.group(2).rstrip('/')
+        if sch in ('socks5', 'socks5h', 'socks'):
+            typ = 'socks5'
+        elif sch == 'http':
+            typ = 'http'
+        else:
+            raise ValueError('Chi ho tro socks5:// hoac http://')
+        user = pw = ''
+        if '@' in rest:
+            cred, hp = rest.rsplit('@', 1)
+            user, _, pw = cred.partition(':')
+            user, pw = unquote(user), unquote(pw)
+        else:
+            hp = rest
+        host, _, port = hp.rpartition(':')
+    else:
+        if typ not in ('socks5', 'http'):
+            raise ValueError('Loai proxy phai la socks5 hoac http')
+        parts = raw.split(':')
+        if len(parts) == 2:
+            host, port, user, pw = parts[0], parts[1], '', ''
+        elif len(parts) >= 4:
+            host, port, user, pw = parts[0], parts[1], parts[2], ':'.join(parts[3:])
+        else:
+            raise ValueError('Proxy sai dang (host:port hoac host:port:user:pass)')
+    host = host.strip().strip('[]')
+    if not host or not re.match(r'^[A-Za-z0-9_.:-]+$', host):
+        raise ValueError('Host proxy khong hop le')
+    try:
+        port = int(str(port).strip())
+    except Exception:
+        raise ValueError('Port proxy khong hop le')
+    if not (1 <= port <= 65535):
+        raise ValueError('Port proxy khong hop le')
+    if bool(user) != bool(pw):
+        raise ValueError('Proxy can ca user lan pass (hoac bo trong ca hai)')
+    return {'type': typ, 'server': host, 'port': port, 'username': user, 'password': pw}
+
+def split_proxy_display(px):
+    if not isinstance(px, dict) or not px.get('server'):
+        return ''
+    cred = (str(px.get('username')) + ':***@') if px.get('username') else ''
+    return '%s://%s%s:%s' % (px.get('type') or 'socks5', cred, px.get('server'), px.get('port'))
+
+def _net_dev_up(dev):
+    try:
+        return bool(dev) and Path('/sys/class/net/' + dev).exists()
+    except Exception:
+        return False
+
+def _split_vpn_dev(name):
+    for t in vpn_status_json() or []:
+        if isinstance(t, dict) and str(t.get('name')) == name:
+            return str(t.get('dev') or ''), bool(t.get('running'))
+    return '', False
+
+def build_split_outbound(target, old=None, cfg=None):
+    """Outbound cua duong tach.
+    'block' chan | 'wan' ra mang chinh (bang main) | 'pppoe:N' SOCKS glider phien N |
+    'vpn:<ten>' bind vao dev tunnel (tunN/wgN) cua vpn_mgr | 'proxy' socks5/http nhap tay (cfg['proxy'])."""
+    t = str(target or '').strip()
+    tl = t.lower()
+    if tl == 'block':
         return {'tag': SPLIT_TAG, 'type': 'block'}
+    if tl == 'wan':
+        return {'tag': SPLIT_TAG, 'type': 'direct'}
+    if tl == 'proxy':
+        px = (cfg or {}).get('proxy') or {}
+        if not px.get('server'):
+            raise ValueError('Chua nhap proxy cho duong tach')
+        ob = {'tag': SPLIT_TAG, 'type': 'socks' if px.get('type') == 'socks5' else 'http',
+              'server': str(px['server']), 'server_port': int(px['port'])}
+        if ob['type'] == 'socks':
+            ob['version'] = '5'
+        if px.get('username'):
+            ob['username'] = str(px['username'])
+            ob['password'] = str(px.get('password') or '')
+        return ob
+    if tl.startswith('vpn:'):
+        name = t.split(':', 1)[1].strip()
+        if not re.match(r'^[A-Za-z0-9_.-]{1,40}$', name):
+            raise ValueError('Ten VPN khong hop le')
+        dev, running = _split_vpn_dev(name)
+        if not dev:
+            raise ValueError('Khong thay VPN %s' % name)
+        if not (running and _net_dev_up(dev)):
+            raise ValueError('VPN %s (%s) chua chay' % (name, dev))
+        return {'tag': SPLIT_TAG, 'type': 'direct', 'bind_interface': dev}
+    t = tl
     if t.startswith('pppoe:'):
         sid = t.split(':', 1)[1].strip()
         if not sid.isdigit() or not (1 <= int(sid) <= 999):
@@ -2453,7 +2552,7 @@ def build_split_outbound(target, old=None):
         if obs[0].get('type') != 'socks':
             raise ValueError('Khong lay duoc proxy glider cua phien PPPoE %s (phien chua len?)' % sid)
         return obs[0]
-    raise ValueError('Chua chon duong tach (PPPoE hoac Chan)')
+    raise ValueError('Chua chon duong tach')
 
 def ensure_split_rules(data, cfg=None, strict=False):
     """[Ver 2.91] Phan luong: ten mien media/CDN cua may dang di proxy (socks/http) => di outbound
@@ -2485,11 +2584,13 @@ def ensure_split_rules(data, cfg=None, strict=False):
             ob = None
             if ips:
                 try:
-                    ob = build_split_outbound(cfg.get('target'), old_ob)
+                    ob = build_split_outbound(cfg.get('target'), old_ob, cfg)
                 except ValueError as e:
                     if strict:
                         raise
-                    ob = old_ob
+                    # pppoe: glider chap chon => giu outbound cu. vpn: tunnel chet => BO tach,
+                    # may ve proxy chinh (giu bind vao dev chet = video chet).
+                    ob = old_ob if str(cfg.get('target') or '').lower().startswith('pppoe:') else None
                     try:
                         _ss_log('SPLIT: %s => %s' % (e, 'giu outbound cu' if ob else 'tam bo rule, may di proxy chinh'))
                     except Exception:
@@ -2533,9 +2634,18 @@ def split_public_state():
         applied = split_applied_count(load_json(RUNTIME_SOURCE_FILE))
     except Exception:
         applied = 0
-    return {'ok': True, 'enabled': cfg['enabled'], 'target': cfg['target'], 'domains': cfg['domains'], 'applied': applied}
+    vpns = []
+    try:
+        for t in vpn_status_json() or []:
+            if isinstance(t, dict) and t.get('name'):
+                vpns.append({'name': str(t['name']), 'dev': str(t.get('dev') or ''), 'running': bool(t.get('running')) and _net_dev_up(str(t.get('dev') or ''))})
+    except Exception:
+        pass
+    px = cfg.get('proxy') or {}
+    return {'ok': True, 'enabled': cfg['enabled'], 'target': cfg['target'], 'domains': cfg['domains'], 'applied': applied,
+            'vpns': vpns, 'proxy': split_proxy_display(px), 'proxy_type': str(px.get('type') or '')}
 
-def split_update(payload):
+def split_update(payload, strict=True):
     """Bat/tat/sua phan luong: ghi runtime + moi preset, genrunner check (loi => tra lai file cu),
     roi restart gencore nen. Tra ve trang thai moi."""
     new = dict(get_split_config())
@@ -2543,15 +2653,21 @@ def split_update(payload):
         new['domains'] = parse_split_domains(payload.get('domains'))
     if 'target' in payload:
         t = str(payload.get('target') or '').strip().lower()
-        if t and t != 'block' and not re.match(r'^pppoe:\d{1,3}$', t):
+        t = str(payload.get('target') or '').strip()
+        if t and not SPLIT_TARGET_RE.match(t if not t.lower().startswith('vpn:') else 'vpn:' + t[4:]):
             raise ValueError('Duong tach khong hop le')
+        if not t.lower().startswith('vpn:'):
+            t = t.lower()
         new['target'] = t
+    if str(payload.get('proxy') or '').strip():
+        new['proxy'] = parse_split_proxy(payload.get('proxy'), payload.get('proxy_type') or 'socks5')
     if 'enabled' in payload:
         new['enabled'] = bool(payload.get('enabled'))
     if new['enabled']:
         if not new['domains']:
             raise ValueError('Danh sach ten mien trong')
-        build_split_outbound(new['target'])
+        if strict:
+            build_split_outbound(new['target'], None, new)
     if _apply_lock_active():
         raise ValueError('Dang Apply, thu lai sau vai giay')
     files = [RUNTIME_SOURCE_FILE]
@@ -2569,7 +2685,7 @@ def split_update(payload):
                     continue
                 raw = p.read_text(encoding='utf-8')
                 doc = json.loads(raw)
-                if ensure_split_rules(doc, cfg=new, strict=True):
+                if ensure_split_rules(doc, cfg=new, strict=strict):
                     backups[str(p)] = raw
                     save_gencore_json(p, doc)
                     if str(p) in runtime_names:
@@ -2597,6 +2713,31 @@ def split_update(payload):
     out = split_public_state()
     out['restarted'] = changed_runtime
     return out
+
+def split_watch_loop():
+    """[Ver 2.93] Duong tach = VPN: tunnel chet => bo tach (may ve proxy chinh, khong mat video);
+    tunnel song lai => tach lai. Kiem moi 30s, doi config toi da 1 lan / 120s, log SPLIT-WATCH."""
+    last_fix = 0.0
+    while True:
+        time.sleep(30)
+        try:
+            cfg = get_split_config()
+            if not (cfg.get('enabled') and str(cfg.get('target') or '').lower().startswith('vpn:')):
+                continue
+            if _apply_lock_active() or time.time() - last_fix < 120:
+                continue
+            doc = load_json(RUNTIME_SOURCE_FILE)
+            probe = json.loads(json.dumps(doc))
+            if not ensure_split_rules(probe, cfg=cfg):
+                continue
+            last_fix = time.time()
+            r = split_update({}, strict=False)
+            _ss_log('SPLIT-WATCH: %s => tach %d may, restart=%s' % (cfg.get('target'), r.get('applied', 0), r.get('restarted')))
+        except Exception as e:
+            try:
+                _ss_log('SPLIT-WATCH loi: %s' % e)
+            except Exception:
+                pass
 
 FLOW_API_ADDR = '127.0.0.1:19090'
 FLOW_MAX_KEYS = 5000
@@ -6628,6 +6769,7 @@ if __name__ == '__main__':
     threading.Thread(target=license_check_loop, daemon=True).start()
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
+    threading.Thread(target=split_watch_loop, daemon=True, name='split-watch').start()
     threading.Thread(target=pppoe_glider_stale_loop, daemon=True, name='glider-stale').start()
     class _GUIServer(ThreadingHTTPServer):
         # [Ver 2.63] Backlog mac dinh cua socketserver la 5. Khi GUI go dong thoi
