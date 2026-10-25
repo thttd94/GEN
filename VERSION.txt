@@ -1,1 +1,1 @@
-Ver 2.89 (may tab CHUA CAU HINH gan proxy/VPN/PPPoE van o tab CHUA CAU HINH; tu chuyen may bi 2.88 ghi nham ve lai)
+Ver 2.90 (Apply cau hinh toan VPN tu restart gencore nap config moi, may vua gan co mang ngay)

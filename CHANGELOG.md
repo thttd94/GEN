@@ -1,3 +1,7 @@
+## Ver 2.90 (2026-10-25) - Apply toan VPN nap config ngay
+
+- Apply cau hinh khong co proxy that (toan VPN => `UPDATE-PROXY-SKIPPED`) truoc day khong bao gencore nap config moi: may vua gan bi chan toi khi watchdog STALE-CONFIG restart (1-4 phut). Nay restart gencore nen sau 3s, gop nhieu lan Apply lien tiep thanh 1 lan; chi restart khi `genrunner check` OK. Log `APPLY-RELOAD`. Restart lam ca router chap vai giay.
+
 ## Ver 2.89 (2026-10-25) - Sua 2.88: may chua cau hinh khong nhay tab
 
 - 2.88 ghi may tab CHUA CAU HINH vao danh sach IP chinh khi gan => may nhay sang DA CAU HINH (sai). Nay tag proxy_N cua may chua cau hinh luu RIENG (`auto_ip_tags`), lay so tu 1000 tro xuong; danh sach IP chinh khong doi, may van o tab CHUA CAU HINH nhung co mang theo proxy/VPN/PPPoE da gan.

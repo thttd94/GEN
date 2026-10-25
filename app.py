@@ -3245,6 +3245,36 @@ def run_apply(session: str, rows_override=None):
     finally:
         _apply_lock_release()
 
+_APPLY_RESTART = {'pending': False, 'lock': threading.Lock()}
+
+def schedule_gencore_reload_after_apply(session, reason='apply_no_vendor'):
+    """[Ver 2.90] Apply ma KHONG POST cho vendor 9000 (cau hinh toan VPN => UPDATE-PROXY-SKIPPED)
+    thi khong ai bao gencore nap config moi: may vua gan bi chan toi khi watchdog STALE-CONFIG
+    restart (1-4 phut). Nay restart gencore nen, gop cac lan Apply lien tiep trong 3s thanh 1 lan."""
+    with _APPLY_RESTART['lock']:
+        if _APPLY_RESTART['pending']:
+            return False
+        _APPLY_RESTART['pending'] = True
+    def _job():
+        try:
+            time.sleep(3)
+            with _APPLY_RESTART['lock']:
+                _APPLY_RESTART['pending'] = False
+            try:
+                _ss_log('APPLY-RELOAD session=%s: restart gencore de nap config moi (khong POST vendor)' % session)
+            except Exception:
+                pass
+            gencore_restart_detached(reason)
+        except Exception as e:
+            with _APPLY_RESTART['lock']:
+                _APPLY_RESTART['pending'] = False
+            try:
+                _ss_log('APPLY-RELOAD loi: %s' % e)
+            except Exception:
+                pass
+    threading.Thread(target=_job, daemon=True, name='apply-reload').start()
+    return True
+
 def _run_apply_inner(session: str, rows_override=None):
     preset_source = SESSION_FILES[session]
     results = []
@@ -3293,7 +3323,9 @@ def _run_apply_inner(session: str, rows_override=None):
     rows = extract_rows(runtime_data, session=session)
     payload = build_old_gui_update_proxy_payload_from_rows(rows)
     real_proxy_count = sum(1 for v in payload.values() if isinstance(v, dict))
+    vendor_skipped = False
     if payload and real_proxy_count == 0:
+        vendor_skipped = True
         # Ver 2.34: payload toan ALLOW (preset VPN thuan) chinh la thu kich hoat
         # duong 'reset proxy config' cua binary vendor 9000, lam gencore.json bi
         # regenerate ve template mac dinh. Khong co proxy that thi khong co gi de
@@ -3330,6 +3362,13 @@ def _run_apply_inner(session: str, rows_override=None):
             results.append({'cmd': 'genrunner check only', 'ok': True, 'skipped': True, 'reason': f'not found: {GENRUNNER}'})
     except Exception as e:
         results.append({'cmd': 'genrunner check only', 'ok': False, 'error': str(e)})
+    if vendor_skipped:
+        chk = next((r for r in results if r.get('cmd') == 'genrunner check only'), {})
+        if chk.get('ok'):
+            queued = schedule_gencore_reload_after_apply(session)
+            results.append({'cmd': 'reload gencore (khong POST vendor)', 'ok': True, 'queued': queued})
+        else:
+            results.append({'cmd': 'reload gencore (khong POST vendor)', 'ok': False, 'error': 'genrunner check loi => khong restart, giu config dang chay'})
     if any((r.get('ok') for r in results)):
         try:
             spawn_proxy_sheet_push()
