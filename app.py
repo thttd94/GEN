@@ -7222,7 +7222,8 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         r_iso['drop_pkts'] = None
                     return self._send_json(r_iso)
-                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth', 'xv-creds-save', 'xv-creds-del', 'auto-save', 'auto-run') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
+                # [Ver 2.94] add-express-many/express-servers khong dung ten tai khoan do client gui
+                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth', 'xv-creds-save', 'xv-creds-del', 'auto-save', 'auto-run', 'add-express-many', 'express-servers') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
                     return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
                 if action == 'up':
                     return self._send_json(vpn_run(['up', name]))
