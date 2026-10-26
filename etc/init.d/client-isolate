@@ -57,6 +57,8 @@ gen_nft() {
 	sed -e "s/__ROUTER_MAC__/$MAC/g" -e "s/__MASTER_ELEMS__/$EM/" -e "s/__ALLOW_ELEMS__/$EA/" \
 		"$NFT_FILE.tpl" > "$NFT_FILE"
 	NM=$(printf '%s\n' "$M" | grep -c .); NA=$(printf '%s\n' "$A" | grep -c .)
+	# grep -c tra exit 1 khi 0 dong (allow rong) => phai tra 0 ro rang
+	return 0
 }
 start() {
 	MODE=$(cat "$MODEF" 2>/dev/null || echo two-way)
