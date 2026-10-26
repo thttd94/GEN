@@ -127,6 +127,13 @@
       </div>
       <div style="margin-top:10px;display:flex;gap:8px"><button class="ok" type="button" onclick="addExpress()">Thêm</button>
         <button type="button" onclick="xvPingSel()">Ping location</button></div>
+      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div><label for="xv-srv">Server c? th? (m?i server 1 IP ra)</label>
+          <select id="xv-srv" style="min-width:210px"><option value="">- d?ng hostname (d? tr?ng IP) -</option></select></div>
+        <div><label for="xv-many">T?o h?ng lo?t</label><input id="xv-many" type="number" min="1" max="32" value="4" style="width:70px"></div>
+        <button type="button" onclick="xvAddMany()">T?o nhi?u tunnel, m?i tunnel 1 server</button>
+      </div>
+      <div id="xv-srv-msg" class="muted" style="margin-top:4px"></div>
       <div class="muted" id="xv-info" role="status" aria-live="polite" style="margin-top:6px">User/pass lấy ở ExpressVPN &gt; Manual Configuration. Key chỉ lưu để đối chiếu.</div>
     </div>
 
@@ -315,7 +322,37 @@ async function auSave() {
 }
 async function auRun() { const r = await api('auto-run'); AU = r; auStatus(); refresh(); }
 setInterval(() => { if (AU) fetch('/api/vpn/auto').then(r => r.json()).then(r => { AU = Object.assign(AU, { msg: r.msg, last: r.last, auto: r.auto }); auStatus(); }).catch(() => {}); }, 20000);
-let XV_SAVED = [];
+let XV_SAVED = [], XV_SRV = [];
+async function xvLoadServers() {
+  const loc = (document.getElementById('xv-loc').value || '').trim().toLowerCase();
+  const sel = document.getElementById('xv-srv'), msg = document.getElementById('xv-srv-msg');
+  if (!loc) { sel.innerHTML = '<option value="">- ch?n location tr??c -</option>'; msg.textContent = ''; XV_SRV = []; return; }
+  msg.textContent = '?ang ph?n gi?i server.';
+  let r = {};
+  try { r = await (await fetch('/api/vpn/servers?loc=' + encodeURIComponent(loc))).json(); } catch (e) { msg.textContent = 'l?i l?y danh s?ch server'; return; }
+  const g = (r.groups || [])[0] || {};
+  XV_SRV = g.ips || [];
+  sel.innerHTML = XV_SRV.length
+    ? XV_SRV.map(ip => `<option value="${esc(ip)}">${esc(ip)}${((g.used || []).includes(ip)) ? ' ? ?ang d?ng' : ''}</option>`).join('')
+    : '<option value="">- kh?ng ph?n gi?i ???c server -</option>';
+  msg.textContent = XV_SRV.length ? (XV_SRV.length + ' server cho ' + (g.loc || loc) + '. Ch?n 1 server ?? ghim c? ??nh IP ra.') : 'kh?ng c? server n?o.';
+}
+async function xvAddMany() {
+  const sv = document.getElementById('xv-acc').value;
+  const cred_id = sv.startsWith('s:') ? sv.slice(2) : '';
+  if (!cred_id) return log('ch?n 1 t?i kho?n ?? l?u tr??c (n?t t?o nhi?u c?n t?i kho?n ?? l?u)');
+  const loc = (document.getElementById('xv-loc').value || '').trim();
+  if (!loc) return log('ch?n location');
+  const n = parseInt(document.getElementById('xv-many').value || '1', 10);
+  const proto = (document.querySelector('input[name="xv-proto"]:checked') || {}).value || 'udp';
+  log('?ang t?o ' + n + ' tunnel cho ' + loc + ' (m?i tunnel 1 server)...');
+  const r = await api('add-express-many', { loc, count: n, cred_id, proto, up: document.getElementById('xv-up').checked ? '1' : '0' });
+  if (!r.ok) return log('t?o h?ng lo?t l?i: ' + (r.error || ''));
+  const okn = (r.made || []).filter(x => x.ok).length;
+  log('?? t?o ' + okn + '/' + n + ' tunnel: ' + (r.made || []).map(x => x.name + '=' + x.ip).join(', '));
+  xvLoadSaved(); refresh();
+  setTimeout(() => api('refresh-exitips').catch(() => {}), 12000);
+}
 function xvRenderAcc() {
   const sel = document.getElementById('xv-acc'), cur = sel.value, a = xvAccounts();
   const o = XV_SAVED.map(c => `<option value="s:${esc(c.id)}">${esc(c.user)} (đã lưu${c.has_key ? ', có key' : ''})</option>`)
@@ -377,7 +414,8 @@ async function addExpress() {
   const sv = document.getElementById('xv-acc').value;
   const a = sv.startsWith('t:') ? xvAccounts()[parseInt(sv.slice(2), 10)] : null;
   const cred_id = sv.startsWith('s:') ? sv.slice(2) : '';
-  const host = document.getElementById('xv-loc').value;
+  const srv = (document.getElementById('xv-srv').value || '').trim();
+  const host = srv || document.getElementById('xv-loc').value;
   if (!a && !cred_id) return log('nhập tài khoản dạng user|pass|key hoặc chọn tài khoản đã lưu');
   if (!host) return log('chọn location');
   if (XV_PING[host] === null && !confirm('Location này vừa ping không phản hồi. Vẫn thêm?')) return;
@@ -394,6 +432,7 @@ async function addExpress() {
 }
 document.getElementById('xv-cred').addEventListener('input', xvRenderAcc);
 document.getElementById('xv-q').addEventListener('input', xvRenderLoc);
+document.getElementById('xv-loc').addEventListener('change', xvLoadServers);
 async function addOpenvpn() {
   const name = document.getElementById('ov-name').value.trim();
   const ovpn_text = document.getElementById('ov-text').value;

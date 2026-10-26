@@ -5246,6 +5246,47 @@ def vpn_auto_tick():
             VPN_AUTO_RT['last'] = (done + VPN_AUTO_RT['last'])[:30]
             _ss_log('VPN-AUTO: ' + '; '.join(done)[:300])
 
+def vpn_express_servers(loc='', fetch=False):
+    """[Ver 2.94] IP server cu the cua 1 location (kieu MiniSocks endpoint_ip).
+    Moi IP = 1 server = 1 IP ra rieng khi tao tunnel. Hostname thanh pho chi co 2-4 IP
+    nen nhieu tunnel cung hostname se trung IP."""
+    groups = {}
+    try:
+        with open(VPN_HOSTS_FILE, 'r', encoding='utf-8', errors='replace') as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln or ln.startswith('#'):
+                    continue
+                pp = ln.split('|')
+                if len(pp) < 3:
+                    continue
+                groups.setdefault(('%s %s' % (pp[0], pp[1])).strip().lower(), []).append(pp[-1])
+    except Exception:
+        pass
+    keys = [k for k in groups if loc and loc in k] if loc else sorted(groups)
+    used = set()
+    for a in vpn_status_json():
+        h = str(a.get('host') or '')
+        if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', h):
+            used.add(h)
+    out, allused = [], []
+    for k in keys[:8]:
+        ips = []
+        for h in groups[k][:4]:
+            if not fetch and not loc:
+                break
+            try:
+                r = subprocess.run(['nslookup', h], capture_output=True, text=True, timeout=8)
+                for x in re.findall(r'^Address:\s*(\d+\.\d+\.\d+\.\d+)', r.stdout, re.M):
+                    if not x.startswith('127.') and x not in ips:
+                        ips.append(x)
+            except Exception:
+                pass
+        out.append({'loc': k, 'host': groups[k][0] if groups[k] else '', 'ips': ips[:8],
+                    'used': [x for x in ips[:8] if x in used]})
+        allused += [x for x in ips[:8] if x in used]
+    return {'ok': True, 'groups': out, 'used': allused}
+
 def vpn_auto_public():
     c = _vpn_auto_load()
     return {'ok': True, 'cfg': {k: c[k] for k in ('enabled', 'allow_dup', 'pool', 'range', 'release_min')},
@@ -6859,6 +6900,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map(), 'deps': vpn_deps_status()})
         if path == '/api/vpn/auto':
             return self._send_json(vpn_auto_public())
+        if path == '/api/vpn/servers':
+            return self._send_json(vpn_express_servers((q.get('loc') or [''])[0].strip().lower()))
         if path == '/api/vpn/xv-creds':
             return self._send_json({'ok': True, 'creds': xv_creds_public()})
         if path == '/api/vpn/exitips':
@@ -7243,6 +7286,45 @@ class Handler(BaseHTTPRequestHandler):
                         _record_vpn_declaration_bulk([(s, '') for s in ips])
                     r['count'] = len(ips)
                     return self._send_json(r)
+                if action == 'express-servers':
+                    loc = str(payload.get('loc', '')).strip().lower()
+                    return self._send_json(vpn_express_servers(loc))
+                if action == 'add-express-many':
+                    # [Ver 2.94] tao N tunnel, moi tunnel ghim 1 server IP khac nhau (giong MiniSocks)
+                    loc = str(payload.get('loc', '')).strip()
+                    n = max(1, min(32, int(payload.get('count') or 1)))
+                    proto = 'tcp' if str(payload.get('proto')) == 'tcp' else 'udp'
+                    do_up = str(payload.get('up', '1')) in ('1', 'true', 'True')
+                    cred = xv_cred_get(str(payload.get('cred_id', ''))) if payload.get('cred_id') else None
+                    if not cred:
+                        return self._send_json({'ok': False, 'error': 'chon tai khoan da luu'})
+                    srv = vpn_express_servers(loc, fetch=True)
+                    ips = [x for g in srv.get('groups') or [] for x in g.get('ips') or []]
+                    used = set(srv.get('used') or [])
+                    free = [x for x in ips if x not in used] or ips
+                    if not free:
+                        return self._send_json({'ok': False, 'error': 'khong phan giai duoc server nao cho location nay'})
+                    exist = {a['name'] for a in vpn_status_json()}
+                    made, i = [], 1
+                    for _ in range(n):
+                        while ('xv-%d' % i) in exist:
+                            i += 1
+                        name = 'xv-%d' % i
+                        ip = free[i % len(free)] if len(free) < n else free[i % len(free)]
+                        r = vpn_run(['add-express', name, ip, str(cred['user']), str(cred.get('pass', '')), proto, str(cred.get('key', ''))], timeout=120)
+                        if not r.get('ok'):
+                            made.append({'name': name, 'ip': ip, 'ok': False, 'error': str(r.get('error') or r.get('output'))[:120]})
+                            i += 1
+                            continue
+                        exist.add(name)
+                        made.append({'name': name, 'ip': ip, 'ok': True})
+                        i += 1
+                    if do_up:
+                        for m in made:
+                            if m.get('ok'):
+                                m['up'] = bool(vpn_run(['up', m['name']], timeout=150).get('ok'))
+                        threading.Timer(15, vpn_refresh_exitips_async).start()
+                    return self._send_json({'ok': True, 'made': made, 'creds': xv_creds_public()})
                 if action == 'auto-save':
                     try:
                         vpn_auto_set(payload)

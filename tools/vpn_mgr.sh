@@ -163,6 +163,9 @@ resolve_express_host() {
   case "$arg" in *expressnetw.com*)
     printf '%s' "$arg" | grep -qE '^[a-z0-9.-]+$' || { echo "[ERR] host khong hop le" >&2; return 1; }
     echo "$arg"; return 0;; esac
+  # [Ver 2.94] ghim IP server cu the (giong MiniSocks endpoint_ip): moi tunnel 1 server
+  # => moi tunnel 1 IP ra. Hostname theo thanh pho chi co 2-4 IP nen de trung.
+  if printf '%s' "$arg" | grep -qE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$'; then echo "$arg"; return 0; fi
   [ -f "$HOSTS" ] || err "thieu $HOSTS (chua upload danh sach host)"
   n=$(express_hosts_list | grep -ci -- "$arg")
   [ "$n" -eq 0 ] && { echo "[ERR] khong tim thay host cho '$arg'. Vi du:" >&2; express_hosts_list | grep -i -e singapore -e japan -e usa-new | head -5 >&2; return 1; }
