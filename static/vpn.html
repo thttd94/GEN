@@ -79,7 +79,9 @@
       <h2><span class="h-ico h-ico-green">&#10003;</span>Thêm ExpressVPN</h2>
       <label for="xv-cred">Tài khoản <span class="muted">(user|pass|key, mỗi dòng 1 tài khoản)</span></label>
       <textarea id="xv-cred" rows="2" autocomplete="off" spellcheck="false" placeholder="user|pass|key" style="width:100%"></textarea>
-      <label for="xv-acc">Chọn tài khoản</label>
+      <div style="display:flex;gap:6px;margin-top:6px"><button type="button" onclick="xvSaveCreds()">Lưu tài khoản</button>
+        <button type="button" onclick="xvDelCred()" title="Xoá tài khoản đã lưu đang chọn">Xoá tài khoản đã chọn</button></div>
+      <label for="xv-acc">Chọn tài khoản <span class="muted" id="xv-saved-n"></span></label>
       <select id="xv-acc" style="width:100%"></select>
       <label for="xv-q">Tìm quốc gia / thành phố / host</label>
       <div style="display:flex;gap:6px"><input id="xv-q" placeholder="vd: japan, tokyo, singapore" style="flex:1">
@@ -188,7 +190,7 @@ async function act(action, extra, confirmText) {
   } catch(e) { log(`${action}: LỖI ${e}`); }
   BUSY = false;
   refresh();
-  if (['up','down','del'].includes(action)) {
+  if (['up','down','del','add-express'].includes(action)) {
     api('refresh-exitips').catch(()=>{});
     setTimeout(loadWanIps, 16000);
   }
@@ -245,11 +247,33 @@ function xvAccounts() {
     const p = s.split('|'); return { user: (p[0] || '').trim(), pass: (p[1] || '').trim(), key: (p[2] || '').trim() };
   }).filter(a => a.user && a.pass);
 }
+let XV_SAVED = [];
 function xvRenderAcc() {
   const sel = document.getElementById('xv-acc'), cur = sel.value, a = xvAccounts();
-  sel.innerHTML = a.length ? a.map((x, i) => `<option value="${i}">${esc(x.user)}${x.key ? ' (key ' + esc(x.key.slice(0, 8)) + ')' : ''}</option>`).join('')
-                           : '<option value="">- nhập user|pass|key ở trên -</option>';
-  if (cur && cur < a.length) sel.value = cur;
+  const o = XV_SAVED.map(c => `<option value="s:${esc(c.id)}">${esc(c.user)} (đã lưu${c.has_key ? ', có key' : ''})</option>`)
+    .concat(a.map((x, i) => `<option value="t:${i}">${esc(x.user)} (mới nhập${x.key ? ', có key' : ''})</option>`));
+  sel.innerHTML = o.length ? o.join('') : '<option value="">- nhập user|pass|key ở trên -</option>';
+  if (cur && [...sel.options].some(x => x.value === cur)) sel.value = cur;
+  document.getElementById('xv-saved-n').textContent = XV_SAVED.length ? '(' + XV_SAVED.length + ' đã lưu)' : '';
+}
+async function xvLoadSaved() {
+  try { const r = await (await fetch('/api/vpn/xv-creds')).json(); XV_SAVED = r.creds || []; } catch (e) {}
+  xvRenderAcc();
+}
+async function xvSaveCreds() {
+  const text = document.getElementById('xv-cred').value;
+  if (!xvAccounts().length) return log('nhập user|pass|key trước');
+  const r = await api('xv-creds-save', { text });
+  if (r.ok) { XV_SAVED = r.creds || []; document.getElementById('xv-cred').value = ''; log('đã lưu ' + r.saved + ' tài khoản ExpressVPN trên router'); }
+  else log('lưu lỗi: ' + (r.error || ''));
+  xvRenderAcc();
+}
+async function xvDelCred() {
+  const v = document.getElementById('xv-acc').value;
+  if (!v.startsWith('s:')) return log('chọn 1 tài khoản đã lưu');
+  if (!confirm('Xoá tài khoản đã lưu này? Tunnel đã tạo vẫn giữ.')) return;
+  const r = await api('xv-creds-del', { id: v.slice(2) });
+  XV_SAVED = r.creds || XV_SAVED; xvRenderAcc(); log(r.ok ? 'đã xoá tài khoản đã lưu' : 'không xoá được');
 }
 function xvLabel(h) { return (h.country || '?') + (h.city ? ' - ' + h.city : '') ; }
 function xvRenderLoc() {
@@ -281,17 +305,22 @@ function xvNextId() {
   let i = 1; while (used.has(i)) i++; return i;
 }
 async function addExpress() {
-  const a = xvAccounts()[parseInt(document.getElementById('xv-acc').value, 10)];
+  const sv = document.getElementById('xv-acc').value;
+  const a = sv.startsWith('t:') ? xvAccounts()[parseInt(sv.slice(2), 10)] : null;
+  const cred_id = sv.startsWith('s:') ? sv.slice(2) : '';
   const host = document.getElementById('xv-loc').value;
-  if (!a) return log('nhập tài khoản dạng user|pass|key rồi chọn');
+  if (!a && !cred_id) return log('nhập tài khoản dạng user|pass|key hoặc chọn tài khoản đã lưu');
   if (!host) return log('chọn location');
   if (XV_PING[host] === null && !confirm('Location này vừa ping không phản hồi. Vẫn thêm?')) return;
   let id = parseInt(document.getElementById('xv-id').value, 10);
   if (!(id >= 1 && id <= 999)) { id = xvNextId(); document.getElementById('xv-id').value = id; }
   const proto = (document.querySelector('input[name="xv-proto"]:checked') || {}).value || 'udp';
-  await act('add-express', { name: 'xv-' + id, host, username: a.user, password: a.pass, key: a.key, proto,
-    autostart: document.getElementById('xv-auto').checked ? '1' : '0', up: document.getElementById('xv-up').checked ? '1' : '0' });
+  const cred = cred_id ? { cred_id, username: 'saved' } : { username: a.user, password: a.pass, key: a.key };
+  await act('add-express', Object.assign({ name: 'xv-' + id, host, proto }, cred, {
+    autostart: document.getElementById('xv-auto').checked ? '1' : '0', up: document.getElementById('xv-up').checked ? '1' : '0' }));
   document.getElementById('xv-id').value = '';
+  if (!cred_id) document.getElementById('xv-cred').value = '';
+  xvLoadSaved();
 }
 document.getElementById('xv-cred').addEventListener('input', xvRenderAcc);
 document.getElementById('xv-q').addEventListener('input', xvRenderLoc);
@@ -477,7 +506,7 @@ async function unassignAll(name) {
 (async () => {
   try {
     const h = await (await fetch('/api/vpn/express-hosts')).json();
-    XV_HOSTS = (h.hosts||[]).map(x => typeof x === 'string' ? {country:'', city:'', host:x} : x); xvRenderLoc(); xvRenderAcc();
+    XV_HOSTS = (h.hosts||[]).map(x => typeof x === 'string' ? {country:'', city:'', host:x} : x); xvRenderLoc(); xvLoadSaved();
   } catch(e){}
   refresh();
   setInterval(refresh, 5000);

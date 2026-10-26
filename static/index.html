@@ -332,33 +332,6 @@
             <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
             <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
           </div>
-          <button type="button" class="btn small" id="flowPanelBtn" onclick="toggleFlowPanel()" aria-controls="flowPanel" aria-expanded="false">Theo dõi luồng</button>
-          <div id="flowPanel" role="dialog" aria-label="Theo dõi luồng" hidden style="position:fixed;top:70px;right:20px;z-index:1001;width:760px;max-width:calc(100vw - 40px);max-height:calc(100vh - 100px);overflow:auto;background:#fff;color:#111;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:12px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-              <div style="font-weight:800;">Theo dõi luồng (tên miền đi đường nào, bao nhiêu MB)</div>
-              <button type="button" class="btn small" onclick="toggleFlowPanel(false)" aria-label="Đóng">✕</button>
-            </div>
-            <div id="flowOff" hidden style="margin-top:8px;">
-              <div class="sub">Đang tắt. Bật sẽ khởi động lại gencore (router chập vài giây). Chỉ đọc số liệu trong router, không mở cổng ra ngoài.</div>
-              <button type="button" class="btn small" onclick="setFlow('enable')" style="margin-top:6px;font-weight:800;">Bật theo dõi</button>
-            </div>
-            <div id="flowOn" hidden>
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
-                <label for="flowIp" style="font-weight:700;">Máy (IP)</label>
-                <select id="flowIp" onchange="loadFlow()"><option value="">Tất cả</option></select>
-                <button type="button" class="btn small" onclick="setFlow('reset')">Xoá số đếm</button>
-                <button type="button" class="btn small" onclick="setFlow('disable')">Tắt theo dõi</button>
-                <span id="flowSince" class="sub"></span>
-              </div>
-              <div id="flowTotals" style="margin-top:8px;font-weight:700;" aria-live="polite"></div>
-              <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;">
-                <thead><tr style="text-align:left;border-bottom:1px solid #cbd5e1;"><th scope="col">Tên miền</th><th scope="col">Máy</th><th scope="col">Đi đường</th><th scope="col" style="text-align:right;">Tải xuống</th><th scope="col" style="text-align:right;">Tải lên</th><th scope="col" style="text-align:right;">Kết nối</th></tr></thead>
-                <tbody id="flowRows"></tbody>
-              </table>
-              <div class="sub" style="margin-top:6px;">Đọc mỗi 2 giây. Kết nối đóng giữa 2 lần đọc có thể thiếu vài KB cuối. Số đếm reset khi gencore khởi động lại.</div>
-            </div>
-            <div id="flowErr" class="sub" style="color:#dc2626;margin-top:6px;"></div>
-          </div>
                   </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap;">
         <div class="sub" id="countLabel" style="font-weight:800;white-space:nowrap;">0 rows</div>
@@ -2291,14 +2264,13 @@
       if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
       return (n / 1024).toFixed(0) + ' KB';
     }
-    const FLOW_KIND = { proxy: 'Proxy', split: 'Tách', direct: 'Trực tiếp', other: 'Khác' };
+    const FLOW_KIND = { proxy: 'Proxy', split: 'Cố định', direct: 'Trực tiếp', other: 'Khác' };
     const FLOW_COLOR = { proxy: '#dc2626', split: '#16a34a', direct: '#2563eb', other: '#6b7280' };
     function toggleFlowPanel(force) {
       const p = document.getElementById('flowPanel');
       const b = document.getElementById('flowPanelBtn');
       if (!p) return;
-      const show = typeof force === 'boolean' ? force : p.hidden;
-      p.hidden = !show;
+      const show = typeof force === 'boolean' ? force : !flowTimer;
       if (b) b.setAttribute('aria-expanded', show ? 'true' : 'false');
       if (flowTimer) { clearInterval(flowTimer); flowTimer = null; }
       if (show) { loadFlow(); flowTimer = setInterval(loadFlow, 3000); }
@@ -2309,6 +2281,7 @@
       const err = document.getElementById('flowErr');
       off.hidden = !!r.enabled;
       on.hidden = !r.enabled;
+      const fn = document.getElementById('cnN-flow'); if (fn) fn.textContent = r.enabled ? 'bật' : 'tắt';
       err.textContent = r.enabled && r.error ? ('Chưa đọc được gencore: ' + r.error + ' (vừa bật thì chờ vài giây; nếu lâu, hãy Apply lại)') : '';
       if (!r.enabled) return;
       const sel = document.getElementById('flowIp');
@@ -2321,7 +2294,7 @@
       const pct = k => sum ? Math.round((t[k] || 0) * 100 / sum) + '%' : '0%';
       document.getElementById('flowTotals').innerHTML =
         `<span style="color:${FLOW_COLOR.proxy}">Proxy: ${fmtMB(t.proxy)} (${pct('proxy')})</span> · ` +
-        `<span style="color:${FLOW_COLOR.split}">Tách: ${fmtMB(t.split)} (${pct('split')})</span>` +
+        `<span style="color:${FLOW_COLOR.split}">Cố định: ${fmtMB(t.split)} (${pct('split')})</span>` +
         ((t.direct || t.other) ? ` · Khác: ${fmtMB((t.direct || 0) + (t.other || 0))}` : '');
       document.getElementById('flowSince').textContent = r.since ? ('đếm từ ' + new Date(r.since * 1000).toLocaleTimeString()) : '';
       document.getElementById('flowRows').innerHTML = (r.rows || []).map(x =>
@@ -2592,6 +2565,7 @@
     <button type="button" class="cn-tab" role="tab" data-t="udp">UDP &amp; WebRTC<span class="n" id="cnN-udp">-</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="dom">Tên miền / IP<span class="n" id="cnN-dom">0</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="route">Định tuyến cố định<span class="n" id="cnN-route">tắt</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="flow">Theo dõi luồng<span class="n" id="cnN-flow">-</span></button>
    </div>
    <div class="cn-pane">
     <section id="cnS-direct" role="tabpanel" aria-label="Internet trực tiếp">
@@ -2663,6 +2637,34 @@
       </fieldset>
      </div>
     </section>
+    <section id="cnS-flow" role="tabpanel" aria-label="Theo dõi luồng" hidden>
+     <h4>Theo dõi luồng</h4>
+     <div class="cn-blk"><ul class="cn-notes"><li>Xem tên miền của từng máy đang đi đường nào: <b>Proxy</b> (proxy gán cho máy), <b>Cố định</b> (Định tuyến cố định: WAN / PPPoE / VPN / Proxy riêng) hay <b>Trực tiếp</b>, và bao nhiêu MB.</li>
+      <li>Chỉ có số liệu của máy đi qua gencore (Proxy / PPPoE). Máy gán VPN ở trang /vpn đi thẳng tunnel, không hiện ở đây.</li>
+      <li>Lưu ý: bật / tắt theo dõi sẽ khởi động lại gencore, router chập mạng vài giây.</li></ul></div>
+     <div class="cn-blk" id="flowPanel">
+<div id="flowOff" hidden style="margin-top:8px;">
+              <div class="sub">Đang tắt. Bật sẽ khởi động lại gencore (router chập vài giây). Chỉ đọc số liệu trong router, không mở cổng ra ngoài.</div>
+              <button type="button" class="btn small" onclick="setFlow('enable')" style="margin-top:6px;font-weight:800;">Bật theo dõi</button>
+            </div>
+            <div id="flowOn" hidden>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <label for="flowIp" style="font-weight:700;">Máy (IP)</label>
+                <select id="flowIp" onchange="loadFlow()"><option value="">Tất cả</option></select>
+                <button type="button" class="btn small" onclick="setFlow('reset')">Xoá số đếm</button>
+                <button type="button" class="btn small" onclick="setFlow('disable')">Tắt theo dõi</button>
+                <span id="flowSince" class="sub"></span>
+              </div>
+              <div id="flowTotals" style="margin-top:8px;font-weight:700;" aria-live="polite"></div>
+              <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;">
+                <thead><tr style="text-align:left;border-bottom:1px solid var(--line-3);"><th scope="col">Tên miền</th><th scope="col">Máy</th><th scope="col">Đi đường</th><th scope="col" style="text-align:right;">Tải xuống</th><th scope="col" style="text-align:right;">Tải lên</th><th scope="col" style="text-align:right;">Kết nối</th></tr></thead>
+                <tbody id="flowRows"></tbody>
+              </table>
+              <div class="sub" style="margin-top:6px;">Đọc mỗi 2 giây. Kết nối đóng giữa 2 lần đọc có thể thiếu vài KB cuối. Số đếm reset khi gencore khởi động lại.</div>
+            </div>
+            <div id="flowErr" class="sub" style="color:#dc2626;margin-top:6px;"></div>
+     </div>
+    </section>
    </div>
   </div>
   <div class="cn-foot">
@@ -2684,6 +2686,7 @@ function connShowTab(t, focus) {
   connTab = t;
   document.querySelectorAll('#connBox .cn-tab').forEach(b => { const on = b.dataset.t === t; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; if (on && focus) b.focus(); });
   document.querySelectorAll('#connBox .cn-pane section').forEach(s => { s.hidden = s.id !== 'cnS-' + t; });
+  if (typeof toggleFlowPanel === 'function') toggleFlowPanel(t === 'flow');
 }
 function connRefresh() {
   document.querySelectorAll('#connBox [data-cnt]').forEach(s => { s.textContent = connLines(s.dataset.cnt).length + ' mục'; });
@@ -2737,7 +2740,7 @@ async function openConnPanel() {
     connMsg((r.vpn_ips || []).length + ' máy đang gán VPN.');
   } catch (e) { connMsg('Không tải được: ' + e.message, 'err'); }
 }
-function closeConnPanel() { $c('connPanel').hidden = true; if (connFocusBack && connFocusBack.focus) connFocusBack.focus(); }
+function closeConnPanel() { if (typeof toggleFlowPanel === 'function') toggleFlowPanel(false); $c('connPanel').hidden = true; if (connFocusBack && connFocusBack.focus) connFocusBack.focus(); }
 function connTarget() {
   const v = $c('connFixedTarget').value;
   if (v === 'pppoe') { const n = parseInt($c('connFixedPppoe').value, 10); return n >= 1 ? 'pppoe:' + n : ''; }

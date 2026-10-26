@@ -5044,6 +5044,89 @@ def vpn_ping_host(host):
         pass
     return out
 
+XV_CREDS_FILE = '/data/vpn/express_creds.json'
+_XV_CREDS_LOCK = threading.Lock()
+
+def _xv_creds_load():
+    try:
+        with open(XV_CREDS_FILE, encoding='utf-8') as f:
+            d = json.load(f)
+        return [c for c in d if isinstance(c, dict) and c.get('user')] if isinstance(d, list) else []
+    except Exception:
+        return []
+
+def _xv_creds_write(lst):
+    Path('/data/vpn').mkdir(parents=True, exist_ok=True)
+    tmp = XV_CREDS_FILE + '.tmp'
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        json.dump(lst, f, ensure_ascii=False)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, XV_CREDS_FILE)
+
+def _xv_cred_id(user):
+    import hashlib
+    return hashlib.sha1(user.encode('utf-8')).hexdigest()[:10]
+
+def xv_creds_public():
+    """[Ver 2.94] Danh sach tai khoan ExpressVPN da luu - KHONG tra pass/key ra trinh duyet."""
+    out = []
+    for c in _xv_creds_load():
+        u = str(c['user'])
+        out.append({'id': _xv_cred_id(u), 'user': (u[:4] + '…' + u[-2:]) if len(u) > 8 else u,
+                    'has_key': bool(c.get('key')), 'ts': int(c.get('ts') or 0)})
+    return out
+
+def xv_creds_save(items):
+    """items: list (user, pass, key). Trung user => cap nhat pass/key."""
+    n = 0
+    with _XV_CREDS_LOCK:
+        lst = _xv_creds_load()
+        for user, pwd, key in items:
+            user = str(user or '').strip()
+            pwd = str(pwd or '').strip()
+            key = re.sub(r'[^A-Za-z0-9_-]', '', str(key or ''))[:64]
+            if not user or not pwd or len(user) > 128 or len(pwd) > 128 or '\n' in user + pwd:
+                continue
+            cur = next((c for c in lst if c.get('user') == user), None)
+            if cur:
+                cur.update({'pass': pwd, 'key': key or cur.get('key', ''), 'ts': int(time.time())})
+            else:
+                lst.append({'user': user, 'pass': pwd, 'key': key, 'ts': int(time.time())})
+            n += 1
+        if n:
+            _xv_creds_write(lst[-200:])
+    return n
+
+def xv_creds_del(cid):
+    with _XV_CREDS_LOCK:
+        lst = _xv_creds_load()
+        keep = [c for c in lst if _xv_cred_id(str(c['user'])) != cid]
+        if len(keep) != len(lst):
+            _xv_creds_write(keep)
+        return len(lst) - len(keep)
+
+def xv_cred_get(cid):
+    return next((c for c in _xv_creds_load() if _xv_cred_id(str(c['user'])) == cid), None)
+
+def exitip_watch_loop():
+    """[Ver 2.94] Tu do exit-IP: tunnel UP ma chua co IP (vua them/vua bat) hoac IP cu > 5 phut => do lai.
+    Truoc day chi trang /vpn kich do => tai khoan moi them hien 'dang do...' mai."""
+    time.sleep(25)
+    while True:
+        miss = []
+        try:
+            run = [x['name'] for x in vpn_status_json() if x.get('running')]
+            now = time.time()
+            with _EXITIP_LOCK:
+                miss = [n for n in run if not (_EXITIPS.get(n) or {}).get('ip')]
+                old = [n for n in run if now - float((_EXITIPS.get(n) or {}).get('ts') or 0) > 300]
+            if run and (miss or old):
+                vpn_refresh_exitips_async()
+        except Exception:
+            pass
+        time.sleep(45 if miss else 90)
+
 def vpn_exit_ip(name):
     acc = next((a for a in vpn_status_json() if a.get('name') == name), None)
     if not acc:
@@ -6606,6 +6689,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
         if path == '/api/vpn/status':
             return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map(), 'deps': vpn_deps_status()})
+        if path == '/api/vpn/xv-creds':
+            return self._send_json({'ok': True, 'creds': xv_creds_public()})
         if path == '/api/vpn/exitips':
             return self._send_json({'ok': True, 'ips': dict(_EXITIPS), 'busy': _EXITIPS_BUSY['v']})
         if path == '/api/vpn/express-hosts':
@@ -6916,7 +7001,7 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         r_iso['drop_pkts'] = None
                     return self._send_json(r_iso)
-                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
+                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth', 'xv-creds-save', 'xv-creds-del') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
                     return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
                 if action == 'up':
                     return self._send_json(vpn_run(['up', name]))
@@ -6988,10 +7073,27 @@ class Handler(BaseHTTPRequestHandler):
                         _record_vpn_declaration_bulk([(s, '') for s in ips])
                     r['count'] = len(ips)
                     return self._send_json(r)
+                if action == 'xv-creds-save':
+                    items = []
+                    for ln in str(payload.get('text', '') or '').splitlines():
+                        p = ln.strip().split('|')
+                        if len(p) >= 2:
+                            items.append((p[0], p[1], p[2] if len(p) > 2 else ''))
+                    n = xv_creds_save(items)
+                    return self._send_json({'ok': n > 0, 'saved': n, 'creds': xv_creds_public(), 'error': '' if n else 'khong co dong user|pass hop le'})
+                if action == 'xv-creds-del':
+                    n = xv_creds_del(str(payload.get('id', '')))
+                    return self._send_json({'ok': n > 0, 'creds': xv_creds_public()})
                 if action == 'add-express':
                     host = str(payload.get('host', '')).strip()
                     user = str(payload.get('username', '')).strip()
                     pwd = str(payload.get('password', ''))
+                    cred = xv_cred_get(str(payload.get('cred_id', ''))) if payload.get('cred_id') else None
+                    if payload.get('cred_id') and not cred:
+                        return self._send_json({'ok': False, 'error': 'tai khoan da luu khong con'})
+                    if cred:
+                        user, pwd = str(cred['user']), str(cred.get('pass', ''))
+                        payload['key'] = cred.get('key', '')
                     if not host or not user:
                         return self._send_json({'ok': False, 'error': 'thieu host/username'})
                     if not re.match(r'^[a-z0-9.-]{3,120}$', host.lower()):
@@ -7003,6 +7105,10 @@ class Handler(BaseHTTPRequestHandler):
                         vpn_run(['autostart', name, 'on'])
                     if r.get('ok') and str(payload.get('up', '')) in ('1', 'true', 'True'):
                         r['up'] = vpn_run(['up', name])
+                        threading.Timer(12, vpn_refresh_exitips_async).start()
+                    if r.get('ok') and not cred:
+                        xv_creds_save([(user, pwd, xkey)])  # luu lai de lan sau chon
+                    r['creds'] = xv_creds_public()
                     return self._send_json(r)
                 if action == 'ping-host':
                     host = str(payload.get('host', '')).strip().lower()
@@ -7146,6 +7252,7 @@ if __name__ == '__main__':
     threading.Thread(target=split_watch_loop, daemon=True, name='split-watch').start()
     conn_migrate_once()
     threading.Thread(target=conn_watch_loop, daemon=True, name='conn-watch').start()
+    threading.Thread(target=exitip_watch_loop, daemon=True, name='exitip-watch').start()
     threading.Thread(target=pppoe_glider_stale_loop, daemon=True, name='glider-stale').start()
     class _GUIServer(ThreadingHTTPServer):
         # [Ver 2.63] Backlog mac dinh cua socketserver la 5. Khi GUI go dong thoi
