@@ -2379,6 +2379,8 @@ def parse_split_domains(text):
     out, bad = [], []
     for raw in items:
         d = str(raw or '').strip().lower().rstrip('.')
+        if d.startswith('sub:'):
+            d = '*.' + d[4:].lstrip('*.')  # [Ver 2.94] sub:abc.com = *.abc.com
         if not d:
             continue
         if not _SPLIT_DOMAIN_RE.match(d):
@@ -2772,6 +2774,8 @@ def parse_conn_items(text, allow_domain=True, allow_ip=True, allow_mac=False, li
     out, bad = [], []
     for raw in items:
         d = str(raw or '').strip().lower().rstrip('.')
+        if d.startswith('sub:'):
+            d = '*.' + d[4:].lstrip('*.')  # [Ver 2.94] sub:abc.com = *.abc.com
         if not d or d.startswith('#'):
             continue
         numeric = bool(re.match(r'^[\d./]+$', d))

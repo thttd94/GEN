@@ -332,17 +332,6 @@
             <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
             <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
           </div>
-          <label id="isolateWrap" style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;font-weight:700" title="Bật: chặn local 2 chiều, các máy client không thấy nhau (vẫn vào router + internet bình thường). Tắt: local thấy nhau.">
-            <input type="checkbox" id="isolateToggle" onchange="setIsolate(this.checked)" style="width:16px;height:16px" disabled>
-            Chặn local
-            <span id="isolateState" class="sub" style="font-weight:600">đang tải…</span>
-          </label>
-          <label id="splitWrap" style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;font-weight:700" title="Bật: tên miền trong danh sách (video, ảnh, CDN) của máy đang đi proxy sẽ đi đường riêng (phiên PPPoE) hoặc bị chặn, không tốn dung lượng proxy. Máy VPN không bị ảnh hưởng.">
-            <input type="checkbox" id="splitToggle" onchange="setSplit(this.checked)" style="width:16px;height:16px" disabled>
-            Phân luồng
-            <span id="splitState" class="sub" style="font-weight:600">đang tải…</span>
-          </label>
-          <button type="button" class="btn small" id="splitPanelBtn" onclick="toggleSplitPanel()" aria-controls="splitPanel" aria-expanded="false">Danh sách</button>
           <button type="button" class="btn small" id="flowPanelBtn" onclick="toggleFlowPanel()" aria-controls="flowPanel" aria-expanded="false">Theo dõi luồng</button>
           <div id="flowPanel" role="dialog" aria-label="Theo dõi luồng" hidden style="position:fixed;top:70px;right:20px;z-index:1001;width:760px;max-width:calc(100vw - 40px);max-height:calc(100vh - 100px);overflow:auto;background:#fff;color:#111;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:12px;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -369,44 +358,6 @@
               <div class="sub" style="margin-top:6px;">Đọc mỗi 2 giây. Kết nối đóng giữa 2 lần đọc có thể thiếu vài KB cuối. Số đếm reset khi gencore khởi động lại.</div>
             </div>
             <div id="flowErr" class="sub" style="color:#dc2626;margin-top:6px;"></div>
-          </div>
-          <div id="splitPanel" role="dialog" aria-label="Phân luồng" hidden style="position:fixed;top:70px;right:20px;z-index:1000;width:380px;max-width:calc(100vw - 40px);background:#fff;color:#111;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:12px;">
-            <div style="font-weight:800;margin-bottom:6px;">Phân luồng (tên miền đi đường riêng)</div>
-            <label for="splitDomains" class="sub">Mỗi dòng 1 tên miền. <code>*.abc.com</code> = abc.com + mọi tên miền con.</label>
-            <textarea id="splitDomains" rows="14" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px;margin-top:4px;" oninput="this.dataset.dirty='1'"></textarea>
-            <div style="display:flex;align-items:center;gap:6px;margin-top:8px;flex-wrap:wrap;">
-              <label for="splitTarget" style="font-weight:700;">Đi đường</label>
-              <select id="splitTarget" onchange="splitTargetChanged()">
-                <option value="">— chọn —</option>
-                <option value="wan">Mạng chính (WAN)</option>
-                <option value="pppoe">Phiên PPPoE</option>
-                <option value="vpn">VPN</option>
-                <option value="proxy">Proxy nhập tay</option>
-                <option value="block">Chặn</option>
-              </select>
-              <span id="splitPppoeBox" hidden>
-                <label for="splitPppoe" class="sub">số</label>
-                <input id="splitPppoe" type="number" min="1" max="999" style="width:70px;">
-              </span>
-              <span id="splitVpnBox" hidden>
-                <label for="splitVpn" class="sub">tunnel</label>
-                <select id="splitVpn"></select>
-              </span>
-            </div>
-            <div id="splitProxyBox" hidden style="margin-top:6px;">
-              <div style="display:flex;gap:6px;align-items:center;">
-                <label for="splitProxyType" class="sub">Loại</label>
-                <select id="splitProxyType"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select>
-                <label for="splitProxy" class="sub">Proxy</label>
-                <input id="splitProxy" type="text" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;font-family:monospace;font-size:12px;" placeholder="host:port:user:pass hoặc socks5://user:pass@host:port" oninput="this.dataset.dirty='1'">
-              </div>
-              <div id="splitProxyCur" class="sub" style="margin-top:2px;"></div>
-            </div>
-            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
-              <button type="button" class="btn small" onclick="resetSplitDomains()">Mặc định</button>
-              <button type="button" class="btn small" onclick="toggleSplitPanel(false)">Đóng</button>
-              <button type="button" class="btn small" onclick="saveSplit()" style="font-weight:800;">Lưu</button>
-            </div>
           </div>
                   </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap;">
@@ -2566,121 +2517,267 @@
 </script>
 <!-- [Ver 2.94] conn -->
 <style>
-#connPanel{position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 10px}
+#connPanel{position:fixed;inset:0;z-index:2000;background:rgba(30,10,30,.45);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:16px}
 #connPanel[hidden]{display:none}
-#connBox{background:#fff;color:#111;width:860px;max-width:100%;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.35);padding:16px}
-#connBox h3{margin:0;font-size:18px}
-#connBox fieldset{border:1px solid #cbd5e1;border-radius:10px;margin:10px 0;padding:8px 12px}
-#connBox legend{font-weight:800;padding:0 6px}
-#connBox textarea{width:100%;box-sizing:border-box;font-family:monospace;font-size:12px}
-#connBox .cg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
-#connBox .hint{font-size:12px;color:#475569}
-#connBox .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-#connMsg{white-space:pre-wrap;font-size:12px;margin-top:6px}
-@media (max-width:700px){#connBox .cg{grid-template-columns:1fr}}
+#connBox{background:var(--surface);color:var(--text);width:980px;max-width:100%;height:720px;max-height:100%;border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 60px var(--shadow-drop);display:flex;flex-direction:column;overflow:hidden}
+.cn-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line-2);background:var(--surface-hi)}
+.cn-head h3{margin:0;font-size:17px;color:var(--text-head);flex:1}
+.cn-chips{display:flex;gap:6px;flex-wrap:wrap}
+.cn-chip{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--surface-3);border:1px solid var(--line-5);white-space:nowrap}
+.cn-chip.on{background:#16a34a;color:#fff;border-color:#16a34a}
+.cn-x{border:0;background:transparent;font-size:20px;line-height:1;cursor:pointer;color:var(--text-dim);padding:4px 8px;border-radius:8px}
+.cn-x:hover{background:var(--surface-3)}
+.cn-body{flex:1;display:flex;min-height:0}
+.cn-nav{width:210px;flex:none;border-right:1px solid var(--line-2);padding:10px;display:flex;flex-direction:column;gap:4px;background:var(--surface-2);overflow:auto}
+.cn-tab{display:flex;align-items:center;gap:8px;text-align:left;border:1px solid transparent;background:transparent;color:var(--text);padding:9px 10px;border-radius:10px;cursor:pointer;font-weight:700;font-size:13px}
+.cn-tab:hover{background:var(--surface-3)}
+.cn-tab[aria-selected="true"]{background:var(--accent);color:#fff}
+.cn-tab .n{margin-left:auto;font-size:11px;min-width:20px;text-align:center;padding:1px 6px;border-radius:999px;background:var(--surface-hi);color:var(--text)}
+.cn-tab[aria-selected="true"] .n{background:rgba(255,255,255,.25);color:#fff}
+.cn-pane{flex:1;min-height:0;overflow:auto;padding:18px 22px}
+.cn-pane section[hidden]{display:none}
+.cn-pane h4{margin:0 0 4px;font-size:16px;color:var(--text-head)}
+.cn-desc{font-size:12.5px;color:var(--text-dim);margin:0 0 14px;line-height:1.5}
+.cn-card{border:1px solid var(--line-2);border-radius:12px;padding:12px 14px;background:var(--surface-4);margin-bottom:12px}
+.cn-card>label,.cn-lbl{display:block;font-weight:700;font-size:13px;margin-bottom:6px}
+.cn-card textarea,.cn-card input[type=text],.cn-card input[type=number],.cn-card select{box-sizing:border-box;border:1px solid var(--line-3);border-radius:8px;background:var(--surface);color:var(--text);padding:7px 9px;font-size:13px}
+.cn-card textarea{width:100%;font-family:Consolas,monospace;font-size:12.5px;resize:vertical;min-height:90px}
+.cn-meta{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-dim);margin-top:4px}
+.cn-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cn-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cn-sw{display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer}
+.cn-sw b{display:block;font-size:13.5px}
+.cn-sw small{display:block;color:var(--text-dim);font-size:12px;margin-top:2px}
+.cn-sw input{appearance:none;-webkit-appearance:none;flex:none;width:42px;height:24px;border-radius:999px;background:var(--line-3);position:relative;cursor:pointer;transition:background .15s}
+.cn-sw input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.cn-sw input:checked{background:#16a34a}
+.cn-sw input:checked::after{left:21px}
+.cn-sw input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cn-fixed{display:inline-flex;align-items:center;gap:6px;font-family:Consolas,monospace;font-size:12.5px;padding:4px 10px;border-radius:8px;background:var(--surface-hi);border:1px dashed var(--line-3)}
+.cn-foot{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line-2);background:var(--surface-2)}
+#connMsg{flex:1;font-size:12.5px;white-space:pre-wrap;max-height:60px;overflow:auto}
+#connMsg.err{color:#dc2626}
+#connMsg.ok{color:#16a34a}
+#connBox [hidden]{display:none!important}
+.cn-fs label{font-size:12.5px;font-weight:700;color:var(--text-dim)}
+.cn-blk{margin-bottom:18px}
+.cn-blk h5{margin:0 0 4px;font-size:14px;color:var(--text)}
+.cn-notes{margin:0 0 10px;padding-left:18px;font-size:12.5px;color:var(--text-dim);line-height:1.6}
+.cn-notes li::marker{color:var(--accent)}
+.cn-blk textarea,.cn-fs textarea{width:100%;box-sizing:border-box;border:1px solid var(--line-3);border-radius:10px;background:var(--surface-4);color:var(--text);padding:10px 12px;font-family:Consolas,monospace;font-size:13px;line-height:1.55;resize:vertical;min-height:110px}
+.cn-blk textarea::placeholder,.cn-fs textarea::placeholder{color:var(--text-dim);opacity:.85}
+.cn-blk textarea:focus,.cn-fs textarea:focus,.cn-fs select:focus,.cn-fs input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.cn-blk .cn-sw{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;background:var(--surface-4)}
+.cn-fs{border:1px solid var(--line-3);border-radius:10px;padding:6px 12px 10px;margin:0 0 12px;background:var(--surface-4)}
+.cn-fs legend{font-size:12.5px;color:var(--text-dim);padding:0 6px}
+.cn-fs select,.cn-fs input{box-sizing:border-box;border:1px solid var(--line-3);border-radius:8px;background:var(--surface);color:var(--text);padding:7px 9px;font-size:13px}
+.cn-fs textarea{border:0;background:transparent;padding:4px 2px}
+.cn-meta{align-items:center}
+.cn-syntax{font-size:12.5px;line-height:1.7;padding:8px 12px;border-radius:10px;background:var(--surface-hi);border:1px dashed var(--line-3);margin:0 0 16px}
+.cn-pane h4{font-size:16.5px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line-2)}
+@media (max-width:760px){.cn-body{flex-direction:column}.cn-nav{width:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line-2)}.cn-tab{white-space:nowrap}.cn-grid2{grid-template-columns:1fr}}
 </style>
 <div id="connPanel" role="dialog" aria-modal="true" aria-labelledby="connTitle" hidden>
  <div id="connBox">
-  <div class="row" style="justify-content:space-between"><h3 id="connTitle">Cấu hình kết nối</h3>
-   <button type="button" class="btn small" onclick="closeConnPanel()">Đóng</button></div>
-  <div class="hint">Áp cho máy Proxy/PPPoE (gencore) và máy VPN (nft + dnsmasq). Router tự kiểm tra cấu hình, lỗi thì trả lại bản cũ.</div>
-  <fieldset><legend>1. Kết nối internet trực tiếp</legend>
-   <label for="connDirect" class="hint">Mỗi dòng 1 IP. Máy này ra WAN gốc, không qua proxy. Máy đang gán VPN không được chọn.</label>
-   <textarea id="connDirect" rows="3"></textarea>
-  </fieldset>
-  <fieldset><legend>2. Cô lập LAN</legend>
-   <div class="row"><label><input type="checkbox" id="connIso"> Bật cô lập (máy trong LAN không thấy nhau)</label><span id="connIsoState" class="hint"></span></div>
-   <div class="cg" style="grid-template-columns:1fr 1fr;margin-top:6px">
-    <div><label for="connMaster"><b>Máy master</b> <span class="hint">(thấy + điều khiển mọi máy)</span></label>
-     <div class="hint">Luôn có: <code id="connFixedMaster">192.10.1.10</code></div>
-     <textarea id="connMaster" rows="3" placeholder="IP hoặc MAC, mỗi dòng 1"></textarea></div>
-    <div><label for="connAllow"><b>Ngoại lệ</b> <span class="hint">(các máy này thấy nhau)</span></label>
-     <div class="hint">IP hoặc MAC, mỗi dòng 1</div>
-     <textarea id="connAllow" rows="3"></textarea></div>
+  <div class="cn-head">
+   <h3 id="connTitle">Cấu hình kết nối</h3>
+   <div class="cn-chips" id="connChips" aria-live="polite"></div>
+   <button type="button" class="cn-x" onclick="closeConnPanel()" aria-label="Đóng">&times;</button>
+  </div>
+  <div class="cn-body">
+   <div class="cn-nav" role="tablist" aria-orientation="vertical" aria-label="Mục cấu hình">
+    <button type="button" class="cn-tab" role="tab" data-t="direct">Internet trực tiếp<span class="n" id="cnN-direct">0</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="iso">Cô lập LAN<span class="n" id="cnN-iso">tắt</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="master">Máy master<span class="n" id="cnN-master">1</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="udp">UDP &amp; WebRTC<span class="n" id="cnN-udp">-</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="dom">Tên miền / IP<span class="n" id="cnN-dom">0</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="route">Định tuyến cố định<span class="n" id="cnN-route">tắt</span></button>
    </div>
-  </fieldset>
-  <fieldset><legend>3. Chặn UDP qua proxy / VPN</legend>
-   <label><input type="checkbox" id="connUdp"> Chặn UDP (giữ DNS 53, DHCP). Ứng dụng tự chuyển sang TCP.</label>
-  </fieldset>
-  <fieldset><legend>4. WebRTC</legend>
-   <div class="row"><label for="connWebrtc">Chế độ</label>
-    <select id="connWebrtc"><option value="block">Chặn STUN (3478, 5349, 19302–19309)</option><option value="off">Không chặn</option></select></div>
-  </fieldset>
-  <fieldset><legend>5. Tên miền / IP</legend>
-   <div class="hint"><code>*.abc.com</code> = abc.com + tên miền con. Cũng nhận IP hoặc dải <code>1.2.3.0/24</code>.</div>
-   <div class="cg">
-    <div><label for="connBypass"><b>Không qua proxy</b></label><textarea id="connBypass" rows="8"></textarea></div>
-    <div><label for="connBlock"><b>Chặn</b></label><textarea id="connBlock" rows="8"></textarea></div>
-    <div><label for="connFixed"><b>Định tuyến cố định</b> <span class="hint">(đường chết thì chặn)</span></label><textarea id="connFixed" rows="5"></textarea>
-     <div class="row" style="margin-top:4px"><label><input type="checkbox" id="connFixedOn"> Bật</label>
-      <label for="connFixedTarget" class="hint">đi</label>
-      <select id="connFixedTarget"><option value="block">Chặn</option><option value="wan">WAN</option><option value="pppoe">PPPoE</option><option value="vpn">VPN</option><option value="proxy">Proxy</option></select>
-      <input id="connFixedArg" aria-label="Số PPPoE / tên VPN / proxy" placeholder="số / tên / proxy" style="width:120px"></div></div>
+   <div class="cn-pane">
+    <section id="cnS-direct" role="tabpanel" aria-label="Internet trực tiếp">
+     <h4>Thiết bị kết nối internet trực tiếp</h4>
+     <div class="cn-blk"><h5>Danh sách máy không đi qua Proxy/VPN</h5><ul class="cn-notes"><li>Các máy này đi thẳng bằng mạng gốc (WAN), toàn bộ truy cập không qua Proxy / PPPoE.</li><li>Lưu ý: máy đi trực tiếp dùng IP thật của mạng gốc.</li><li>Lưu ý: máy đang gán VPN không thêm được. Gỡ VPN của máy đó trước.</li></ul>
+      <textarea id="connDirect" rows="6" spellcheck="false" aria-label="connDirect" placeholder="Nhập IP máy (mỗi dòng 1 giá trị). Ví dụ:&#10;192.10.1.50&#10;192.10.2.15"></textarea><div class="cn-meta"><span></span><span data-cnt="connDirect"></span></div>
+     </div>
+    </section>
+    <section id="cnS-iso" role="tabpanel" aria-label="Cô lập LAN" hidden>
+     <h4>Cô lập thiết bị trong mạng LAN</h4>
+     <div class="cn-blk"><h5>Bật / tắt cô lập</h5><ul class="cn-notes"><li>Bật: các máy trong LAN không nhìn thấy, không kết nối được với nhau. Vẫn vào router và internet bình thường.</li><li>Máy master luôn thấy và điều khiển được mọi máy (xem mục Máy master).</li></ul>
+      <label class="cn-sw"><span><b>Cô lập LAN</b><small id="connIsoState">-</small></span><input type="checkbox" id="connIso"></label>
+     </div>
+     <div class="cn-blk"><h5>Danh sách ngoại lệ</h5><ul class="cn-notes"><li>Các máy trong danh sách này vẫn thấy nhau khi bật cô lập, nhưng không thấy máy ngoài danh sách.</li><li>Nhập IP hoặc MAC. IP được đổi sang MAC theo DHCP; máy chưa nhận IP sẽ bị bỏ qua.</li></ul>
+      <textarea id="connAllow" rows="5" spellcheck="false" aria-label="connAllow" placeholder="Nhập IP hoặc MAC (mỗi dòng 1 giá trị). Ví dụ:&#10;192.10.1.20&#10;00:e0:4c:68:0d:74"></textarea><div class="cn-meta"><span></span><span data-cnt="connAllow"></span></div>
+     </div>
+    </section>
+    <section id="cnS-master" role="tabpanel" aria-label="Máy master" hidden>
+     <h4>Máy master (máy quản lý)</h4>
+     <div class="cn-blk"><h5>Máy master cố định</h5><ul class="cn-notes"><li>Máy master thấy và điều khiển được mọi máy trong LAN, kể cả khi bật cô lập (XXTE, remote, chia sẻ file).</li><li>Máy này luôn là master, không xoá được.</li></ul>
+      <span class="cn-fixed">&#128274; <span id="connFixedMaster">192.10.1.10</span></span>
+     </div>
+     <div class="cn-blk"><h5>Thêm máy master</h5><ul class="cn-notes"><li>Nhập IP hoặc MAC, tối đa 20 máy.</li><li>Lưu ý: chỉ thêm máy quản lý tin cậy, máy master vào được mọi máy khác.</li></ul>
+      <textarea id="connMaster" rows="4" spellcheck="false" aria-label="connMaster" placeholder="Nhập IP hoặc MAC (mỗi dòng 1 giá trị). Ví dụ:&#10;192.10.1.20&#10;00:e0:4c:68:0d:74"></textarea><div class="cn-meta"><span></span><span data-cnt="connMaster"></span></div>
+     </div>
+    </section>
+    <section id="cnS-udp" role="tabpanel" aria-label="UDP và WebRTC" hidden>
+     <h4>Chặn UDP và WebRTC</h4>
+     <div class="cn-blk"><h5>Chặn UDP</h5><ul class="cn-notes"><li>Chặn mọi kết nối UDP của máy đi Proxy / PPPoE / VPN, trừ DNS (53) và DHCP.</li><li>Trình duyệt và ứng dụng tự chuyển sang TCP (QUIC chuyển về HTTPS).</li><li>Lưu ý: game, gọi thoại / video chạy bằng UDP có thể không hoạt động.</li></ul>
+      <label class="cn-sw"><span><b>Chặn UDP</b></span><input type="checkbox" id="connUdp"></label>
+     </div>
+     <div class="cn-blk"><h5>Chặn WebRTC</h5><ul class="cn-notes"><li>Chặn STUN (cổng 3478, 5349, 19302–19309) để trang web không đọc được IP thật qua WebRTC.</li><li>Lưu ý: gọi video trên trình duyệt (Meet, Messenger web) có thể không kết nối được.</li></ul>
+      <label class="cn-sw"><span><b>Chặn WebRTC</b></span><input type="checkbox" id="connWebrtc"></label>
+     </div>
+     <p class="cn-desc">Thay đổi áp dụng khi bấm Lưu, router chập mạng vài giây.</p>
+    </section>
+    <section id="cnS-dom" role="tabpanel" aria-label="Tên miền / IP" hidden>
+     <h4>Cài đặt chặn hoặc bỏ qua Proxy/VPN cho tên miền/IP</h4>
+     <div class="cn-syntax"><b>Cách ghi:</b> <code>abc.com</code> = đúng tên đó &nbsp;·&nbsp; <code>*.abc.com</code> hoặc <code>sub:abc.com</code> = abc.com và mọi tên miền con &nbsp;·&nbsp; <code>1.2.3.4</code>, <code>1.2.3.0/24</code> = IP / dải IP</div>
+     <div class="cn-blk"><h5>Danh sách các tên miền/IP không đi qua Proxy/VPN</h5><ul class="cn-notes"><li>Các địa chỉ này sẽ kết nối trực tiếp bằng mạng gốc.</li><li>Lưu ý: tên miền nhận theo DNS của router. Máy dùng DNS riêng (DoH, 8.8.8.8 trong app) có thể không khớp.</li></ul>
+      <textarea id="connBypass" rows="5" spellcheck="false" aria-label="connBypass" placeholder="Nhập IP hoặc tên miền (mỗi dòng 1 giá trị). Ví dụ:&#10;104.244.42.1&#10;*.tiktok.com&#10;sub:facebook.com"></textarea><div class="cn-meta"><span></span><span data-cnt="connBypass"></span></div>
+     </div>
+     <div class="cn-blk"><h5>Danh sách các tên miền/IP bị chặn truy cập</h5><ul class="cn-notes"><li>Các tên miền/IP này sẽ bị ngắt kết nối hoàn toàn.</li><li>Áp dụng cho máy đi Proxy, PPPoE, VPN và máy internet trực tiếp.</li><li>Lưu ý: một mục không được nằm ở cả 2 danh sách.</li></ul>
+      <textarea id="connBlock" rows="5" spellcheck="false" aria-label="connBlock" placeholder="Nhập IP hoặc tên miền (mỗi dòng 1 giá trị). Ví dụ:&#10;104.244.42.1&#10;*.tiktok.com&#10;sub:facebook.com"></textarea><div class="cn-meta"><span></span><span data-cnt="connBlock"></span></div>
+     </div>
+    </section>
+    <section id="cnS-route" role="tabpanel" aria-label="Định tuyến cố định" hidden>
+     <h4>Định tuyến riêng cho tên miền qua một đường cố định</h4>
+     <div class="cn-blk"><h5>Bật / tắt</h5><ul class="cn-notes"><li>Tên miền trong danh sách của máy đi Proxy luôn đi qua đường chỉ định bên dưới, bất kể máy đang gán proxy nào.</li><li>Dùng để video, ảnh, CDN không tốn lưu lượng proxy.</li><li>Nếu đường VPN bị lỗi / mất kết nối, các tên miền này tạm đi proxy chính của máy (không lộ IP thật). Phiên PPPoE lỗi thì giữ phiên cũ.</li><li>Máy VPN và máy internet trực tiếp không bị ảnh hưởng.</li></ul>
+      <label class="cn-sw"><span><b>Định tuyến cố định</b><small id="connRouteState">-</small></span><input type="checkbox" id="connFixedOn"></label>
+     </div>
+     <div class="cn-blk">
+      <fieldset class="cn-fs"><legend>Chọn đường đi</legend>
+       <div class="cn-row">
+        <select id="connFixedTarget" aria-label="Chọn đường đi" onchange="connTargetUi()" style="flex:1;min-width:220px">
+         <option value="">-- Chưa chọn (không bật được) --</option><option value="wan">Mạng chính (WAN)</option><option value="pppoe">Phiên PPPoE</option><option value="vpn">VPN</option><option value="proxy">Proxy nhập tay</option><option value="block">Chặn</option></select>
+        <span id="connTgPppoe" hidden><label for="connFixedPppoe">Số phiên</label> <input id="connFixedPppoe" type="number" min="1" max="999" style="width:80px"></span>
+        <span id="connTgVpn" hidden><label for="connFixedVpn">Tunnel</label> <select id="connFixedVpn"></select></span>
+       </div>
+       <div id="connTgProxy" class="cn-row" hidden style="margin-top:8px">
+        <label for="connFixedPxType">Loại</label><select id="connFixedPxType"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select>
+        <input id="connFixedPx" type="text" autocomplete="off" spellcheck="false" aria-label="Proxy" placeholder="host:port:user:pass hoặc socks5://user:pass@host:port" style="flex:1;min-width:220px;font-family:Consolas,monospace">
+        <div id="connFixedPxCur" style="width:100%;font-size:12px;color:var(--text-dim)"></div>
+       </div>
+      </fieldset>
+      <fieldset class="cn-fs"><legend>Danh sách tên miền</legend>
+       <textarea id="connFixed" rows="7" spellcheck="false" aria-label="Danh sách tên miền định tuyến cố định" placeholder="Nhập tên miền (mỗi dòng 1 giá trị). Ví dụ:&#10;*.googlevideo.com&#10;sub:fbcdn.net&#10;dl.google.com"></textarea>
+       <div class="cn-meta"><button type="button" class="btn small" onclick="connFixedDefault()">Dùng danh sách mặc định (video, ảnh, CDN)</button><span data-cnt="connFixed"></span></div>
+      </fieldset>
+     </div>
+    </section>
    </div>
-  </fieldset>
-  <div class="row" style="justify-content:flex-end"><button type="button" class="btn small" onclick="closeConnPanel()">Huỷ</button>
-   <button type="button" class="btn small" id="connSaveBtn" onclick="saveConn()" style="font-weight:800">Lưu &amp; áp dụng</button></div>
-  <div id="connMsg" role="status" aria-live="polite"></div>
+  </div>
+  <div class="cn-foot">
+   <div id="connMsg" role="status" aria-live="polite"></div>
+   <button type="button" class="btn" onclick="closeConnPanel()">Huỷ</button>
+   <button type="button" class="btn apply" id="connSaveBtn" onclick="saveConn()">Lưu &amp; áp dụng</button>
+  </div>
  </div>
 </div>
 <script>
-// [Ver 2.94] Cau hinh ket noi
-let connLast = null, connFocusBack = null;
-const connLines = id => document.getElementById(id).value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
-const connSet = (id, a) => { document.getElementById(id).value = (a || []).join('\n'); };
+// [Ver 2.94] Cau hinh ket noi (gom Chan local + Phan luong cu)
+let connFocusBack = null, connTab = 'direct';
+const $c = id => document.getElementById(id);
+const connLines = id => $c(id).value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+const connSet = (id, a) => { $c(id).value = (a || []).join('\n'); };
+const CONN_DEF_FIXED = ['*.googlevideo.com','*.fbcdn.net','*.tiktokcdn.com','*.ibyteimg.com','*.tiktokcdn-us.com','*.bromite.org','*.ytimg.com','*.ggpht.com','*.gvt1.com','*.gvt2.com','*.googleusercontent.com','*.fonts.gstatic.com','*.gstatic.com','*.googleapis.com','*.googlezip.net','*.cdn-apple.com','*.apple.com','*.icloud.com','*.byteeffecttos-g.com','dl.google.com','downloadwa.b-cdn.net','*.azureedge.net','www.gstatic.com'];
+function connMsg(t, cls) { const m = $c('connMsg'); m.textContent = t; m.className = cls || ''; }
+function connShowTab(t, focus) {
+  connTab = t;
+  document.querySelectorAll('#connBox .cn-tab').forEach(b => { const on = b.dataset.t === t; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; if (on && focus) b.focus(); });
+  document.querySelectorAll('#connBox .cn-pane section').forEach(s => { s.hidden = s.id !== 'cnS-' + t; });
+}
+function connRefresh() {
+  document.querySelectorAll('#connBox [data-cnt]').forEach(s => { s.textContent = connLines(s.dataset.cnt).length + ' mục'; });
+  const n = (id, v) => { $c(id).textContent = v; };
+  n('cnN-direct', connLines('connDirect').length);
+  n('cnN-iso', $c('connIso').checked ? 'bật' : 'tắt');
+  n('cnN-master', 1 + connLines('connMaster').length);
+  n('cnN-udp', [$c('connUdp').checked && 'UDP', $c('connWebrtc').checked && 'RTC'].filter(Boolean).join('+') || 'tắt');
+  n('cnN-dom', connLines('connBypass').length + connLines('connBlock').length);
+  n('cnN-route', $c('connFixedOn').checked ? 'bật' : 'tắt');
+  const chip = (t, on) => `<span class="cn-chip${on ? ' on' : ''}">${esc(t)}</span>`;
+  $c('connChips').innerHTML = chip('Cô lập ' + ($c('connIso').checked ? 'bật' : 'tắt'), $c('connIso').checked)
+    + chip('UDP ' + ($c('connUdp').checked ? 'chặn' : 'mở'), $c('connUdp').checked)
+    + chip('WebRTC ' + ($c('connWebrtc').checked ? 'chặn' : 'mở'), $c('connWebrtc').checked)
+    + chip('Định tuyến ' + ($c('connFixedOn').checked ? 'bật' : 'tắt'), $c('connFixedOn').checked);
+}
+function connTargetUi() {
+  const v = $c('connFixedTarget').value;
+  $c('connTgPppoe').hidden = v !== 'pppoe'; $c('connTgVpn').hidden = v !== 'vpn'; $c('connTgProxy').hidden = v !== 'proxy';
+}
+function connFixedDefault() { connSet('connFixed', CONN_DEF_FIXED); connRefresh(); }
 async function openConnPanel() {
   connFocusBack = document.activeElement;
-  const p = document.getElementById('connPanel'); p.hidden = false;
-  const msg = document.getElementById('connMsg'); msg.textContent = 'Đang tải...';
+  $c('connPanel').hidden = false; connShowTab(connTab, true);
+  connMsg('Đang tải...');
   try {
     const r = await fetchJSON('/api/pm/conn');
     if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
-    connLast = r; const c = r.conn || {};
+    const c = r.conn || {};
     connSet('connDirect', c.direct); connSet('connMaster', c.iso_master); connSet('connAllow', c.iso_allow);
     connSet('connBypass', c.bypass); connSet('connBlock', c.block);
-    document.getElementById('connFixedMaster').textContent = r.fixed_master || '192.10.1.10';
-    document.getElementById('connUdp').checked = !!c.udp_block;
-    document.getElementById('connWebrtc').value = c.webrtc || 'block';
-    const iso = String(r.isolate || ''); document.getElementById('connIso').checked = /mode=two-way/.test(iso);
-    document.getElementById('connIsoState').textContent = iso;
-    const sp = r.split || {}; connSet('connFixed', sp.domains);
-    document.getElementById('connFixedOn').checked = !!sp.enabled;
-    const t = String(sp.target || ''), sel = document.getElementById('connFixedTarget'), arg = document.getElementById('connFixedArg');
-    sel.value = t.startsWith('pppoe:') ? 'pppoe' : t.startsWith('vpn:') ? 'vpn' : (['wan','proxy','block'].includes(t) ? t : 'block');
-    arg.value = t.includes(':') ? t.split(':').slice(1).join(':') : '';
-    arg.placeholder = sp.proxy ? ('đang lưu: ' + sp.proxy) : 'số / tên / proxy';
-    msg.textContent = 'Máy VPN hiện có: ' + (r.vpn_ips || []).length;
-    document.getElementById('connDirect').focus();
-  } catch (e) { msg.textContent = 'Không tải được: ' + e.message + ' (cập nhật lên 2.94?)'; }
+    $c('connFixedMaster').textContent = r.fixed_master || '192.10.1.10';
+    $c('connUdp').checked = !!c.udp_block; $c('connWebrtc').checked = c.webrtc !== 'off';
+    const iso = String(r.isolate || ''), mode = (iso.match(/mode=(\S+)/) || [])[1] || '', l2 = (iso.match(/l2_bridge=(\S+)/) || [])[1] || '';
+    $c('connIso').checked = mode === 'two-way';
+    $c('connIsoState').textContent = mode === 'two-way' ? (l2 === 'yes' ? 'Đang chặn' : 'Đang chặn (chưa nạp, tự sửa trong 1 phút)') : mode === 'off' ? 'Đang tắt, máy trong LAN thấy nhau' : 'Không rõ trạng thái';
+    const sp = r.split || {}, t = String(sp.target || '');
+    connSet('connFixed', sp.domains); $c('connFixedOn').checked = !!sp.enabled;
+    const vpn = t.startsWith('vpn:') ? t.slice(4) : '';
+    const vs = (sp.vpns || []).slice(); if (vpn && !vs.some(v => v.name === vpn)) vs.push({ name: vpn, dev: '?', running: false });
+    $c('connFixedVpn').innerHTML = vs.length ? vs.map(v => `<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.dev)}${v.running ? '' : ', đang tắt'})</option>`).join('') : '<option value="">chưa có VPN</option>';
+    if (vpn) $c('connFixedVpn').value = vpn;
+    $c('connFixedTarget').value = t.startsWith('pppoe:') ? 'pppoe' : vpn ? 'vpn' : (['wan', 'proxy', 'block'].includes(t) ? t : '');
+    if (t.startsWith('pppoe:')) $c('connFixedPppoe').value = t.slice(6);
+    if (sp.proxy_type) $c('connFixedPxType').value = sp.proxy_type;
+    $c('connFixedPx').value = '';
+    $c('connFixedPxCur').textContent = sp.proxy ? ('Đang lưu: ' + sp.proxy + '. Để trống nếu không đổi.') : '';
+    const tl = t === 'block' ? 'chặn' : t === 'wan' ? 'mạng chính' : t === 'proxy' ? 'proxy' : vpn ? 'VPN ' + vpn : t.startsWith('pppoe:') ? 'PPPoE #' + t.slice(6) : 'chưa chọn đường';
+    $c('connRouteState').textContent = (sp.enabled ? 'Đang bật: ' : 'Đang tắt. Đường: ') + tl + (sp.enabled ? ', ' + (sp.applied || 0) + ' máy' : '');
+    connTargetUi(); connRefresh();
+    connMsg((r.vpn_ips || []).length + ' máy đang gán VPN.');
+  } catch (e) { connMsg('Không tải được: ' + e.message, 'err'); }
 }
-function closeConnPanel() {
-  document.getElementById('connPanel').hidden = true;
-  if (connFocusBack && connFocusBack.focus) connFocusBack.focus();
+function closeConnPanel() { $c('connPanel').hidden = true; if (connFocusBack && connFocusBack.focus) connFocusBack.focus(); }
+function connTarget() {
+  const v = $c('connFixedTarget').value;
+  if (v === 'pppoe') { const n = parseInt($c('connFixedPppoe').value, 10); return n >= 1 ? 'pppoe:' + n : ''; }
+  if (v === 'vpn') { const n = $c('connFixedVpn').value; return n ? 'vpn:' + n : ''; }
+  return v;
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('connPanel').hidden) closeConnPanel(); });
 async function saveConn() {
-  const msg = document.getElementById('connMsg'), btn = document.getElementById('connSaveBtn');
-  const tsel = document.getElementById('connFixedTarget').value, targ = document.getElementById('connFixedArg').value.trim();
-  const split = { enabled: document.getElementById('connFixedOn').checked, domains: connLines('connFixed') };
-  if (tsel === 'pppoe' || tsel === 'vpn') { if (targ) split.target = tsel + ':' + targ; }
-  else { split.target = tsel; if (tsel === 'proxy' && targ && !/^đang lưu/.test(targ)) split.proxy = targ; }
-  const body = {
-    direct: connLines('connDirect'), iso_master: connLines('connMaster'), iso_allow: connLines('connAllow'),
-    udp_block: document.getElementById('connUdp').checked, webrtc: document.getElementById('connWebrtc').value,
-    bypass: connLines('connBypass'), block: connLines('connBlock'),
-    isolate: document.getElementById('connIso').checked ? 'two-way' : 'off', split
-  };
-  btn.disabled = true; msg.textContent = 'Đang áp dụng...';
+  const split = { enabled: $c('connFixedOn').checked, domains: $c('connFixed').value, target: connTarget() };
+  if (split.enabled && !split.target) { connShowTab('route', true); return connMsg('Chọn đường đi cho Định tuyến cố định', 'err'); }
+  if (split.target === 'proxy' && $c('connFixedPx').value.trim()) { split.proxy = $c('connFixedPx').value.trim(); split.proxy_type = $c('connFixedPxType').value; }
+  const iso = $c('connIso').checked;
+  if (!iso && !confirm('Tắt cô lập LAN? Các máy trong LAN sẽ thấy nhau.')) return;
+  if (!confirm('Lưu cấu hình kết nối?\nRouter có thể chập mạng vài giây.')) return;
+  const body = { direct: connLines('connDirect'), iso_master: connLines('connMaster'), iso_allow: connLines('connAllow'),
+    udp_block: $c('connUdp').checked, webrtc: $c('connWebrtc').checked ? 'block' : 'off',
+    bypass: connLines('connBypass'), block: connLines('connBlock'), isolate: iso ? 'two-way' : 'off', split };
+  const btn = $c('connSaveBtn'); btn.disabled = true; connMsg('Đang áp dụng...');
   try {
     const r = await fetchJSON('/api/pm/conn', { method: 'POST', body: JSON.stringify(body) });
     if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi không rõ');
-    const lines = (r.results || []).map(x => (x.ok ? 'OK  ' : 'LỖI ') + x.cmd + (x.out ? ': ' + x.out : ''));
-    msg.textContent = 'Đã lưu' + (r.restarted ? ', gencore khởi động lại vài giây' : '') + '.\n' + lines.join('\n');
-    if (typeof loadIsolate === 'function') loadIsolate();
-    if (typeof loadSplit === 'function') loadSplit();
-  } catch (e) { msg.textContent = 'Lỗi: ' + e.message; }
+    const bad = (r.results || []).filter(x => !x.ok);
+    connMsg(bad.length ? 'Lưu xong, có lỗi: ' + bad.map(x => x.cmd + ': ' + (x.out || '')).join(' | ') : 'Đã lưu' + (r.restarted ? ', gencore khởi động lại vài giây.' : '.'), bad.length ? 'err' : 'ok');
+    setStatus('Đã lưu cấu hình kết nối');
+  } catch (e) { connMsg('Lỗi: ' + e.message, 'err'); }
   finally { btn.disabled = false; }
 }
+(function () {
+  // modal nam trong khung co transform/filter => position:fixed bi lech; dua thang ra body
+  document.body.appendChild($c('connPanel'));
+  const box = $c('connBox');
+  box.querySelectorAll('.cn-tab').forEach(b => b.addEventListener('click', () => connShowTab(b.dataset.t)));
+  box.querySelector('.cn-nav').addEventListener('keydown', e => {
+    const tabs = [...box.querySelectorAll('.cn-tab')], i = tabs.findIndex(b => b.dataset.t === connTab);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); connShowTab(tabs[(i + 1) % tabs.length].dataset.t, true); }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); connShowTab(tabs[(i + tabs.length - 1) % tabs.length].dataset.t, true); }
+  });
+  box.addEventListener('input', connRefresh); box.addEventListener('change', connRefresh);
+  $c('connPanel').addEventListener('mousedown', e => { if (e.target.id === 'connPanel') closeConnPanel(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$c('connPanel').hidden) closeConnPanel(); });
+})();
 </script>
 </body>
 </html>
