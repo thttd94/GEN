@@ -1,3 +1,12 @@
+## Ver 2.94 (2026-10-26) - Cau hinh ket noi + may master + ExpressVPN chon location
+
+- GUI 9001: menu Cau hinh > `Cau hinh ket noi` (5 muc): internet truc tiep theo IP (may VPN bi chan chon), co lap LAN + ngoai le + may master, chan UDP (giu 53/DHCP), WebRTC chan STUN 3478/5349/19302-19309, ten mien/IP 3 danh sach (khong qua proxy / chan / dinh tuyen co dinh = Phan luong 2.93). API `GET/POST /api/pm/conn`, log `CONN`.
+- May master: `192.10.1.10` khoa cung, them qua GUI. nft `bridge client_isolate` co set `master` (accept saddr/daddr) va `allow` (chi noi voi nhau). IP tu tra MAC (leases/ARP/DHCP static). `nft -c` truoc khi thay bang.
+- May proxy/PPPoE: rule gencore chen truoc proxy_*/split (block > bypass > direct). Direct 1 rule/IP dang chuoi de tproxy + killswitch awk thay.
+- May VPN: `tools/gen_conn_vpn.sh` -> nft `inet gen_conn` (set vpn_clients tu map.txt, bypass fwmark 0x4d5 -> main prio 80, block/STUN/UDP o forward) + dnsmasq nftset `/tmp/dnsmasq.d/gen_conn.conf`. Thread `conn-watch` 20s chay lai khi map.txt doi / sau boot.
+- /vpn: nhap `user|pass|key`, chon tai khoan, tim quoc gia/thanh pho/host (160 location), Lam moi = ping, UDP/TCP, ID cau hinh (ten `xv-<ID>`), tu khoi dong, bat ngay. Key chi luu doi chieu, KHONG kich hoat.
+- ExpressVPN template manual moi (`tools/express_template.ovpn`, cau hinh cong khai: SHA512, fragment 1300, CA3 + CA cu). Da thu tren Gen10: VERIFY OK + Peer Connection Initiated (user gia => AUTH_FAILED dung).
+- Da thu: py_compile, mock ensure_conn_rules (idempotent, tat = tra nguyen ban), genrunner check rc=0 tren ban copy /tmp Gen10, dry-run nft client-isolate + gen_conn tren Gen10 (khong nap).
 ## Ver 2.93 (2026-10-25) - Phan luong: chon moi duong ra internet
 
 - Duong tach them: `Mang chinh (WAN)` (direct, bang main), `VPN <ten>` (bind_interface vao tunN/wgN cua vpn_mgr), `Proxy nhap tay` (socks5/http; nhan `host:port:user:pass`, `host:port`, `socks5://user:pass@host:port`, `http://...`; pass co '@' lay toi '@' cuoi). PPPoE va Chan giu nguyen.

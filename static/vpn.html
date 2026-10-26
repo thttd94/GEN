@@ -75,15 +75,28 @@
   </div>
 
   <div class="row">
-    <div class="card">
-      <h2><span class="h-ico h-ico-green">➕</span>Thêm ExpressVPN (không cần tải file)</h2>
-      <label>Tên tài khoản</label><input id="ex-name" placeholder="express-singapore" style="width:100%">
-      <label>Location / hostname</label><input id="ex-host" list="hostlist" placeholder="singapore-cbd-ca-version-2.expressnetw.com" style="width:100%">
-      <datalist id="hostlist"></datalist>
-      <label>Username (Manual Config)</label><input id="ex-user" autocomplete="off" style="width:100%">
-      <label>Password</label><input id="ex-pass" type="password" autocomplete="new-password" style="width:100%">
-      <div style="margin-top:10px"><button class="ok" onclick="addExpress()">Thêm tài khoản</button></div>
-      <div class="muted" style="margin-top:6px">User/pass lấy trên expressvpn.com → Set Up Other Devices → Manual Configuration.</div>
+    <div class="card"><!-- [Ver 2.94] xv -->
+      <h2><span class="h-ico h-ico-green">&#10003;</span>Thêm ExpressVPN</h2>
+      <label for="xv-cred">Tài khoản <span class="muted">(user|pass|key, mỗi dòng 1 tài khoản)</span></label>
+      <textarea id="xv-cred" rows="2" autocomplete="off" spellcheck="false" placeholder="user|pass|key" style="width:100%"></textarea>
+      <label for="xv-acc">Chọn tài khoản</label>
+      <select id="xv-acc" style="width:100%"></select>
+      <label for="xv-q">Tìm quốc gia / thành phố / host</label>
+      <div style="display:flex;gap:6px"><input id="xv-q" placeholder="vd: japan, tokyo, singapore" style="flex:1">
+        <button type="button" onclick="xvPingVisible()" title="Ping các location đang hiện (tối đa 12)">Làm mới</button></div>
+      <label for="xv-loc">Location <span class="muted" id="xv-count"></span></label>
+      <select id="xv-loc" size="7" style="width:100%"></select>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px">
+        <span>Giao thức</span>
+        <label><input type="radio" name="xv-proto" value="udp" checked> UDP</label>
+        <label><input type="radio" name="xv-proto" value="tcp"> TCP</label>
+        <label for="xv-id">ID cấu hình</label><input id="xv-id" type="number" min="1" max="999" style="width:70px">
+        <label><input type="checkbox" id="xv-auto" checked> Tự khởi động</label>
+        <label><input type="checkbox" id="xv-up" checked> Bật ngay</label>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px"><button class="ok" type="button" onclick="addExpress()">Thêm</button>
+        <button type="button" onclick="xvPingSel()">Ping location</button></div>
+      <div class="muted" id="xv-info" role="status" aria-live="polite" style="margin-top:6px">User/pass lấy ở ExpressVPN &gt; Manual Configuration. Key chỉ lưu để đối chiếu.</div>
     </div>
 
     <div class="card">
@@ -225,12 +238,63 @@ async function unassign() {
   if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return log('IP không hợp lệ');
   await act('unassign', {ip});
 }
-async function addExpress() {
-  const d = id => document.getElementById(id).value.trim();
-  const name=d('ex-name'), host=d('ex-host'), username=d('ex-user'), password=document.getElementById('ex-pass').value;
-  if (!name || !host || !username) return log('nhập đủ tên/host/username');
-  await act('add-express', {name, host, username, password});
+// [Ver 2.94] xv: chon tai khoan + location ExpressVPN
+let XV_HOSTS = [], XV_PING = {};
+function xvAccounts() {
+  return document.getElementById('xv-cred').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(s => {
+    const p = s.split('|'); return { user: (p[0] || '').trim(), pass: (p[1] || '').trim(), key: (p[2] || '').trim() };
+  }).filter(a => a.user && a.pass);
 }
+function xvRenderAcc() {
+  const sel = document.getElementById('xv-acc'), cur = sel.value, a = xvAccounts();
+  sel.innerHTML = a.length ? a.map((x, i) => `<option value="${i}">${esc(x.user)}${x.key ? ' (key ' + esc(x.key.slice(0, 8)) + ')' : ''}</option>`).join('')
+                           : '<option value="">- nhập user|pass|key ở trên -</option>';
+  if (cur && cur < a.length) sel.value = cur;
+}
+function xvLabel(h) { return (h.country || '?') + (h.city ? ' - ' + h.city : '') ; }
+function xvRenderLoc() {
+  const q = document.getElementById('xv-q').value.trim().toLowerCase(), sel = document.getElementById('xv-loc'), cur = sel.value;
+  const list = XV_HOSTS.filter(h => !q || (h.country + ' ' + h.city + ' ' + h.host).toLowerCase().includes(q));
+  sel.innerHTML = list.map(h => {
+    const pg = XV_PING[h.host]; const t = pg === undefined ? '' : pg === null ? '  [chết]' : '  [' + pg + ' ms]';
+    return `<option value="${esc(h.host)}">${esc(xvLabel(h) + '  ·  ' + h.host.replace('-ca-version-2.expressnetw.com', '') + t)}</option>`;
+  }).join('');
+  if (cur) sel.value = cur;
+  document.getElementById('xv-count').textContent = '(' + list.length + '/' + XV_HOSTS.length + ')';
+}
+async function xvPing(host) {
+  try { const r = await api('ping-host', { name: 'x', host }); XV_PING[host] = r && r.ok ? (r.ms ?? '?') : null; }
+  catch (e) { XV_PING[host] = null; }
+}
+async function xvPingSel() {
+  const h = document.getElementById('xv-loc').value; if (!h) return log('chọn location trước');
+  await xvPing(h); xvRenderLoc(); log('ping ' + h + ': ' + (XV_PING[h] === null ? 'không phản hồi' : XV_PING[h] + ' ms'));
+}
+async function xvPingVisible() {
+  const opts = [...document.getElementById('xv-loc').options].slice(0, 12).map(o => o.value);
+  document.getElementById('xv-info').textContent = 'Đang ping ' + opts.length + ' location...';
+  await Promise.all(opts.map(xvPing)); xvRenderLoc();
+  document.getElementById('xv-info').textContent = 'Đã ping ' + opts.length + ' location. Location chết không thêm được.';
+}
+function xvNextId() {
+  const used = new Set([...document.querySelectorAll('#tb tr')].map(r => (r.textContent.match(/\bxv-(\d+)\b/) || [])[1]).filter(Boolean).map(Number));
+  let i = 1; while (used.has(i)) i++; return i;
+}
+async function addExpress() {
+  const a = xvAccounts()[parseInt(document.getElementById('xv-acc').value, 10)];
+  const host = document.getElementById('xv-loc').value;
+  if (!a) return log('nhập tài khoản dạng user|pass|key rồi chọn');
+  if (!host) return log('chọn location');
+  if (XV_PING[host] === null && !confirm('Location này vừa ping không phản hồi. Vẫn thêm?')) return;
+  let id = parseInt(document.getElementById('xv-id').value, 10);
+  if (!(id >= 1 && id <= 999)) { id = xvNextId(); document.getElementById('xv-id').value = id; }
+  const proto = (document.querySelector('input[name="xv-proto"]:checked') || {}).value || 'udp';
+  await act('add-express', { name: 'xv-' + id, host, username: a.user, password: a.pass, key: a.key, proto,
+    autostart: document.getElementById('xv-auto').checked ? '1' : '0', up: document.getElementById('xv-up').checked ? '1' : '0' });
+  document.getElementById('xv-id').value = '';
+}
+document.getElementById('xv-cred').addEventListener('input', xvRenderAcc);
+document.getElementById('xv-q').addEventListener('input', xvRenderLoc);
 async function addOpenvpn() {
   const name = document.getElementById('ov-name').value.trim();
   const ovpn_text = document.getElementById('ov-text').value;
@@ -413,7 +477,7 @@ async function unassignAll(name) {
 (async () => {
   try {
     const h = await (await fetch('/api/vpn/express-hosts')).json();
-    document.getElementById('hostlist').innerHTML = (h.hosts||[]).map(x=>`<option value="${esc(x)}">`).join('');
+    XV_HOSTS = (h.hosts||[]).map(x => typeof x === 'string' ? {country:'', city:'', host:x} : x); xvRenderLoc(); xvRenderAcc();
   } catch(e){}
   refresh();
   setInterval(refresh, 5000);

@@ -267,6 +267,7 @@
             <button type="button" role="menuitem" class="cfg-item" onclick="cfgMenuRun(openIpMacConfig)"><span class="cfg-ico" style="background:#0ea5e9">IP</span><span><b>Gán IP</b><small>IP tĩnh theo số máy / MAC</small></span></button>
             <button type="button" role="menuitem" class="cfg-item" onclick="cfgMenuRun(openMacAssignPage)"><span class="cfg-ico" style="background:#8b5cf6">MAC</span><span><b>Gán MAC</b><small>Gán MAC cho từng máy</small></span></button>
             <button type="button" role="menuitem" class="cfg-item" onclick="cfgMenuRun(openSetupRouter)"><span class="cfg-ico" style="background:#f59e0b">⚒</span><span><b>Setup router</b><small>LAN IP, cổng, cài đặt router</small></span></button>
+            <button type="button" role="menuitem" class="cfg-item" onclick="cfgMenuRun(openConnPanel)"><span class="cfg-ico" style="background:#10b981">&#8644;</span><span><b>Cấu hình kết nối</b><small>Trực tiếp, cô lập LAN, máy master, UDP, WebRTC, tên miền</small></span></button>
             <div class="cfg-sep" role="separator"></div>
             <button type="button" role="menuitem" class="cfg-item danger" onclick="cfgMenuRun(confirmRebootRouter)"><span class="cfg-ico" style="background:#ef4444">⏻</span><span><b>Reboot router</b><small>Khởi động lại, mất mạng ~1–2 phút</small></span></button>
           </div>
@@ -2562,6 +2563,124 @@
   tick();
   setInterval(tick, 5000);
 })();
+</script>
+<!-- [Ver 2.94] conn -->
+<style>
+#connPanel{position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 10px}
+#connPanel[hidden]{display:none}
+#connBox{background:#fff;color:#111;width:860px;max-width:100%;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,.35);padding:16px}
+#connBox h3{margin:0;font-size:18px}
+#connBox fieldset{border:1px solid #cbd5e1;border-radius:10px;margin:10px 0;padding:8px 12px}
+#connBox legend{font-weight:800;padding:0 6px}
+#connBox textarea{width:100%;box-sizing:border-box;font-family:monospace;font-size:12px}
+#connBox .cg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+#connBox .hint{font-size:12px;color:#475569}
+#connBox .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#connMsg{white-space:pre-wrap;font-size:12px;margin-top:6px}
+@media (max-width:700px){#connBox .cg{grid-template-columns:1fr}}
+</style>
+<div id="connPanel" role="dialog" aria-modal="true" aria-labelledby="connTitle" hidden>
+ <div id="connBox">
+  <div class="row" style="justify-content:space-between"><h3 id="connTitle">Cấu hình kết nối</h3>
+   <button type="button" class="btn small" onclick="closeConnPanel()">Đóng</button></div>
+  <div class="hint">Áp cho máy Proxy/PPPoE (gencore) và máy VPN (nft + dnsmasq). Router tự kiểm tra cấu hình, lỗi thì trả lại bản cũ.</div>
+  <fieldset><legend>1. Kết nối internet trực tiếp</legend>
+   <label for="connDirect" class="hint">Mỗi dòng 1 IP. Máy này ra WAN gốc, không qua proxy. Máy đang gán VPN không được chọn.</label>
+   <textarea id="connDirect" rows="3"></textarea>
+  </fieldset>
+  <fieldset><legend>2. Cô lập LAN</legend>
+   <div class="row"><label><input type="checkbox" id="connIso"> Bật cô lập (máy trong LAN không thấy nhau)</label><span id="connIsoState" class="hint"></span></div>
+   <div class="cg" style="grid-template-columns:1fr 1fr;margin-top:6px">
+    <div><label for="connMaster"><b>Máy master</b> <span class="hint">(thấy + điều khiển mọi máy)</span></label>
+     <div class="hint">Luôn có: <code id="connFixedMaster">192.10.1.10</code></div>
+     <textarea id="connMaster" rows="3" placeholder="IP hoặc MAC, mỗi dòng 1"></textarea></div>
+    <div><label for="connAllow"><b>Ngoại lệ</b> <span class="hint">(các máy này thấy nhau)</span></label>
+     <div class="hint">IP hoặc MAC, mỗi dòng 1</div>
+     <textarea id="connAllow" rows="3"></textarea></div>
+   </div>
+  </fieldset>
+  <fieldset><legend>3. Chặn UDP qua proxy / VPN</legend>
+   <label><input type="checkbox" id="connUdp"> Chặn UDP (giữ DNS 53, DHCP). Ứng dụng tự chuyển sang TCP.</label>
+  </fieldset>
+  <fieldset><legend>4. WebRTC</legend>
+   <div class="row"><label for="connWebrtc">Chế độ</label>
+    <select id="connWebrtc"><option value="block">Chặn STUN (3478, 5349, 19302–19309)</option><option value="off">Không chặn</option></select></div>
+  </fieldset>
+  <fieldset><legend>5. Tên miền / IP</legend>
+   <div class="hint"><code>*.abc.com</code> = abc.com + tên miền con. Cũng nhận IP hoặc dải <code>1.2.3.0/24</code>.</div>
+   <div class="cg">
+    <div><label for="connBypass"><b>Không qua proxy</b></label><textarea id="connBypass" rows="8"></textarea></div>
+    <div><label for="connBlock"><b>Chặn</b></label><textarea id="connBlock" rows="8"></textarea></div>
+    <div><label for="connFixed"><b>Định tuyến cố định</b> <span class="hint">(đường chết thì chặn)</span></label><textarea id="connFixed" rows="5"></textarea>
+     <div class="row" style="margin-top:4px"><label><input type="checkbox" id="connFixedOn"> Bật</label>
+      <label for="connFixedTarget" class="hint">đi</label>
+      <select id="connFixedTarget"><option value="block">Chặn</option><option value="wan">WAN</option><option value="pppoe">PPPoE</option><option value="vpn">VPN</option><option value="proxy">Proxy</option></select>
+      <input id="connFixedArg" aria-label="Số PPPoE / tên VPN / proxy" placeholder="số / tên / proxy" style="width:120px"></div></div>
+   </div>
+  </fieldset>
+  <div class="row" style="justify-content:flex-end"><button type="button" class="btn small" onclick="closeConnPanel()">Huỷ</button>
+   <button type="button" class="btn small" id="connSaveBtn" onclick="saveConn()" style="font-weight:800">Lưu &amp; áp dụng</button></div>
+  <div id="connMsg" role="status" aria-live="polite"></div>
+ </div>
+</div>
+<script>
+// [Ver 2.94] Cau hinh ket noi
+let connLast = null, connFocusBack = null;
+const connLines = id => document.getElementById(id).value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+const connSet = (id, a) => { document.getElementById(id).value = (a || []).join('\n'); };
+async function openConnPanel() {
+  connFocusBack = document.activeElement;
+  const p = document.getElementById('connPanel'); p.hidden = false;
+  const msg = document.getElementById('connMsg'); msg.textContent = 'Đang tải...';
+  try {
+    const r = await fetchJSON('/api/pm/conn');
+    if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
+    connLast = r; const c = r.conn || {};
+    connSet('connDirect', c.direct); connSet('connMaster', c.iso_master); connSet('connAllow', c.iso_allow);
+    connSet('connBypass', c.bypass); connSet('connBlock', c.block);
+    document.getElementById('connFixedMaster').textContent = r.fixed_master || '192.10.1.10';
+    document.getElementById('connUdp').checked = !!c.udp_block;
+    document.getElementById('connWebrtc').value = c.webrtc || 'block';
+    const iso = String(r.isolate || ''); document.getElementById('connIso').checked = /mode=two-way/.test(iso);
+    document.getElementById('connIsoState').textContent = iso;
+    const sp = r.split || {}; connSet('connFixed', sp.domains);
+    document.getElementById('connFixedOn').checked = !!sp.enabled;
+    const t = String(sp.target || ''), sel = document.getElementById('connFixedTarget'), arg = document.getElementById('connFixedArg');
+    sel.value = t.startsWith('pppoe:') ? 'pppoe' : t.startsWith('vpn:') ? 'vpn' : (['wan','proxy','block'].includes(t) ? t : 'block');
+    arg.value = t.includes(':') ? t.split(':').slice(1).join(':') : '';
+    arg.placeholder = sp.proxy ? ('đang lưu: ' + sp.proxy) : 'số / tên / proxy';
+    msg.textContent = 'Máy VPN hiện có: ' + (r.vpn_ips || []).length;
+    document.getElementById('connDirect').focus();
+  } catch (e) { msg.textContent = 'Không tải được: ' + e.message + ' (cập nhật lên 2.94?)'; }
+}
+function closeConnPanel() {
+  document.getElementById('connPanel').hidden = true;
+  if (connFocusBack && connFocusBack.focus) connFocusBack.focus();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.getElementById('connPanel').hidden) closeConnPanel(); });
+async function saveConn() {
+  const msg = document.getElementById('connMsg'), btn = document.getElementById('connSaveBtn');
+  const tsel = document.getElementById('connFixedTarget').value, targ = document.getElementById('connFixedArg').value.trim();
+  const split = { enabled: document.getElementById('connFixedOn').checked, domains: connLines('connFixed') };
+  if (tsel === 'pppoe' || tsel === 'vpn') { if (targ) split.target = tsel + ':' + targ; }
+  else { split.target = tsel; if (tsel === 'proxy' && targ && !/^đang lưu/.test(targ)) split.proxy = targ; }
+  const body = {
+    direct: connLines('connDirect'), iso_master: connLines('connMaster'), iso_allow: connLines('connAllow'),
+    udp_block: document.getElementById('connUdp').checked, webrtc: document.getElementById('connWebrtc').value,
+    bypass: connLines('connBypass'), block: connLines('connBlock'),
+    isolate: document.getElementById('connIso').checked ? 'two-way' : 'off', split
+  };
+  btn.disabled = true; msg.textContent = 'Đang áp dụng...';
+  try {
+    const r = await fetchJSON('/api/pm/conn', { method: 'POST', body: JSON.stringify(body) });
+    if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi không rõ');
+    const lines = (r.results || []).map(x => (x.ok ? 'OK  ' : 'LỖI ') + x.cmd + (x.out ? ': ' + x.out : ''));
+    msg.textContent = 'Đã lưu' + (r.restarted ? ', gencore khởi động lại vài giây' : '') + '.\n' + lines.join('\n');
+    if (typeof loadIsolate === 'function') loadIsolate();
+    if (typeof loadSplit === 'function') loadSplit();
+  } catch (e) { msg.textContent = 'Lỗi: ' + e.message; }
+  finally { btn.disabled = false; }
+}
 </script>
 </body>
 </html>

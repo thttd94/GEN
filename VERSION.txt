@@ -1,1 +1,1 @@
-Ver 2.93 (Phan luong: duong tach chon WAN / PPPoE / VPN / Proxy socks5-http nhap tay / Chan)
+Ver 2.94 (Cau hinh ket noi: truc tiep / co lap LAN + may master / chan UDP / WebRTC / ten mien; trang /vpn ExpressVPN chon location)

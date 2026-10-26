@@ -2739,6 +2739,330 @@ def split_watch_loop():
             except Exception:
                 pass
 
+# ===================== [Ver 2.94] CAU HINH KET NOI =====================
+# __meta__.conn = {
+#   direct: [IP]            may ra WAN truc tiep (khong proxy/VPN)
+#   iso_allow: [IP|MAC]     ngoai le co lap LAN (noi chuyen voi nhau)
+#   iso_master: [IP|MAC]    may master them (192.10.1.10 luon co)
+#   udp_block: bool         chan UDP may proxy/VPN (giu DNS 53)
+#   webrtc: 'block'|'off'   chan STUN (3478, 5349, 19302-19309)
+#   bypass: [ten mien|IP]   khong qua proxy (ra WAN)
+#   block:  [ten mien|IP]   chan han
+#   fixed: ten mien/IP di duong co dinh = split cu (target/proxy giu trong __meta__.split)
+# }
+CONN_FIXED_MASTER = '192.10.1.10'
+CONN_BYPASS_TAG = 'gen_bypass'
+CONN_DIRECT_TAG = 'direct'
+ISO_MASTER_FILE = '/data/vpn/isolate.master'
+ISO_ALLOW_FILE = '/data/vpn/isolate.allow'
+CONN_VPN_SCRIPT = '/data/vpn/gen_conn_vpn.sh'
+_CONN_IP_RE = re.compile(r'^\d{1,3}(\.\d{1,3}){3}(/\d{1,2})?$')
+_CONN_MAC_RE = re.compile(r'^([0-9a-f]{2}:){5}[0-9a-f]{2}$')
+
+def _conn_valid_ip(s):
+    if not _CONN_IP_RE.match(s):
+        return False
+    a = s.split('/')[0].split('.')
+    if any(int(x) > 255 for x in a):
+        return False
+    return '/' not in s or int(s.split('/')[1]) <= 32
+
+def parse_conn_items(text, allow_domain=True, allow_ip=True, allow_mac=False, limit=1000, label='muc'):
+    items = text if isinstance(text, list) else re.split(r'[\s,;]+', str(text or ''))
+    out, bad = [], []
+    for raw in items:
+        d = str(raw or '').strip().lower().rstrip('.')
+        if not d or d.startswith('#'):
+            continue
+        numeric = bool(re.match(r'^[\d./]+$', d))
+        ok = (allow_ip and _conn_valid_ip(d)) or (allow_mac and _CONN_MAC_RE.match(d.replace('-', ':'))) \
+            or (allow_domain and not numeric and _SPLIT_DOMAIN_RE.match(d))
+        if not ok:
+            bad.append(str(raw).strip())
+            continue
+        d = d.replace('-', ':') if allow_mac and _CONN_MAC_RE.match(d.replace('-', ':')) else d
+        if d not in out:
+            out.append(d)
+    if bad:
+        raise ValueError('%s khong hop le: %s' % (label, ', '.join(bad[:10])))
+    if len(out) > limit:
+        raise ValueError('Toi da %d %s' % (limit, label))
+    return out
+
+def _conn_split_fields(items):
+    """ten mien -> domain/domain_suffix, IP/CIDR -> ip_cidr (sing-box)."""
+    doms = [x for x in items or [] if not _conn_valid_ip(x)]
+    ips = [x if '/' in x else x + '/32' for x in items or [] if _conn_valid_ip(x)]
+    f = _split_match_fields(doms)
+    if ips:
+        f['ip_cidr'] = ips
+    return f
+
+def get_conn_config():
+    try:
+        meta = load_session_state().get('__meta__', {})
+        c = meta.get('conn') if isinstance(meta, dict) else None
+    except Exception:
+        c = None
+    if not isinstance(c, dict):
+        c = {}
+    L = lambda k: [str(x) for x in c.get(k) or []] if isinstance(c.get(k), list) else []
+    return {'direct': L('direct'), 'iso_allow': L('iso_allow'), 'iso_master': L('iso_master'),
+            'udp_block': bool(c.get('udp_block', True)), 'webrtc': 'off' if c.get('webrtc') == 'off' else 'block',
+            'bypass': L('bypass'), 'block': L('block'), 'migrated': bool(c.get('migrated'))}
+
+def set_conn_config(cfg):
+    state = load_session_state()
+    meta = state.setdefault('__meta__', {})
+    if not isinstance(meta, dict):
+        meta = {}
+        state['__meta__'] = meta
+    keep = ('direct', 'iso_allow', 'iso_master', 'udp_block', 'webrtc', 'bypass', 'block')
+    meta['conn'] = dict({k: cfg.get(k) for k in keep}, migrated=True)
+    save_session_state(state)
+
+def conn_migrate_once():
+    """2.93 -> 2.94: Phan luong cu thanh danh sach 'duong co dinh' (giu nguyen __meta__.split).
+    Chi danh dau migrated; khong doi hanh vi mang."""
+    try:
+        cfg = get_conn_config()
+        if cfg['migrated']:
+            return
+        set_conn_config(cfg)
+        _ss_log('CONN: migrate 2.93 -> 2.94 (split giu nguyen lam danh sach duong co dinh)')
+    except Exception as e:
+        try:
+            _ss_log('CONN migrate loi: %s' % e)
+        except Exception:
+            pass
+
+def _conn_proxy_ips(rules, obs):
+    ob_type = {str(o.get('tag')): str(o.get('type', '')).lower() for o in obs if isinstance(o, dict)}
+    ips = []
+    for r in rules:
+        if isinstance(r, dict) and r.get('action') == 'route' and str(r.get('outbound', '')).startswith('proxy_'):
+            ip = r.get('source_ip_cidr')
+            if isinstance(ip, str) and ip.strip() and ob_type.get(str(r['outbound'])) not in ('direct', '') and ip.strip() not in ips:
+                ips.append(ip.strip())
+    return ips
+
+def _is_conn_rule(r):
+    return isinstance(r, dict) and (r.get('_gen') == 'conn' or (r.get('outbound') == CONN_BYPASS_TAG))
+
+def ensure_conn_rules(data, cfg=None):
+    """[Ver 2.94] Rule gencore cho may proxy/PPPoE (may VPN da RETURN khoi gencore o mangle):
+      1. block  : ten mien/IP => reject
+      2. bypass : ten mien/IP => outbound gen_bypass (direct, ra WAN)
+      3. direct : IP may => outbound direct (toan bo)
+    Chen NGAY TRUOC rule proxy_* dau tien / deny (first-match-wins), sau rule split. Tra ve 1 neu doi.
+    sing-box khong cho key la => danh dau bang outbound/action, KHONG them field rieng."""
+    try:
+        cfg = cfg if cfg is not None else get_conn_config()
+        route = data.setdefault('route', {})
+        rules = list(route.get('rules') or [])
+        obs = list(data.get('outbounds') or [])
+        before = json.dumps([rules, obs], sort_keys=True)
+        def mine(r):
+            if not isinstance(r, dict):
+                return False
+            if r.get('outbound') == CONN_BYPASS_TAG:
+                return True
+            if r.get('action') == 'reject' and r.get('method') == 'default' and r.get('source_ip_cidr') and (r.get('domain') or r.get('domain_suffix') or r.get('ip_cidr')):
+                return True
+            if r.get('action') == 'route' and r.get('outbound') == CONN_DIRECT_TAG and set(r.keys()) == {'action', 'outbound', 'source_ip_cidr'}:
+                return True
+            return False
+        rules = [r for r in rules if not mine(r)]
+        obs = [o for o in obs if not (isinstance(o, dict) and o.get('tag') == CONN_BYPASS_TAG)]
+        ips = _conn_proxy_ips(rules, obs)
+        new = []
+        fb = _conn_split_fields(cfg.get('block'))
+        if ips and fb:
+            r = {'action': 'reject', 'method': 'default', 'source_ip_cidr': list(ips)}
+            r.update(fb)
+            new.append(r)
+        fp = _conn_split_fields(cfg.get('bypass'))
+        if ips and fp:
+            r = {'action': 'route', 'outbound': CONN_BYPASS_TAG, 'source_ip_cidr': list(ips)}
+            r.update(fp)
+            new.append(r)
+            obs.append({'tag': CONN_BYPASS_TAG, 'type': 'direct'})
+        dips = [x if '/' in x else x for x in cfg.get('direct') or [] if _conn_valid_ip(x)]
+        has_direct = any(isinstance(o, dict) and o.get('tag') == CONN_DIRECT_TAG for o in obs)
+        if dips and has_direct:
+            # 1 rule / IP, source_ip_cidr dang CHUOI: tproxy + killswitch lay danh sach client bang
+            # awk -F'"source_ip_cidr":"' => dang list se khong duoc TPROXY + bi chan DNS.
+            for ip in dips:
+                new.append({'action': 'route', 'outbound': CONN_DIRECT_TAG, 'source_ip_cidr': ip})
+        if new:
+            pos = len(rules)
+            for i, r in enumerate(rules):
+                if (isinstance(r, dict) and r.get('action') == 'route' and (str(r.get('outbound', '')).startswith('proxy_') or r.get('outbound') == SPLIT_TAG)) or is_route_deny_rule(r):
+                    pos = i
+                    break
+            rules[pos:pos] = new
+        route['rules'] = rules
+        data['outbounds'] = obs
+        return 0 if json.dumps([rules, obs], sort_keys=True) == before else 1
+    except Exception as e:
+        try:
+            _ss_log('CONN loi: %s' % e)
+        except Exception:
+            pass
+        return 0
+
+def _conn_write_iso_files(cfg):
+    os.makedirs('/data/vpn', exist_ok=True)
+    masters = [CONN_FIXED_MASTER] + [x for x in cfg.get('iso_master') or [] if x != CONN_FIXED_MASTER]
+    _ss_atomic_write(Path(ISO_MASTER_FILE), '# [Ver 2.94] may master (GUI 9001). 192.10.1.10 luon co.\n' + '\n'.join(masters) + '\n')
+    _ss_atomic_write(Path(ISO_ALLOW_FILE), '# [Ver 2.94] ngoai le co lap LAN (GUI 9001)\n' + '\n'.join(cfg.get('iso_allow') or []) + '\n')
+
+def conn_apply_system(cfg=None):
+    """Phan ngoai gencore: file isolate + script VPN (dnsmasq nftset, mangle, STUN, UDP). Tra ve list ket qua."""
+    cfg = cfg or get_conn_config()
+    out = []
+    try:
+        _conn_write_iso_files(cfg)
+        if os.path.exists('/etc/init.d/client-isolate'):
+            r = subprocess.run(['/etc/init.d/client-isolate', 'start'], capture_output=True, text=True, timeout=20)
+            out.append({'cmd': 'client-isolate', 'ok': r.returncode == 0, 'out': (r.stdout + r.stderr).strip()[-300:]})
+    except Exception as e:
+        out.append({'cmd': 'client-isolate', 'ok': False, 'out': str(e)})
+    try:
+        src = BASE_DIR / 'tools' / 'gen_conn_vpn.sh'
+        if src.exists():
+            shutil.copy(str(src), CONN_VPN_SCRIPT)
+            os.chmod(CONN_VPN_SCRIPT, 493)
+            lst = lambda k: ' '.join(cfg.get(k) or [])
+            env = dict(os.environ, CONN_BYPASS=lst('bypass'), CONN_BLOCK=lst('block'), CONN_DIRECT=lst('direct'),
+                       CONN_UDP='1' if cfg.get('udp_block') else '0', CONN_WEBRTC=cfg.get('webrtc') or 'block')
+            # luu tham so de cron/boot chay lai giong het
+            _ss_atomic_write(Path('/data/vpn/gen_conn.env'), ''.join("%s='%s'\n" % (k, env[k].replace("'", '')) for k in ('CONN_BYPASS', 'CONN_BLOCK', 'CONN_DIRECT', 'CONN_UDP', 'CONN_WEBRTC')))
+            r = subprocess.run(['sh', CONN_VPN_SCRIPT, 'apply'], capture_output=True, text=True, timeout=60, env=env)
+            out.append({'cmd': 'gen_conn_vpn', 'ok': r.returncode == 0, 'out': (r.stdout + r.stderr).strip()[-500:]})
+    except Exception as e:
+        out.append({'cmd': 'gen_conn_vpn', 'ok': False, 'out': str(e)})
+    return out
+
+def conn_public_state():
+    cfg = get_conn_config()
+    sp = split_public_state()
+    iso = {}
+    try:
+        iso = vpn_run(['isolate', 'status'])
+    except Exception:
+        pass
+    vpn_ips = sorted(load_vpn_map().keys())
+    return {'ok': True, 'conn': cfg, 'fixed_master': CONN_FIXED_MASTER, 'split': sp, 'vpn_ips': vpn_ips,
+            'isolate': str(iso.get('output') or '').strip(), 'stun_ports': '3478, 5349, 19302-19309'}
+
+def conn_update(payload):
+    """POST /api/pm/conn. payload co the chua: direct, iso_allow, iso_master, udp_block, webrtc, bypass, block,
+    isolate ('two-way'|'off'), split {...} (chuyen sang split_update cho danh sach duong co dinh)."""
+    new = dict(get_conn_config())
+    if 'direct' in payload:
+        d = parse_conn_items(payload.get('direct'), allow_domain=False, limit=1000, label='IP may truc tiep')
+        d = [x for x in d if '/' not in x]
+        clash = sorted(set(d) & set(load_vpn_map().keys()))
+        if clash:
+            raise ValueError('May dang gan VPN, khong cho ra truc tiep: ' + ', '.join(clash[:10]))
+        new['direct'] = d
+    if 'iso_allow' in payload:
+        new['iso_allow'] = parse_conn_items(payload.get('iso_allow'), allow_domain=False, allow_mac=True, limit=500, label='ngoai le')
+    if 'iso_master' in payload:
+        new['iso_master'] = [x for x in parse_conn_items(payload.get('iso_master'), allow_domain=False, allow_mac=True, limit=20, label='may master') if x != CONN_FIXED_MASTER]
+    if 'udp_block' in payload:
+        new['udp_block'] = bool(payload.get('udp_block'))
+    if 'webrtc' in payload:
+        new['webrtc'] = 'off' if str(payload.get('webrtc')) == 'off' else 'block'
+    for k in ('bypass', 'block'):
+        if k in payload:
+            new[k] = parse_conn_items(payload.get(k), limit=1000, label='ten mien/IP')
+    both = sorted(set(new['bypass']) & set(new['block']))
+    if both:
+        raise ValueError('Trung giua Khong qua proxy va Chan: ' + ', '.join(both[:10]))
+    results = []
+    if isinstance(payload.get('split'), dict):
+        results.append({'cmd': 'split', 'ok': True, 'state': split_update(payload['split'])})
+    if str(payload.get('isolate') or '') in ('two-way', 'off'):
+        r = vpn_run(['isolate', str(payload['isolate'])])
+        results.append({'cmd': 'isolate', 'ok': bool(r.get('ok')), 'out': str(r.get('output') or r.get('error') or '')[-200:]})
+    if _apply_lock_active():
+        raise ValueError('Dang Apply, thu lai sau vai giay')
+    files = [RUNTIME_SOURCE_FILE]
+    if str(RUNTIME_FILE) != str(RUNTIME_SOURCE_FILE):
+        files.append(RUNTIME_FILE)
+    files += list(SESSION_FILES.values())
+    runtime_names = {str(RUNTIME_SOURCE_FILE), str(RUNTIME_FILE)}
+    backups, changed_runtime = {}, False
+    _apply_lock_acquire('conn')
+    try:
+        try:
+            for f in files:
+                p = Path(f)
+                if not p.exists() or str(p) in backups:
+                    continue
+                raw = p.read_text(encoding='utf-8')
+                doc = json.loads(raw)
+                if ensure_conn_rules(doc, cfg=new):
+                    backups[str(p)] = raw
+                    save_gencore_json(p, doc)
+                    if str(p) in runtime_names:
+                        changed_runtime = True
+            if changed_runtime and GENRUNNER.exists():
+                proc = subprocess.run([str(GENRUNNER), 'check', '-c', str(RUNTIME_SOURCE_FILE)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+                if proc.returncode != 0:
+                    raise ValueError('genrunner check loi, da tra lai config cu: ' + ((proc.stderr or proc.stdout or '').strip()[:300]))
+        except Exception:
+            for f, raw in backups.items():
+                try:
+                    _ss_atomic_write(Path(f), raw)
+                except Exception:
+                    pass
+            raise
+        set_conn_config(new)
+    finally:
+        _apply_lock_release()
+    if changed_runtime:
+        threading.Thread(target=gencore_restart_detached, args=('conn',), daemon=True).start()
+    results += conn_apply_system(new)
+    try:
+        _ss_log('CONN: direct=%d allow=%d master=%d udp=%s webrtc=%s bypass=%d block=%d restart=%s' % (
+            len(new['direct']), len(new['iso_allow']), len(new['iso_master']) + 1, new['udp_block'], new['webrtc'],
+            len(new['bypass']), len(new['block']), changed_runtime))
+    except Exception:
+        pass
+    out = conn_public_state()
+    out['restarted'] = changed_runtime
+    out['results'] = results
+    return out
+
+def conn_watch_loop():
+    """[Ver 2.94] Sau boot + khi map.txt doi (gan/bo VPN): chay lai gen_conn_vpn.sh de set vpn_clients dung.
+    Chi chay khi da tung luu cau hinh (co /data/vpn/gen_conn.env). Kiem moi 20s."""
+    last = None
+    time.sleep(15)
+    while True:
+        try:
+            if os.path.exists('/data/vpn/gen_conn.env') and os.path.exists(CONN_VPN_SCRIPT):
+                try:
+                    st = os.stat(VPN_MAP_PATH)
+                    sig = (st.st_mtime, st.st_size)
+                except OSError:
+                    sig = None
+                alive = subprocess.run(['nft', 'list', 'table', 'inet', 'gen_conn'], capture_output=True, timeout=5).returncode == 0
+                if sig != last or not alive:
+                    r = subprocess.run(['sh', CONN_VPN_SCRIPT, 'apply'], capture_output=True, text=True, timeout=60)
+                    if r.returncode != 0 or sig != last:
+                        _ss_log('CONN-WATCH: %s' % ((r.stdout + r.stderr).strip()[-200:]))
+                    last = sig
+        except Exception as e:
+            try:
+                _ss_log('CONN-WATCH loi: %s' % e)
+            except Exception:
+                pass
+        time.sleep(20)
+
 FLOW_API_ADDR = '127.0.0.1:19090'
 FLOW_MAX_KEYS = 5000
 FLOW = {'lock': threading.Lock(), 'agg': {}, 'last': {}, 'since': 0.0, 'last_req': 0.0, 'thread': None, 'err': '', 'polls': 0}
@@ -3018,6 +3342,7 @@ def rebuild_gencore_rules(data, tag_to_ip_map):
     ensure_dns_local_detour(data)
     # Ver 2.91: phan luong (neu bat) phai rebuild cung, IP ap dung theo may dang co proxy.
     ensure_split_rules(data)
+    ensure_conn_rules(data)
     ensure_flow_api(data)
     return data
 
@@ -3905,7 +4230,7 @@ def _run_apply_inner(session: str, rows_override=None):
         results.append({'cmd': 'save posted proxy assignments to preset and gencore runtime source', 'ok': True, 'source': str(preset_source), 'target': str(RUNTIME_SOURCE_FILE), 'count': len(rows_by_tag)})
     else:
         runtime_data = load_json(RUNTIME_SOURCE_FILE)
-    if ensure_split_rules(runtime_data) + ensure_flow_api(runtime_data):
+    if ensure_split_rules(runtime_data) + ensure_conn_rules(runtime_data) + ensure_flow_api(runtime_data):
         save_gencore_json(RUNTIME_SOURCE_FILE, runtime_data)
         if str(preset_source) != str(RUNTIME_SOURCE_FILE):
             save_gencore_json(preset_source, runtime_data)
@@ -4698,6 +5023,22 @@ def vpn_status_json():
         return json.loads((r.get('output') or '[]').strip() or '[]')
     except Exception:
         return []
+
+def vpn_ping_host(host):
+    """[Ver 2.94] Resolve + ping 1 host ExpressVPN (3 goi, toi da ~4s). Khong mo tunnel."""
+    out = {'ok': True, 'host': host, 'ip': '', 'ms': None}
+    try:
+        import socket
+        out['ip'] = socket.gethostbyname(host)
+    except Exception:
+        return {'ok': False, 'host': host, 'error': 'khong resolve duoc (host chet?)'}
+    try:
+        r = subprocess.run(['ping', '-c', '3', '-W', '1', out['ip']], capture_output=True, text=True, timeout=8)
+        m = re.search(r'= [\d.]+/([\d.]+)/', r.stdout or '')
+        out['ms'] = round(float(m.group(1))) if m else None
+    except Exception:
+        pass
+    return out
 
 def vpn_exit_ip(name):
     acc = next((a for a in vpn_status_json() if a.get('name') == name), None)
@@ -6185,6 +6526,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_file(STATIC_DIR / 'index.html')
         if path == '/api/pm/split':
             return self._send_json(split_public_state())
+        if path == '/api/pm/conn':
+            return self._send_json(conn_public_state())
         if path == '/api/pm/flow':
             q = parse_qs(urlparse(self.path).query or '')
             return self._send_json(flow_public_state((q.get('ip') or [''])[0]))
@@ -6265,7 +6608,15 @@ class Handler(BaseHTTPRequestHandler):
             hosts = []
             try:
                 with open(VPN_HOSTS_FILE, 'r', encoding='utf-8', errors='replace') as f:
-                    hosts = [ln.strip() for ln in f if ln.strip()]
+                    for ln in f:
+                        ln = ln.strip()
+                        if not ln or ln.startswith('#'):
+                            continue
+                        p = ln.split('|')
+                        if len(p) >= 3:
+                            hosts.append({'country': p[0], 'city': p[1], 'host': p[-1]})
+                        else:
+                            hosts.append({'country': '', 'city': '', 'host': p[-1]})
             except Exception:
                 pass
             return self._send_json({'ok': True, 'hosts': hosts})
@@ -6309,6 +6660,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json(split_update(payload if isinstance(payload, dict) else {}))
                 except ValueError as se:
                     return self._send_json({'ok': False, 'error': str(se)})
+            if path == '/api/pm/conn':
+                try:
+                    return self._send_json(conn_update(payload if isinstance(payload, dict) else {}))
+                except ValueError as ce:
+                    return self._send_json({'ok': False, 'error': str(ce)})
             if path == '/api/pm/sessions/create':
                 session_id = str(payload.get('session', '')).strip()
                 source_session = str(payload.get('source_session', current if (current := payload.get('current_session')) else '1')).strip() or '1'
@@ -6634,7 +6990,21 @@ class Handler(BaseHTTPRequestHandler):
                     pwd = str(payload.get('password', ''))
                     if not host or not user:
                         return self._send_json({'ok': False, 'error': 'thieu host/username'})
-                    return self._send_json(vpn_run(['add-express', name, host, user, pwd]))
+                    if not re.match(r'^[a-z0-9.-]{3,120}$', host.lower()):
+                        return self._send_json({'ok': False, 'error': 'host khong hop le'})
+                    proto = 'tcp' if str(payload.get('proto', '')).lower() == 'tcp' else 'udp'
+                    xkey = re.sub(r'[^A-Za-z0-9_-]', '', str(payload.get('key', '')))[:64]
+                    r = vpn_run(['add-express', name, host.lower(), user, pwd, proto] + ([xkey] if xkey else []))
+                    if r.get('ok') and str(payload.get('autostart', '')) in ('1', 'true', 'True'):
+                        vpn_run(['autostart', name, 'on'])
+                    if r.get('ok') and str(payload.get('up', '')) in ('1', 'true', 'True'):
+                        r['up'] = vpn_run(['up', name])
+                    return self._send_json(r)
+                if action == 'ping-host':
+                    host = str(payload.get('host', '')).strip().lower()
+                    if not re.match(r'^[a-z0-9.-]{3,120}$', host):
+                        return self._send_json({'ok': False, 'error': 'host khong hop le'})
+                    return self._send_json(vpn_ping_host(host))
                 if action == 'add-openvpn':
                     ovpn_text = str(payload.get('ovpn_text', '') or '')
                     user = str(payload.get('username', '')).strip()
@@ -6770,6 +7140,8 @@ if __name__ == '__main__':
     threading.Thread(target=collector_push_loop, daemon=True).start()
     threading.Thread(target=gencore_watchdog_loop, daemon=True).start()
     threading.Thread(target=split_watch_loop, daemon=True, name='split-watch').start()
+    conn_migrate_once()
+    threading.Thread(target=conn_watch_loop, daemon=True, name='conn-watch').start()
     threading.Thread(target=pppoe_glider_stale_loop, daemon=True, name='glider-stale').start()
     class _GUIServer(ThreadingHTTPServer):
         # [Ver 2.63] Backlog mac dinh cua socketserver la 5. Khi GUI go dong thoi

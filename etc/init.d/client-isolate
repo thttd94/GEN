@@ -3,13 +3,60 @@
 # Router (gateway/DHCP/DNS) and internet access are unaffected.
 # [Ver 2.75] Dieu khien boi /data/vpn/isolate.mode: two-way = chan, off = mo het
 # (tick "Chan local" tren GUI 9001). Thieu file => two-way (giu hanh vi mac dinh tu 2.50).
+# [Ver 2.94] Ngoai le + may master:
+#   /data/vpn/isolate.master : moi dong 1 IP hoac MAC - thay/dieu khien MOI may
+#   /data/vpn/isolate.allow  : moi dong 1 IP hoac MAC - cac may nay noi chuyen duoc VOI NHAU
+#   192.10.1.10 (may quan ly) LUON la master, khong bo duoc (FIXED_MASTER).
+#   IP => tra MAC tu /etc/config/dhcp (static), /tmp/dhcp.leases, ARP. Khong ra MAC => bo qua + log.
 START=99
 NFT_FILE=/etc/client-isolate.nft
 MODEF=/data/vpn/isolate.mode
+MASTERF=/data/vpn/isolate.master
+ALLOWF=/data/vpn/isolate.allow
+FIXED_MASTER="192.10.1.10 00:e0:4c:68:0d:73"
 MAC=$(ip -o link show br-lan 2>/dev/null | sed -n 's/.*link\/ether \([0-9a-f:]*\).*/\1/p' | head -1)
+
+is_mac() { printf '%s' "$1" | grep -qiE '^([0-9a-f]{2}:){5}[0-9a-f]{2}$'; }
+is_ip()  { printf '%s' "$1" | grep -qE '^[0-9]{1,3}([.][0-9]{1,3}){3}$'; }
+
+ip_to_mac() { # <ip> -> mac (lowercase) hoac rong
+	m=$(awk -v I="$1" '$3==I{print $2; exit}' /tmp/dhcp.leases 2>/dev/null)
+	[ -n "$m" ] || m=$(awk -v I="$1" '$1==I && $4!="00:00:00:00:00:00"{print $4; exit}' /proc/net/arp 2>/dev/null)
+	[ -n "$m" ] || m=$(uci -q show dhcp 2>/dev/null | awk -F"[.=']+" -v I="$1" '
+		/=host$/ {sec=$2} $3=="ip" && $4==I {want=sec}
+		$3=="mac" {mac[$2]=$4} END{if(want!="") print mac[want]}' | awk '{print $1}')
+	printf '%s' "$m" | tr 'A-F' 'a-f'
+}
+
+# doc file + them tham so co dinh, tra danh sach MAC duy nhat (moi dong 1)
+collect_macs() { # <file> [extra tokens...]
+	f="$1"; shift
+	{ for t in "$@"; do echo "$t"; done; [ -f "$f" ] && tr -d '\r' < "$f" | sed 's/#.*//'; } \
+	| tr ', \t' '\n\n\n' | while read -r tok; do
+		[ -n "$tok" ] || continue
+		if is_mac "$tok"; then
+			printf '%s\n' "$tok" | tr 'A-F' 'a-f'
+		elif is_ip "$tok"; then
+			m=$(ip_to_mac "$tok")
+			if is_mac "$m"; then echo "$m"; else logger -t client-isolate "khong tim thay MAC cho $tok, bo qua"; fi
+		fi
+	done | grep -v "^$MAC\$" | sort -u
+}
+
+elems() { # <list moi dong 1 mac> -> "elements = { a, b }" hoac rong
+	# BusyBox Gen khong co 'paste' => dung tr
+	l=$(printf '%s\n' "$1" | grep . | tr '\n' ',' | sed -e 's/,$//' -e 's/,/, /g')
+	[ -n "$l" ] && printf 'elements = { %s }' "$l"
+}
+
 gen_nft() {
 	[ -n "$MAC" ] || { echo "client-isolate: br-lan MAC not found"; return 1; }
-	sed "s/__ROUTER_MAC__/$MAC/g" "$NFT_FILE.tpl" > "$NFT_FILE"
+	M=$(collect_macs "$MASTERF" $FIXED_MASTER)
+	A=$(collect_macs "$ALLOWF")
+	EM=$(elems "$M"); EA=$(elems "$A")
+	sed -e "s/__ROUTER_MAC__/$MAC/g" -e "s/__MASTER_ELEMS__/$EM/" -e "s/__ALLOW_ELEMS__/$EA/" \
+		"$NFT_FILE.tpl" > "$NFT_FILE"
+	NM=$(printf '%s\n' "$M" | grep -c .); NA=$(printf '%s\n' "$A" | grep -c .)
 }
 start() {
 	MODE=$(cat "$MODEF" 2>/dev/null || echo two-way)
@@ -19,8 +66,10 @@ start() {
 		return 0 ;;
 	esac
 	gen_nft || return 1
+	# kiem tra cu phap TRUOC khi xoa bang dang chay (loi tpl => giu bang cu)
+	nft -c -f "$NFT_FILE" || { echo "client-isolate: nft file loi, giu bang cu"; return 1; }
 	nft delete table bridge client_isolate 2>/dev/null
-	nft -f "$NFT_FILE" && echo "client-isolate: active (router MAC $MAC)"
+	nft -f "$NFT_FILE" && echo "client-isolate: active (router MAC $MAC, master $NM, allow $NA)"
 }
 stop() {
 	nft delete table bridge client_isolate 2>/dev/null

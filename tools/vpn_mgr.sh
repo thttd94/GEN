@@ -156,23 +156,29 @@ EOF
   ok "da them openvpn '$name' ($dev table $tbl)"
 }
 
+# [Ver 2.94] express_hosts.txt: 'country|city|host' (dong '#' = chu thich). Ban cu 1 host/dong van doc duoc.
+express_hosts_list() { grep -v '^#' "$HOSTS" 2>/dev/null | tr -d '\r' | awk -F'|' 'NF{print $NF}'; }
 resolve_express_host() {
   arg="$1"
-  case "$arg" in *expressnetw.com*) echo "$arg"; return 0;; esac
+  case "$arg" in *expressnetw.com*)
+    printf '%s' "$arg" | grep -qE '^[a-z0-9.-]+$' || { echo "[ERR] host khong hop le" >&2; return 1; }
+    echo "$arg"; return 0;; esac
   [ -f "$HOSTS" ] || err "thieu $HOSTS (chua upload danh sach host)"
-  n=$(grep -ci -- "$arg" "$HOSTS")
-  [ "$n" -eq 0 ] && { echo "[ERR] khong tim thay host cho '$arg'. Vi du:"; grep -i -e singapore -e japan -e us-new "$HOSTS" | head -5 >&2; return 1; }
+  n=$(express_hosts_list | grep -ci -- "$arg")
+  [ "$n" -eq 0 ] && { echo "[ERR] khong tim thay host cho '$arg'. Vi du:" >&2; express_hosts_list | grep -i -e singapore -e japan -e usa-new | head -5 >&2; return 1; }
   if [ "$n" -gt 1 ]; then
     echo "[ERR] '$arg' trung $n host, chon ro hon:" >&2
-    grep -i -- "$arg" "$HOSTS" | head -8 >&2
+    express_hosts_list | grep -i -- "$arg" | head -8 >&2
     return 1
   fi
-  grep -i -- "$arg" "$HOSTS" | head -n1
+  express_hosts_list | grep -i -- "$arg" | head -n1
 }
 
 cmd_add_express() {
-  name="$2"; loc="$3"; user="$4"; pass="$5"
+  # add-express <ten> <location|host> <user> <pass> [udp|tcp] [key-ghi-chu]
+  name="$2"; loc="$3"; user="$4"; pass="$5"; proto="${6:-udp}"; xkey="$7"
   [ -n "$name" ] && [ -n "$loc" ] && [ -n "$user" ] || die_use
+  case "$proto" in udp) port=1195; pline="proto udp" ;; tcp) port=443; pline="proto tcp-client" ;; *) err "proto phai udp|tcp" ;; esac
   exists "$name" && err "tai khoan '$name' da co"
   [ -f "$TPL" ] || err "thieu template $TPL (chua upload express_template.ovpn)"
   host=$(resolve_express_host "$loc") || exit 1
@@ -180,25 +186,31 @@ cmd_add_express() {
   idx=$(next_idx)
   dev="tun$idx"; tbl=$((300+idx)); pri=$((90+idx))
   printf '%s\n%s\n' "$user" "$pass" > "$d/auth"; chmod 600 "$d/auth"
-  tr -d '\r' < "$TPL" | awk -v D="$dev" -v H="$host" -v A="$d/auth" '
+  [ -n "$xkey" ] && { printf '%s\n' "$xkey" > "$d/xkey"; chmod 600 "$d/xkey"; }
+  tr -d '\r' < "$TPL" | awk -v D="$dev" -v H="$host" -v P="$port" -v PL="$pline" -v A="$d/auth" '
     {
       gsub("dev tun%d", "dev " D)
-      gsub("remote %s 1195", "remote " H " 1195")
+      gsub("remote %s 1195", "remote " H " " P)
       gsub("/etc/genrouter/openvpn/%d.auth", A)
       if ($0 == "ns-cert-type server") $0 = "remote-cert-tls server"
+      if ($1 == "proto") $0 = PL
+      # fragment chi hop le voi UDP
+      if (PL != "proto udp" && $1 == "fragment") next
       print
     }' > "$d/config.ovpn"
+  chmod 600 "$d/config.ovpn"
   cat > "$d/meta" <<EOF
 type=openvpn
 provider=expressvpn
 host=$host
+proto=$proto
 idx=$idx
 dev=$dev
 table=$tbl
 prio=$pri
 auto=0
 EOF
-  ok "da them expressvpn '$name' -> $host:1195 ($dev table $tbl)"
+  ok "da them expressvpn '$name' -> $host:$port/$proto ($dev table $tbl)"
 }
 
 cmd_import_old() {

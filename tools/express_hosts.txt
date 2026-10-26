@@ -1,0 +1,161 @@
+# country|city|host  (ExpressVPN manual OpenVPN, nguon: gluetun hardcoded)
+Albania||albania-ca-version-2.expressnetw.com
+Algeria||algeria-ca-version-2.expressnetw.com
+Andorra||andorra-ca-version-2.expressnetw.com
+Argentina||argentina-ca-version-2.expressnetw.com
+Australia|Adelaide|australia-adelaide--ca-version-2.expressnetw.com
+Australia|Brisbane|australia-brisbane-ca-version-2.expressnetw.com
+Australia|Melbourne|australia-melbourne-ca-version-2.expressnetw.com
+Australia|Perth|australia-perth-ca-version-2.expressnetw.com
+Australia|Sydney|australia-sydney-2-ca-version-2.expressnetw.com
+Australia|Sydney|australia-sydney-ca-version-2.expressnetw.com
+Australia|Woolloomooloo|australia-woolloomooloo-2-ca-version-2.expressnetw.com
+Austria||austria-ca-version-2.expressnetw.com
+Azerbaijan||azerbaijan-ca-version-2.expressnetw.com
+Bahamas||bahamas-ca-version-2.expressnetw.com
+Bangladesh||bangladesh-ca-version-2.expressnetw.com
+Belarus||belarus-ca-version-2.expressnetw.com
+Belgium||belgium-ca-version-2.expressnetw.com
+Bermuda||bermuda-ca-version-2.expressnetw.com
+Bhutan||bhutan-ca-version-2.expressnetw.com
+Bolivia||bolivia-ca-version-2.expressnetw.com
+Brazil||brazil-2-ca-version-2.expressnetw.com
+Brazil||brazil-ca-version-2.expressnetw.com
+Brunei||brunei-ca-version-2.expressnetw.com
+Bulgaria||bulgaria-ca-version-2.expressnetw.com
+Cambodia||cambodia-ca-version-2.expressnetw.com
+Canada|Montreal|canada-montreal-ca-version-2.expressnetw.com
+Canada|Toronto|canada-toronto-2-ca-version-2.expressnetw.com
+Canada|Toronto|canada-toronto-ca-version-2.expressnetw.com
+Cayman Islands||caymanislands-ca-version-2.expressnetw.com
+Chile||chile-ca-version-2.expressnetw.com
+Colombia||colombia-ca-version-2.expressnetw.com
+Costa Rica||costarica-ca-version-2.expressnetw.com
+Croatia||croatia-ca-version-2.expressnetw.com
+Cuba||cuba-ca-version-2.expressnetw.com
+Cyprus||cyprus-ca-version-2.expressnetw.com
+Czech Republic||czechrepublic-ca-version-2.expressnetw.com
+Denmark||denmark-ca-version-2.expressnetw.com
+Dominican Republic||dominicanrepublic-ca-version-2.expressnetw.com
+Ecuador||ecuador-ca-version-2.expressnetw.com
+Egypt||egypt-ca-version-2.expressnetw.com
+Estonia||estonia-ca-version-2.expressnetw.com
+Finland||finland-ca-version-2.expressnetw.com
+France|Alsace|france-alsace-ca-version-2.expressnetw.com
+France|Marseille|france-marseille-ca-version-2.expressnetw.com
+France|Paris|france-paris-1-ca-version-2.expressnetw.com
+France|Paris|france-paris-2-ca-version-2.expressnetw.com
+France|Strasbourg|france-strasbourg-ca-version-2.expressnetw.com
+Georgia||georgia-ca-version-2.expressnetw.com
+Germany|Frankfurt|germany-darmstadt-ca-version-2.expressnetw.com
+Germany|Frankfurt|germany-frankfurt-1-ca-version-2.expressnetw.com
+Germany|Nuremberg|germany-nuremberg-ca-version-2.expressnetw.com
+Ghana||ghana-ca-version-2.expressnetw.com
+Greece||greece-ca-version-2.expressnetw.com
+Guam||guam-ca-version-2.expressnetw.com
+Guatemala||guatemala-ca-version-2.expressnetw.com
+Honduras||honduras-ca-version-2.expressnetw.com
+Hong Kong||hongkong-1-ca-version-2.expressnetw.com
+Hong Kong||hongkong-2-ca-version-2.expressnetw.com
+Hungary||hungary-ca-version-2.expressnetw.com
+Iceland||iceland-ca-version-2.expressnetw.com
+India (via Singapore)||india-sg-ca-version-2.expressnetw.com
+India (via UK)||india-uk-ca-version-2.expressnetw.com
+Indonesia||indonesia-ca-version-2.expressnetw.com
+Ireland||ireland-ca-version-2.expressnetw.com
+Israel||israel-ca-version-2.expressnetw.com
+Italy|Cosenza|italy-cosenza-ca-version-2.expressnetw.com
+Italy|Milan|italy-milan-ca-version-2.expressnetw.com
+Italy|Naples|italy-naples-ca-version-2.expressnetw.com
+Jamaica||jamaica-ca-version-2.expressnetw.com
+Japan|Osaka|japan-osaka-ca-version-2.expressnetw.com
+Japan|Shibuya|japan-shibuya-ca-version-2.expressnetw.com
+Japan|Tokyo|japan-tokyo-ca-version-2.expressnetw.com
+Japan|Yokohama|japan-yokohama-ca-version-2.expressnetw.com
+Kazakhstan||kazakhstan-ca-version-2.expressnetw.com
+Laos||laos-ca-version-2.expressnetw.com
+Latvia||latvia-ca-version-2.expressnetw.com
+Liechtenstein||liechtenstein-ca-version-2.expressnetw.com
+Lithuania||lithuania-ca-version-2.expressnetw.com
+Luxembourg||luxembourg-ca-version-2.expressnetw.com
+Macau||macau-ca-version-2.expressnetw.com
+Malaysia||malaysia-ca-version-2.expressnetw.com
+Mexico||mexico-ca-version-2.expressnetw.com
+Moldova||moldova-ca-version-2.expressnetw.com
+Mongolia||mongolia-ca-version-2.expressnetw.com
+Morocco||morocco-ca-version-2.expressnetw.com
+Myanmar||myanmar-ca-version-2.expressnetw.com
+Nepal||nepal-ca-version-2.expressnetw.com
+Netherlands|Amsterdam|netherlands-amsterdam-ca-version-2.expressnetw.com
+Netherlands|Rotterdam|netherlands-rotterdam-ca-version-2.expressnetw.com
+Netherlands|The Hague|netherlands-thehague-ca-version-2.expressnetw.com
+New Zealand||newzealand-ca-version-2.expressnetw.com
+North Macedonia||macedonia-ca-version-2.expressnetw.com
+Norway||norway-ca-version-2.expressnetw.com
+Panama||panama-ca-version-2.expressnetw.com
+Peru||peru-ca-version-2.expressnetw.com
+Philippines (via Singapore)||ph-via-sing-ca-version-2.expressnetw.com
+Poland||poland-ca-version-2.expressnetw.com
+Portugal||portugal-ca-version-2.expressnetw.com
+Puerto Rico||puertorico-ca-version-2.expressnetw.com
+Romania||romania-ca-version-2.expressnetw.com
+Serbia||serbia-ca-version-2.expressnetw.com
+Singapore|CBD|singapore-cbd-ca-version-2.expressnetw.com
+Singapore|Jurong|singapore-jurong-ca-version-2.expressnetw.com
+Singapore|Marina Bay|singapore-marinabay-ca-version-2.expressnetw.com
+Slovakia||slovakia-ca-version-2.expressnetw.com
+Slovenia||slovenia-ca-version-2.expressnetw.com
+South Africa||southafrica-ca-version-2.expressnetw.com
+South Korea||southkorea2-ca-version-2.expressnetw.com
+Spain|Barcelona|spain-barcelona-ca-version-2.expressnetw.com
+Spain|Barcelona|spain-barcelona2-ca-version-2.expressnetw.com
+Spain|Madrid|spain-ca-version-2.expressnetw.com
+Sri Lanka||srilanka-ca-version-2.expressnetw.com
+Sweden||sweden-ca-version-2.expressnetw.com
+Sweden||sweden2-ca-version-2.expressnetw.com
+Switzerland||switzerland-2-ca-version-2.expressnetw.com
+Switzerland||switzerland-ca-version-2.expressnetw.com
+Taiwan||taiwan-3-ca-version-2.expressnetw.com
+Thailand||thailand-ca-version-2.expressnetw.com
+Trinidad and Tobago||trinidadandtobago-ca-version-2.expressnetw.com
+Turkey||turkey-ca-version-2.expressnetw.com
+UK|Docklands|uk-1-docklands-ca-version-2.expressnetw.com
+UK|East London|uk-east-london-ca-version-2.expressnetw.com
+UK|London|uk-london-ca-version-2.expressnetw.com
+UK|Midlands|uk-midlands-ca-version-2.expressnetw.com
+UK|Tottenham|uk-tottenham-ca-version-2.expressnetw.com
+UK|Wembley|uk-wembley-ca-version-2.expressnetw.com
+Ukraine||ukraine-ca-version-2.expressnetw.com
+Uruguay||uruguay-ca-version-2.expressnetw.com
+USA|Albuquerque|usa-albuquerque-ca-version-2.expressnetw.com
+USA|Atlanta|usa-atlanta-ca-version-2.expressnetw.com
+USA|Boston|us-boston-ca-version-2.expressnetw.com
+USA|Chicago|usa-chicago-ca-version-2.expressnetw.com
+USA|Dallas|usa-dallas-ca-version-2.expressnetw.com
+USA|Denver|usa-denver-ca-version-2.expressnetw.com
+USA|Houston|usa-houston-ca-version-2.expressnetw.com
+USA|Jackson|us-jackson-ca-version-2.expressnetw.com
+USA|Lincoln Park|usa-lincolnpark-ca-version-2.expressnetw.com
+USA|Little Rock|us-littlerock-ca-version-2.expressnetw.com
+USA|Los Angeles|usa-losangeles-2-ca-version-2.expressnetw.com
+USA|Los Angeles|usa-losangeles-3-ca-version-2.expressnetw.com
+USA|Los Angeles|usa-losangeles-ca-version-2.expressnetw.com
+USA|Los Angeles|usa-losangeles5-ca-version-2.expressnetw.com
+USA|Miami|usa-miami-2-ca-version-2.expressnetw.com
+USA|Miami|usa-miami-ca-version-2.expressnetw.com
+USA|New Jersey|usa-newjersey-1-ca-version-2.expressnetw.com
+USA|New Jersey|usa-newjersey-3-ca-version-2.expressnetw.com
+USA|New Jersey|usa-newjersey2-ca-version-2.expressnetw.com
+USA|New Orleans|us-neworleans-ca-version-2.expressnetw.com
+USA|New York|usa-newyork-ca-version-2.expressnetw.com
+USA|Oklahoma City|us-oklahoma-ca-version-2.expressnetw.com
+USA|Phoenix|usa-phoenix-ca-version-2.expressnetw.com
+USA|Salt Lake City|usa-saltlakecity-ca-version-2.expressnetw.com
+USA|San Francisco|usa-sanfrancisco-ca-version-2.expressnetw.com
+USA|Santa Monica|usa-santa-monica-ca-version-2.expressnetw.com
+USA|Seattle|usa-seattle-ca-version-2.expressnetw.com
+USA|Tampa|usa-tampa-1-ca-version-2.expressnetw.com
+USA|Washington DC|usa-washingtondc-ca-version-2.expressnetw.com
+USA|Wichita|us-wichita-ca-version-2.expressnetw.com
+Venezuela||venezuela-ca-version-2.expressnetw.com
+Vietnam||vietnam-ca-version-2.expressnetw.com
