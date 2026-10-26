@@ -5331,6 +5331,12 @@ def vpn_distinct_status(jid=''):
 
 def _vpn_distinct_worker(jid):
     j = DISTINCT['jobs'][jid]
+    # [Ver 2.94] nap lai cred trong worker: 'cred' cua vpn_distinct_start la bien cuc bo
+    cred = xv_cred_get((DISTINCT['jobs'].get(jid) or {}).get('cred_id', '')) or {}
+    if not cred.get('user'):
+        with DISTINCT['lock']:
+            j.update(done=True, ok=False, msg='mat tai khoan da luu')
+        return
     def put(**kw):
         with DISTINCT['lock']:
             j.update(kw)
