@@ -554,8 +554,16 @@ case "$1" in
       [ -n "$otbl" ] && assign_rules_off "$ip" "$otbl" "$opri"
       grep -v "^$ip $old\$" "$MAPF" > "$MAPF.tmp" 2>/dev/null; mv "$MAPF.tmp" "$MAPF"
     fi
+    # [Ver 2.94] assign_rules_on goi guard_run, ma guard doc map.txt de biet IP nao
+    # la 'mo coi'. Neu ghi map SAU guard thi IP vua them chua co trong map => guard
+    # xoa luon ipset + ip rule vua tao. Gan tay 1 may thi lan gan sau them lai (tu lanh),
+    # nhung gan hang loat thi may CUOI cung luon mat duong. Nay: ghi map truoc, guard 1 lan o cuoi.
+    VPN_NO_GUARD=1
+    export VPN_NO_GUARD
     assign_rules_on "$ip" "$tbl" "$pri" "$dev"
     grep -q "^$ip $name\$" "$MAPF" || echo "$ip $name" >> "$MAPF"
+    unset VPN_NO_GUARD
+    guard_run
     ok "$ip di qua VPN '$name'" ;;
   assign-many)
     # assign-many <ten> <IP1> <IP2> ...
