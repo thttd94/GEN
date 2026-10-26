@@ -5246,6 +5246,14 @@ def vpn_auto_tick():
             VPN_AUTO_RT['last'] = (done + VPN_AUTO_RT['last'])[:30]
             _ss_log('VPN-AUTO: ' + '; '.join(done)[:300])
 
+def _resolve_v4(host, timeout=6):
+    """IPv4 cua host, KHONG gom DNS server (khac nslookup)."""
+    try:
+        socket.setdefaulttimeout(timeout)
+        return sorted({a[4][0] for a in socket.getaddrinfo(host, None, socket.AF_INET)})
+    except Exception:
+        return []
+
 def vpn_express_servers(loc='', fetch=False):
     """[Ver 2.94] IP server cu the cua 1 location (kieu MiniSocks endpoint_ip).
     Moi IP = 1 server = 1 IP ra rieng khi tao tunnel. Hostname thanh pho chi co 2-4 IP
@@ -5275,13 +5283,11 @@ def vpn_express_servers(loc='', fetch=False):
         for h in groups[k][:4]:
             if not fetch and not loc:
                 break
-            try:
-                r = subprocess.run(['nslookup', h], capture_output=True, text=True, timeout=8)
-                for x in re.findall(r'^Address:\s*(\d+\.\d+\.\d+\.\d+)', r.stdout, re.M):
-                    if not x.startswith('127.') and x not in ips:
-                        ips.append(x)
-            except Exception:
-                pass
+            # [Ver 2.94] dung getaddrinfo, KHONG dung nslookup: output nslookup co dong
+            # 'Address: 8.8.8.8' (DNS server) nen IP do bi coi la server ExpressVPN.
+            for x in _resolve_v4(h):
+                if x not in ips:
+                    ips.append(x)
         out.append({'loc': k, 'host': groups[k][0] if groups[k] else '', 'ips': ips[:8],
                     'used': [x for x in ips[:8] if x in used]})
         allused += [x for x in ips[:8] if x in used]
@@ -6901,7 +6907,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/vpn/auto':
             return self._send_json(vpn_auto_public())
         if path == '/api/vpn/servers':
-            return self._send_json(vpn_express_servers((q.get('loc') or [''])[0].strip().lower()))
+            # [Ver 2.94] parse query tai cho: bien 'q' chi ton tai trong nhanh /api/pm/flow
+            _qs = parse_qs(urlparse(self.path).query or '')
+            return self._send_json(vpn_express_servers((_qs.get('loc') or [''])[0].strip().lower()))
         if path == '/api/vpn/xv-creds':
             return self._send_json({'ok': True, 'creds': xv_creds_public()})
         if path == '/api/vpn/exitips':
