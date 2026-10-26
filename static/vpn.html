@@ -47,6 +47,17 @@
   .st-down { display:inline-flex; align-items:center; gap:5px; background:rgba(201,157,216,.08); border:1px solid var(--line); color:var(--dim); font-weight:600; font-size:11.5px; border-radius:999px; padding:2px 10px; }
   .wan-ok { color:#ffc94d; font-weight:800; letter-spacing:.3px; text-shadow:0 0 10px rgba(255,201,77,.35); }
   .muted { color:var(--dim); font-size:12px; }
+  /* [Ver 2.94] bang tunnel gon: 1 dong / tunnel */
+  #accTbl th, #accTbl td { padding:4px 8px; vertical-align:middle; }
+  #accTbl td button { font-size:11px; padding:3px 7px; margin:1px 2px 1px 0; }
+  #accTbl .nm { white-space:nowrap; }
+  #accTbl .hst { color:var(--dim); font-size:11px; margin-left:6px; max-width:230px; display:inline-block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
+  #accTbl .typ { font-size:10.5px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:0 5px; margin-left:4px; }
+  #accTbl .st-up, #accTbl .st-down { padding:1px 7px; font-size:11px; }
+  #accTbl .chip { padding:1px 8px; font-size:11.5px; }
+  #accWrap { max-height:62vh; overflow:auto; }
+  #accWrap thead th { position:sticky; top:0; background:#24102d; z-index:1; }
+  #accTbl.compact .hst { display:none; }
 </style>
 </head>
 <body>
@@ -65,12 +76,13 @@
       <button class="ok" onclick="bulkVpn('up')">UP ALL</button>
       <button onclick="bulkVpn('down')">DOWN ALL</button>
       <button class="bad" onclick="bulkVpn('del')">Xóa tất cả cấu hình VPN</button>
+      <label style="display:inline-flex;align-items:center;gap:5px;margin:0 0 0 10px;text-transform:none"><input type="checkbox" id="accCompact"> Ẩn host</label>
       <span id="bulk-progress" role="status" aria-live="polite"></span>
     </div>
-    <table>
-      <thead><tr><th>Tên</th><th>Loại</th><th title="IP công cộng của tunnel — có IP tức là VPN online">WAN IP</th><th>Trạng thái</th><th>Clients gán</th><th style="width:340px">Hành động</th></tr></thead>
-      <tbody id="tb"><tr><td colspan="6" class="muted">…</td></tr></tbody>
-    </table>
+    <div id="accWrap"><table id="accTbl">
+      <thead><tr><th>Tên</th><th title="IP công cộng của tunnel — có IP tức là VPN online">WAN IP</th><th>Trạng thái</th><th>Clients gán</th><th>Hành động</th></tr></thead>
+      <tbody id="tb"><tr><td colspan="5" class="muted">…</td></tr></tbody>
+    </table></div>
     <div class="muted" style="margin-top:8px">Gán máy qua GUI chính: chọn Proxy Type = VPN ở từng máy hoặc dùng khung "GÁN VPN THEO SỐ MÁY". Còn lại giữ nguyên đường cũ.</div>
   </div>
 
@@ -141,7 +153,8 @@ async function loadWanIps() {
     const anyRunning = (ACCOUNTS || []).some(a => a.running);
     const newest = Math.max(0, ...Object.values(WANIPS).map(w => w.ts || 0));
     const stale = !r.busy && anyRunning && (Date.now()/1000 - newest) > 150;
-    render();
+    // [Ver 2.94] truoc goi render() khong ton tai => ReferenceError bi catch nuot, o WAN IP ket 'dang do' mai
+    document.querySelectorAll('#tb td.wanip[data-n]').forEach(td => { const a = (ACCOUNTS || []).find(x => x.name === td.dataset.n); if (a) td.innerHTML = wanIpCell(a); });
     if ((stale || (!Object.keys(WANIPS).length && anyRunning)) ) {
       await api('refresh-exitips');
       setTimeout(loadWanIps, 14000);
@@ -301,7 +314,8 @@ async function xvPingVisible() {
   document.getElementById('xv-info').textContent = 'Đã ping ' + opts.length + ' location. Location chết không thêm được.';
 }
 function xvNextId() {
-  const used = new Set([...document.querySelectorAll('#tb tr')].map(r => (r.textContent.match(/\bxv-(\d+)\b/) || [])[1]).filter(Boolean).map(Number));
+  // [Ver 2.94] lay tu ACCOUNTS: textContent hang dinh 'xv-1japan-...' nen regex \b truot => luon ra 1 (trung)
+  const used = new Set((ACCOUNTS || []).map(a => (String(a.name).match(/^xv-(\d+)$/) || [])[1]).filter(Boolean).map(Number));
   let i = 1; while (used.has(i)) i++; return i;
 }
 async function addExpress() {
@@ -313,7 +327,8 @@ async function addExpress() {
   if (!host) return log('chọn location');
   if (XV_PING[host] === null && !confirm('Location này vừa ping không phản hồi. Vẫn thêm?')) return;
   let id = parseInt(document.getElementById('xv-id').value, 10);
-  if (!(id >= 1 && id <= 999)) { id = xvNextId(); document.getElementById('xv-id').value = id; }
+  if (!(id >= 1 && id <= 999)) id = xvNextId();
+  if ((ACCOUNTS || []).some(x => x.name === 'xv-' + id)) return log('xv-' + id + ' đã có, để trống ô ID để tự chọn số kế tiếp');
   const proto = (document.querySelector('input[name="xv-proto"]:checked') || {}).value || 'udp';
   const cred = cred_id ? { cred_id, username: 'saved' } : { username: a.user, password: a.pass, key: a.key };
   await act('add-express', Object.assign({ name: 'xv-' + id, host, proto }, cred, {
@@ -419,7 +434,7 @@ async function refresh() {
 
   const tb = document.getElementById('tb');
   if (!ACCOUNTS.length) {
-    tb.innerHTML = '<tr><td colspan="6" class="muted">Chưa có tài khoản nào — thêm bằng form bên dưới.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" class="muted">Chưa có tài khoản nào — thêm bằng form bên dưới.</td></tr>';
   } else {
     tb.innerHTML = ACCOUNTS.map(a => {
       const st = a.running ? '<span class="st-up">● UP</span>' : '<span class="st-down">○ down</span>';
@@ -442,16 +457,15 @@ async function refresh() {
         }
       }
       const main = a.running
-        ? `<button class="bad" onclick="act('down',{name:'${esc(a.name)}'})">▼ DOWN</button>
-           <button onclick="act('test-exitip',{name:'${esc(a.name)}'})">🌐 Exit-IP</button>`
-        : `<button class="ok" onclick="act('up',{name:'${esc(a.name)}'})">▲ UP</button>`;
+        ? `<button class="bad" onclick="act('down',{name:'${esc(a.name)}'})" aria-label="Tắt ${esc(a.name)}">▼ DOWN</button><button onclick="act('test-exitip',{name:'${esc(a.name)}'})" title="Dò lại exit-IP">🌐 IP</button>`
+        : `<button class="ok" onclick="act('up',{name:'${esc(a.name)}'})" aria-label="Bật ${esc(a.name)}">▲ UP</button>`;
       const auto = a.auto
-        ? `<button onclick="act('autostart_off',{name:'${esc(a.name)}'})" title="Tắt tự khởi động">AUTO: BẬT</button>`
-        : `<button onclick="act('autostart_on',{name:'${esc(a.name)}'})" title="Bật tự khởi động">AUTO: TẮT</button>`;
+        ? `<button onclick="act('autostart_off',{name:'${esc(a.name)}'})" title="Đang tự khởi động - bấm để tắt">AUTO ✓</button>`
+        : `<button onclick="act('autostart_on',{name:'${esc(a.name)}'})" title="Không tự khởi động - bấm để bật">AUTO ✗</button>`;
       return `<tr>
-        <td><b>${esc(a.name)}</b>${a.host?`<div class="muted">${esc(a.host)}</div>`:''}</td>
-        <td>${esc(a.type)}</td><td class="wanip" title="${esc(a.dev)}">${wanIpCell(a)}</td><td>${st}</td><td>${chips}</td>
-        <td>${main}${auto}<button class="bad" onclick="act('del',{name:'${esc(a.name)}'})">Xóa</button></td>
+        <td class="nm" title="${esc(a.host || '')}"><b>${esc(a.name)}</b><span class="typ">${esc(a.type)}</span>${a.host ? `<span class="hst">${esc(String(a.host).replace(/\.expressnetw\.com$/, ''))}</span>` : ''}</td>
+        <td class="wanip" data-n="${esc(a.name)}" title="${esc(a.dev)}">${wanIpCell(a)}</td><td>${st}</td><td>${chips}</td>
+        <td style="white-space:nowrap">${main}${auto}<button class="bad" onclick="if(confirm('Xóa ${esc(a.name)}?'))act('del',{name:'${esc(a.name)}'})" aria-label="Xóa ${esc(a.name)}">✕</button></td>
       </tr>`;
     }).join('');
   }
@@ -507,6 +521,13 @@ async function unassignAll(name) {
   try {
     const h = await (await fetch('/api/vpn/express-hosts')).json();
     XV_HOSTS = (h.hosts||[]).map(x => typeof x === 'string' ? {country:'', city:'', host:x} : x); xvRenderLoc(); xvLoadSaved();
+(function () {
+  const c = document.getElementById('accCompact'), t = document.getElementById('accTbl');
+  try { c.checked = localStorage.getItem('vpn_compact') === '1'; } catch (e) {}
+  const ap = () => t.classList.toggle('compact', c.checked);
+  c.addEventListener('change', () => { ap(); try { localStorage.setItem('vpn_compact', c.checked ? '1' : '0'); } catch (e) {} });
+  ap();
+})();
   } catch(e){}
   refresh();
   setInterval(refresh, 5000);
