@@ -5109,6 +5109,174 @@ def xv_creds_del(cid):
 def xv_cred_get(cid):
     return next((c for c in _xv_creds_load() if _xv_cred_id(str(c['user'])) == cid), None)
 
+VPN_AUTO_FILE = '/data/vpn/auto_assign.json'
+VPN_AUTO_LOCK = threading.Lock()
+VPN_AUTO_RT = {'ts': 0, 'msg': '', 'last': []}
+
+def _vpn_auto_load():
+    try:
+        with open(VPN_AUTO_FILE, encoding='utf-8') as f:
+            d = json.load(f)
+    except Exception:
+        d = {}
+    if not isinstance(d, dict):
+        d = {}
+    pool = [str(x) for x in d.get('pool') or [] if re.match(r'^[A-Za-z0-9_.-]{1,64}$', str(x))]
+    try:
+        rel = max(0, min(1440, int(d.get('release_min', 30))))
+    except Exception:
+        rel = 30
+    auto = d.get('auto') if isinstance(d.get('auto'), dict) else {}
+    return {'enabled': bool(d.get('enabled')), 'allow_dup': bool(d.get('allow_dup')), 'pool': pool,
+            'range': str(d.get('range') or '')[:400], 'release_min': rel, 'auto': auto}
+
+def _vpn_auto_save(cfg):
+    _ss_atomic_write(Path(VPN_AUTO_FILE), json.dumps(cfg, ensure_ascii=False))
+
+def _vpn_auto_ranges(text):
+    """'192.10.3.0/24, 192.10.4.10-192.10.4.50, 192.10.5.7' -> [(lo, hi)] so nguyen. Loi -> ValueError."""
+    import ipaddress
+    out = []
+    for tok in re.split(r'[\s,;]+', str(text or '').strip()):
+        if not tok:
+            continue
+        if '/' in tok:
+            n = ipaddress.ip_network(tok, strict=False)
+            if n.version != 4 or n.prefixlen < 16:
+                raise ValueError('dai qua rong: ' + tok)
+            out.append((int(n.network_address), int(n.broadcast_address)))
+        elif '-' in tok:
+            x, y = tok.split('-', 1)
+            lo = int(ipaddress.IPv4Address(x))
+            hi = int(ipaddress.IPv4Address(y)) if '.' in y else (lo & ~0xFF) | int(y)
+            if hi < lo or hi - lo > 65535:
+                raise ValueError('khoang sai: ' + tok)
+            out.append((lo, hi))
+        else:
+            v = int(ipaddress.IPv4Address(tok))
+            out.append((v, v))
+    return out
+
+def _vpn_auto_in(ip, ranges):
+    try:
+        v = struct.unpack('!I', socket.inet_aton(ip))[0]
+    except Exception:
+        return False
+    return any(lo <= v <= hi for lo, hi in ranges)
+
+def _vpn_auto_excluded():
+    ex = {CONN_FIXED_MASTER}
+    try:
+        c = get_conn_config()
+        for k in ('direct', 'iso_master'):
+            ex.update(x for x in c.get(k) or [] if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', x))
+    except Exception:
+        pass
+    return ex
+
+def vpn_auto_tick():
+    """[Ver 2.94] Giong MiniSocks 'EnableAuto/AllowDuplicate': may song trong dai IP, chua gan VPN
+    => gan vao tunnel UP trong danh sach co it may nhat (khong trung: chi tunnel 0 may).
+    Chi dung may DO NO tu gan (auto): may gan tay giu nguyen. Tunnel chet => chuyen may sang tunnel khac.
+    May tu gan offline qua release_min phut => tra tunnel (0 = khong tra)."""
+    with VPN_AUTO_LOCK:
+        cfg = _vpn_auto_load()
+        if not cfg['enabled'] or not cfg['pool']:
+            return
+        try:
+            ranges = _vpn_auto_ranges(cfg['range'])
+        except ValueError as e:
+            VPN_AUTO_RT.update(ts=time.time(), msg='dai IP loi: %s' % e)
+            return
+        if not ranges:
+            VPN_AUTO_RT.update(ts=time.time(), msg='chua nhap dai IP')
+            return
+        run = {x['name'] for x in vpn_status_json() if x.get('running')}
+        pool = [n for n in cfg['pool'] if n in run]
+        vmap = load_vpn_map()
+        arp = _arp_online_map() or {}
+        auto, now, done, changed = cfg['auto'], time.time(), [], False
+        excl = _vpn_auto_excluded()
+        for ip in list(auto):
+            rec = auto[ip] if isinstance(auto[ip], dict) else {}
+            cur = vmap.get(ip)
+            if cur != rec.get('name'):          # da bi go / gan tay sang tunnel khac => khong con la auto
+                auto.pop(ip); changed = True; continue
+            if ip in arp:
+                rec['seen'] = now
+            off = now - float(rec.get('seen') or now)
+            dead = cur not in run
+            drop = (cfg['release_min'] and off > cfg['release_min'] * 60) or ip in excl or not _vpn_auto_in(ip, ranges)
+            if dead or drop:
+                r = vpn_run(['unassign', ip], timeout=60)
+                if r.get('ok'):
+                    _record_vpn_declaration(ip, '')
+                    vmap.pop(ip, None)
+                    done.append('%s bo %s (%s)' % (ip, cur, 'tunnel chet' if dead else 'offline/ngoai dai'))
+                auto.pop(ip); changed = True
+        cnt = {n: 0 for n in pool}
+        for n in vmap.values():
+            if n in cnt:
+                cnt[n] += 1
+        want = sorted((ip for ip in arp if ip not in vmap and ip not in excl and _vpn_auto_in(ip, ranges)),
+                      key=lambda x: socket.inet_aton(x))
+        short = 0
+        for ip in want[:24]:
+            cands = [n for n in pool if cfg['allow_dup'] or cnt[n] == 0]
+            if not cands:
+                short = len(want) - len(done); break
+            n = min(cands, key=lambda x: (cnt[x], pool.index(x)))
+            r = vpn_run(['assign', n, ip], timeout=60)
+            if r.get('ok'):
+                _record_vpn_declaration(ip, n)
+                cnt[n] += 1
+                auto[ip] = {'name': n, 'ts': int(now), 'seen': now}
+                changed = True
+                done.append('%s -> %s' % (ip, n))
+            else:
+                done.append('%s loi: %s' % (ip, str(r.get('error') or r.get('output') or '')[-80:]))
+        if changed:
+            cfg['auto'] = auto
+            _vpn_auto_save(cfg)
+        msg = '%d tunnel UP trong danh sach, %d may tu gan' % (len(pool), len(auto))
+        if short:
+            msg += '; THIEU tunnel trong cho %d may (them tunnel hoac bat "cho dung chung")' % short
+        VPN_AUTO_RT.update(ts=now, msg=msg)
+        if done:
+            VPN_AUTO_RT['last'] = (done + VPN_AUTO_RT['last'])[:30]
+            _ss_log('VPN-AUTO: ' + '; '.join(done)[:300])
+
+def vpn_auto_public():
+    c = _vpn_auto_load()
+    return {'ok': True, 'cfg': {k: c[k] for k in ('enabled', 'allow_dup', 'pool', 'range', 'release_min')},
+            'auto': {ip: v.get('name') for ip, v in c['auto'].items() if isinstance(v, dict)},
+            'msg': VPN_AUTO_RT['msg'], 'ts': int(VPN_AUTO_RT['ts']), 'last': VPN_AUTO_RT['last'][:15]}
+
+def vpn_auto_set(p):
+    c = _vpn_auto_load()
+    rng = str(p.get('range', c['range']) or '').strip()[:400]
+    _vpn_auto_ranges(rng)  # ValueError => bao loi
+    pool = [str(x) for x in (p.get('pool') if isinstance(p.get('pool'), list) else c['pool']) if re.match(r'^[A-Za-z0-9_.-]{1,64}$', str(x))][:200]
+    try:
+        rel = max(0, min(1440, int(p.get('release_min', c['release_min']))))
+    except Exception:
+        rel = c['release_min']
+    c.update(enabled=bool(p.get('enabled')), allow_dup=bool(p.get('allow_dup')), pool=pool, range=rng, release_min=rel)
+    with VPN_AUTO_LOCK:
+        _vpn_auto_save(c)
+
+def vpn_auto_loop():
+    time.sleep(30)
+    while True:
+        try:
+            vpn_auto_tick()
+        except Exception as e:
+            try:
+                _ss_log('VPN-AUTO loi: %s' % e)
+            except Exception:
+                pass
+        time.sleep(20)
+
 def exitip_watch_loop():
     """[Ver 2.94] Tu do exit-IP: tunnel UP ma chua co IP (vua them/vua bat) hoac IP cu > 5 phut => do lai.
     Truoc day chi trang /vpn kich do => tai khoan moi them hien 'dang do...' mai."""
@@ -6689,6 +6857,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
         if path == '/api/vpn/status':
             return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map(), 'deps': vpn_deps_status()})
+        if path == '/api/vpn/auto':
+            return self._send_json(vpn_auto_public())
         if path == '/api/vpn/xv-creds':
             return self._send_json({'ok': True, 'creds': xv_creds_public()})
         if path == '/api/vpn/exitips':
@@ -7001,7 +7171,7 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         r_iso['drop_pkts'] = None
                     return self._send_json(r_iso)
-                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth', 'xv-creds-save', 'xv-creds-del') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
+                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth', 'xv-creds-save', 'xv-creds-del', 'auto-save', 'auto-run') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
                     return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
                 if action == 'up':
                     return self._send_json(vpn_run(['up', name]))
@@ -7073,6 +7243,16 @@ class Handler(BaseHTTPRequestHandler):
                         _record_vpn_declaration_bulk([(s, '') for s in ips])
                     r['count'] = len(ips)
                     return self._send_json(r)
+                if action == 'auto-save':
+                    try:
+                        vpn_auto_set(payload)
+                    except ValueError as e:
+                        return self._send_json({'ok': False, 'error': 'dai IP loi: %s' % e})
+                    threading.Thread(target=vpn_auto_tick, daemon=True).start()
+                    return self._send_json(vpn_auto_public())
+                if action == 'auto-run':
+                    vpn_auto_tick()
+                    return self._send_json(vpn_auto_public())
                 if action == 'xv-creds-save':
                     items = []
                     for ln in str(payload.get('text', '') or '').splitlines():
@@ -7253,6 +7433,7 @@ if __name__ == '__main__':
     conn_migrate_once()
     threading.Thread(target=conn_watch_loop, daemon=True, name='conn-watch').start()
     threading.Thread(target=exitip_watch_loop, daemon=True, name='exitip-watch').start()
+    threading.Thread(target=vpn_auto_loop, daemon=True, name='vpn-auto').start()
     threading.Thread(target=pppoe_glider_stale_loop, daemon=True, name='glider-stale').start()
     class _GUIServer(ThreadingHTTPServer):
         # [Ver 2.63] Backlog mac dinh cua socketserver la 5. Khi GUI go dong thoi

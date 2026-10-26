@@ -86,6 +86,23 @@
     <div class="muted" style="margin-top:8px">Gán máy qua GUI chính: chọn Proxy Type = VPN ở từng máy hoặc dùng khung "GÁN VPN THEO SỐ MÁY". Còn lại giữ nguyên đường cũ.</div>
   </div>
 
+
+  <div class="card" id="autoCard"><!-- [Ver 2.94] tu gan VPN kieu MiniSocks -->
+    <h2><span class="h-ico h-ico-green">&#8635;</span>Tự gán VPN cho máy mới</h2>
+    <div class="muted" style="margin-bottom:6px">Giống MiniSocks: máy mới bật trong dải IP, chưa gán VPN, sẽ được gán vào tunnel đang UP ít máy nhất trong danh sách. Không cho dùng chung thì mỗi máy một tunnel, tức mỗi máy một IP WAN. Máy gán tay, máy master <b>192.10.1.10</b>, máy Internet trực tiếp được giữ nguyên.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
+      <label style="display:inline-flex;gap:6px;align-items:center;text-transform:none;margin:0"><input type="checkbox" id="au-on"> Bật tự gán</label>
+      <label style="display:inline-flex;gap:6px;align-items:center;text-transform:none;margin:0"><input type="checkbox" id="au-dup"> Cho dùng chung tunnel</label>
+      <div><label for="au-range">Dải IP áp dụng</label><input id="au-range" style="width:300px" placeholder="vd 192.10.3.0/24 hoặc 192.10.3.1-192.10.3.60"></div>
+      <div><label for="au-rel">Trả tunnel khi máy tắt quá (phút, 0 = giữ)</label><input id="au-rel" type="number" min="0" max="1440" style="width:90px"></div>
+    </div>
+    <label>Tunnel dùng để tự gán <a class="muted" style="cursor:pointer;text-transform:none" onclick="auPick(true)">chọn hết</a> · <a class="muted" style="cursor:pointer;text-transform:none" onclick="auPick(false)">bỏ hết</a></label>
+    <div id="au-pool" style="display:flex;flex-wrap:wrap;gap:4px 12px;max-height:120px;overflow:auto"></div>
+    <div style="margin-top:8px"><button class="ok" onclick="auSave()">Lưu &amp; áp dụng</button><button onclick="auRun()">Chạy ngay</button>
+      <span id="au-msg" class="muted" role="status" aria-live="polite"></span></div>
+    <div id="au-last" class="muted" style="font-family:Consolas,monospace;font-size:11.5px;margin-top:4px;white-space:pre-wrap"></div>
+  </div>
+
   <div class="row">
     <div class="card"><!-- [Ver 2.94] xv -->
       <h2><span class="h-ico h-ico-green">&#10003;</span>Thêm ExpressVPN</h2>
@@ -260,6 +277,44 @@ function xvAccounts() {
     const p = s.split('|'); return { user: (p[0] || '').trim(), pass: (p[1] || '').trim(), key: (p[2] || '').trim() };
   }).filter(a => a.user && a.pass);
 }
+let AU = null, AU_SIG = '';
+async function auLoad() {
+  try { AU = await (await fetch('/api/vpn/auto')).json(); } catch (e) { return; }
+  const c = AU.cfg || {};
+  document.getElementById('au-on').checked = !!c.enabled;
+  document.getElementById('au-dup').checked = !!c.allow_dup;
+  document.getElementById('au-range').value = c.range || '';
+  document.getElementById('au-rel').value = c.release_min ?? 30;
+  AU_SIG = ''; auRenderPool(); auStatus();
+}
+function auStatus() {
+  if (!AU) return;
+  document.getElementById('au-msg').textContent = AU.cfg && AU.cfg.enabled ? (AU.msg || 'đang chạy') : 'đang tắt';
+  document.getElementById('au-last').textContent = (AU.last || []).slice(0, 6).join('\n');
+}
+function auRenderPool() {
+  const box = document.getElementById('au-pool'); if (!box || !AU) return;
+  const names = (ACCOUNTS || []).map(a => a.name), sig = names.join('|');
+  if (sig === AU_SIG) return;
+  const keep = AU_SIG ? new Set([...box.querySelectorAll('input:checked')].map(x => x.value)) : new Set((AU.cfg || {}).pool || []);
+  AU_SIG = sig;
+  box.innerHTML = names.length ? names.map(n => `<label style="display:inline-flex;gap:5px;align-items:center;text-transform:none;margin:0;font-weight:600"><input type="checkbox" value="${esc(n)}"${keep.has(n) ? ' checked' : ''}>${esc(n)}</label>`).join('')
+    : '<span class="muted">chưa có tunnel</span>';
+}
+function auPick(on) { document.querySelectorAll('#au-pool input').forEach(x => { x.checked = on; }); }
+async function auSave() {
+  const pool = [...document.querySelectorAll('#au-pool input:checked')].map(x => x.value);
+  const p = { enabled: document.getElementById('au-on').checked, allow_dup: document.getElementById('au-dup').checked,
+    range: document.getElementById('au-range').value.trim(), release_min: parseInt(document.getElementById('au-rel').value || '30', 10), pool };
+  if (p.enabled && !p.range) return log('nhập dải IP áp dụng cho tự gán');
+  if (p.enabled && !pool.length) return log('chọn ít nhất 1 tunnel cho tự gán');
+  const r = await api('auto-save', p);
+  if (r.ok === false) return log('tự gán: ' + r.error);
+  AU = r; auStatus(); log('đã lưu tự gán VPN (' + (p.enabled ? 'bật' : 'tắt') + ', ' + pool.length + ' tunnel)');
+  setTimeout(async () => { await auLoad(); refresh(); }, 6000);
+}
+async function auRun() { const r = await api('auto-run'); AU = r; auStatus(); refresh(); }
+setInterval(() => { if (AU) fetch('/api/vpn/auto').then(r => r.json()).then(r => { AU = Object.assign(AU, { msg: r.msg, last: r.last, auto: r.auto }); auStatus(); }).catch(() => {}); }, 20000);
 let XV_SAVED = [];
 function xvRenderAcc() {
   const sel = document.getElementById('xv-acc'), cur = sel.value, a = xvAccounts();
@@ -469,6 +524,7 @@ async function refresh() {
       </tr>`;
     }).join('');
   }
+  auRenderPool();
   const sel = document.getElementById('as-name');
   if (sel) {
     const cur = sel.value;
@@ -520,7 +576,7 @@ async function unassignAll(name) {
 (async () => {
   try {
     const h = await (await fetch('/api/vpn/express-hosts')).json();
-    XV_HOSTS = (h.hosts||[]).map(x => typeof x === 'string' ? {country:'', city:'', host:x} : x); xvRenderLoc(); xvLoadSaved();
+    XV_HOSTS = (h.hosts||[]).map(x => typeof x === 'string' ? {country:'', city:'', host:x} : x); xvRenderLoc(); xvLoadSaved(); auLoad();
 (function () {
   const c = document.getElementById('accCompact'), t = document.getElementById('accTbl');
   try { c.checked = localStorage.getItem('vpn_compact') === '1'; } catch (e) {}
