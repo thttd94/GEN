@@ -134,6 +134,18 @@
         <button type="button" onclick="xvAddMany()">T?o nhi?u tunnel, m?i tunnel 1 server</button>
       </div>
       <div id="xv-srv-msg" class="muted" style="margin-top:4px"></div>
+      <div style="margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px">
+        <div style="font-weight:700;color:#eeb8ec;font-size:12px">T?o N tunnel c? IP ra KH?C NHAU</div>
+        <div class="muted" style="margin:4px 0 8px">T? l?y server t? nhi?u th?nh ph?, b?t l?n, ?o IP th?t, tr?ng th? ??i server (t?i ?a 3 l?n). Kh?ng c?n ch?n location.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+          <div><label for="xv-dn">S? tunnel</label><input id="xv-dn" type="number" min="1" max="20" value="5" style="width:70px"></div>
+          <div><label for="xv-dlocs">Ch? d?ng n??c/v?ng (?? tr?ng = r?i m?i n?i)</label><input id="xv-dlocs" style="width:240px" placeholder="vd japan, singapore, usa"></div>
+          <button type="button" class="ok" onclick="xvDistinct()">T?o &amp; ?o IP</button>
+          <button type="button" onclick="xvDistinctPoll(true)">Xem ti?n ??</button>
+        </div>
+        <div id="xv-dmsg" class="muted" role="status" aria-live="polite" style="margin-top:6px"></div>
+        <div id="xv-dtbl" class="muted" style="font-family:Consolas,monospace;font-size:11.5px;white-space:pre-wrap;margin-top:4px"></div>
+      </div>
       <div class="muted" id="xv-info" role="status" aria-live="polite" style="margin-top:6px">User/pass lấy ở ExpressVPN &gt; Manual Configuration. Key chỉ lưu để đối chiếu.</div>
     </div>
 
@@ -322,7 +334,42 @@ async function auSave() {
 }
 async function auRun() { const r = await api('auto-run'); AU = r; auStatus(); refresh(); }
 setInterval(() => { if (AU) fetch('/api/vpn/auto').then(r => r.json()).then(r => { AU = Object.assign(AU, { msg: r.msg, last: r.last, auto: r.auto }); auStatus(); }).catch(() => {}); }, 20000);
-let XV_SAVED = [], XV_SRV = [];
+let XV_SAVED = [], XV_SRV = [], XV_JOB = '', XV_JT = null;
+async function xvDistinct() {
+  const sv = document.getElementById('xv-acc').value;
+  const cred_id = sv.startsWith('s:') ? sv.slice(2) : '';
+  if (!cred_id) return log('ch?n 1 t?i kho?n ?? l?u tr??c');
+  const n = parseInt(document.getElementById('xv-dn').value || '5', 10);
+  const locs = (document.getElementById('xv-dlocs').value || '').split(/[,\s]+/).filter(Boolean);
+  const proto = (document.querySelector('input[name="xv-proto"]:checked') || {}).value || 'udp';
+  const r = await api('add-distinct', { count: n, cred_id, locs, proto, up: '1' });
+  if (!r.ok) return log('l?i: ' + (r.error || ''));
+  XV_JOB = r.job;
+  document.getElementById('xv-dmsg').textContent = '?ang ch?y. Vi?c n?y m?t kho?ng ' + (n * 12) + ' gi?y.';
+  document.getElementById('xv-dtbl').textContent = '';
+  log('b?t ??u t?o ' + n + ' tunnel IP kh?c nhau (job ' + XV_JOB + ')');
+  if (XV_JT) clearInterval(XV_JT);
+  XV_JT = setInterval(() => xvDistinctPoll(), 4000);
+}
+async function xvDistinctPoll(manual) {
+  if (!XV_JOB) { if (manual) document.getElementById('xv-dmsg').textContent = 'ch?a c? l?n ch?y n?o.'; return; }
+  let r = {};
+  try { r = await (await fetch('/api/vpn/distinct?job=' + encodeURIComponent(XV_JOB))).json(); } catch (e) { return; }
+  if (!r.ok) return;
+  const j = r.job;
+  document.getElementById('xv-dmsg').textContent = j.msg || '';
+  const rows = (j.rows || []);
+  document.getElementById('xv-dtbl').textContent = rows.length
+    ? rows.map(x => (x.ok ? 'OK  ' : 'BO  ') + (x.name || '-').padEnd(7) + ' ' + (x.server || '-').padEnd(16) + ' -> ' + (x.exit || 'kh?ng c?') + (x.error ? '  (' + x.error + ')' : '')).join('\n')
+    : '';
+  if (j.done) {
+    if (XV_JT) { clearInterval(XV_JT); XV_JT = null; }
+    const okn = rows.filter(x => x.ok).length;
+    log('xong: ' + okn + '/' + (j.count || 0) + ' tunnel c? IP ri?ng');
+    refresh();
+    setTimeout(() => api('refresh-exitips').catch(() => {}), 8000);
+  }
+}
 async function xvLoadServers() {
   const loc = (document.getElementById('xv-loc').value || '').trim().toLowerCase();
   const sel = document.getElementById('xv-srv'), msg = document.getElementById('xv-srv-msg');

@@ -5254,6 +5254,162 @@ def _resolve_v4(host, timeout=6):
     except Exception:
         return []
 
+DISTINCT = {'lock': threading.Lock(), 'jobs': {}, 'seq': 0}
+
+def _xv_pool_by_loc(locs=None):
+    """[(loc, [host...])] trai deu theo thanh pho de moi tunnel ra mot cum server khac nhau."""
+    groups = {}
+    try:
+        with open(VPN_HOSTS_FILE, 'r', encoding='utf-8', errors='replace') as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln or ln.startswith('#'):
+                    continue
+                pp = ln.split('|')
+                if len(pp) < 3:
+                    continue
+                loc = ('%s %s' % (pp[0], pp[1])).strip()
+                groups.setdefault(loc, []).append(pp[-1])
+    except Exception:
+        return []
+    keys = [k for k in groups if not locs or any(x in k.lower() for x in locs)]
+    # round-robin: moi vong lay 1 host cua tung thanh pho => trai deu, khac cum server
+    res, depth = [], 0
+    while depth < 40:
+        anyh = False
+        for k in keys:
+            if depth < len(groups[k]):
+                res.append((k, groups[k][depth]))
+                anyh = True
+        if not anyh:
+            break
+        depth += 1
+    return res
+
+def _xv_candidates(locs=None, limit=400):
+    """[(loc, host, server_ip)] - uu tien trai deu thanh pho."""
+    out, seen = [], set()
+    for loc, host in _xv_pool_by_loc(locs):
+        for ip in _resolve_v4(host):
+            if ip in seen:
+                continue
+            seen.add(ip)
+            out.append((loc, host, ip))
+        if len(out) >= limit:
+            break
+    return out
+
+def vpn_distinct_start(payload):
+    """Tao N tunnel, moi tunnel ghim 1 server, do exit IP that, trung thi doi server (toi da 3 lan)."""
+    cred = xv_cred_get(str(payload.get('cred_id', ''))) if payload.get('cred_id') else None
+    if not cred:
+        return {'ok': False, 'error': 'chon tai khoan da luu'}
+    count = max(1, min(20, int(payload.get('count') or 1)))
+    locs = [str(x).strip().lower() for x in (payload.get('locs') or []) if str(x).strip()][:12]
+    with DISTINCT['lock']:
+        DISTINCT['seq'] += 1
+        jid = 'd%d' % DISTINCT['seq']
+        DISTINCT['jobs'][jid] = {'id': jid, 'ts': time.time(), 'done': False, 'rows': [], 'count': count,
+                                 'locs': locs, 'proto': 'tcp' if str(payload.get('proto')) == 'tcp' else 'udp',
+                                 'cred_id': str(payload.get('cred_id')), 'msg': 'dang chuan bi', 'ok': True,
+                                 'auto_up': str(payload.get('up', '1')) in ('1', 'true', 'True')}
+        if len(DISTINCT['jobs']) > 20:
+            for k in sorted(DISTINCT['jobs'], key=lambda x: DISTINCT['jobs'][x]['ts'])[:10]:
+                DISTINCT['jobs'].pop(k, None)
+    threading.Thread(target=_vpn_distinct_worker, args=(jid,), daemon=True, name='xv-distinct').start()
+    return {'ok': True, 'job': jid}
+
+def vpn_distinct_status(jid=''):
+    with DISTINCT['lock']:
+        if not jid:
+            ks = sorted(DISTINCT['jobs'], key=lambda x: DISTINCT['jobs'][x]['ts'])[-5:]
+            return {'ok': True, 'jobs': [{'id': k, 'done': DISTINCT['jobs'][k]['done'], 'msg': DISTINCT['jobs'][k]['msg']} for k in ks]}
+        j = DISTINCT['jobs'].get(jid)
+        if not j:
+            return {'ok': False, 'error': 'khong co job'}
+        return {'ok': True, 'job': dict(j, rows=[dict(r) for r in j['rows']])}
+
+def _vpn_distinct_worker(jid):
+    j = DISTINCT['jobs'][jid]
+    def put(**kw):
+        with DISTINCT['lock']:
+            j.update(kw)
+    def row(**kw):
+        with DISTINCT['lock']:
+            j['rows'].append(kw)
+    try:
+        used_exit = {}
+        for a in vpn_status_json():
+            if a.get('running'):
+                ip = (_EXITIPS.get(a['name']) or {}).get('ip')
+                if ip:
+                    used_exit[ip] = a['name']
+        put(msg='dang tim server (%d thanh pho)...' % len(j['locs']) if j['locs'] else 'dang tim server...')
+        cand = _xv_candidates(j['locs'] or None)
+        if not cand:
+            return put(done=True, ok=False, msg='khong phan giai duoc server nao')
+        srv_used = set()
+        for a in vpn_status_json():
+            h = str(a.get('host') or '')
+            if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', h):
+                srv_used.add(h)
+        free = [c for c in cand if c[2] not in srv_used] or cand
+        exist = {a['name'] for a in vpn_status_json()}
+        made = 0
+        ni = 0
+        for k in range(j['count']):
+            if made >= j['count']:
+                break
+            okrow = None
+            for attempt in range(1, 4):
+                if ni >= len(free):
+                    break
+                loc, host, sip = free[ni]
+                ni += 1
+                nxt = max([int(x.split('-')[1]) for x in exist if re.match(r'^xv-\d+$', x)] or [0]) + 1
+                nm = 'xv-%d' % nxt
+                put(msg='tao %s -> %s (lan %d)' % (nm, sip, attempt))
+                r = vpn_run(['add-express', nm, sip, str(cred['user']), str(cred.get('pass', '')), j['proto'], str(cred.get('key', ''))], timeout=120)
+                if not r.get('ok'):
+                    _ss_log('DISTINCT add loi %s: %s' % (nm, str(r.get('error') or r.get('output'))[:150]))
+                    continue
+                exist.add(nm)
+                up_ok = False
+                if j['auto_up']:
+                    up_ok = bool(vpn_run(['up', nm], timeout=180).get('ok'))
+                eip = ''
+                if up_ok:
+                    d = vpn_exit_ip(nm)
+                    eip = str(d.get('exit_ip') or '')
+                if not eip:
+                    vpn_run(['down', nm], timeout=90)
+                    vpn_run(['del', nm], timeout=60)
+                    exist.discard(nm)
+                    row(name=nm, loc=loc, server=sip, exit='', attempt=attempt, ok=False, error='tunnel khong len hoac khong do duoc IP')
+                    continue
+                if eip in used_exit:
+                    vpn_run(['down', nm], timeout=90)
+                    vpn_run(['del', nm], timeout=60)
+                    exist.discard(nm)
+                    row(name=nm, loc=loc, server=sip, exit=eip, attempt=attempt, ok=False, error='trung IP voi ' + str(used_exit[eip]))
+                    continue
+                used_exit[eip] = nm
+                okrow = dict(name=nm, loc=loc, server=sip, exit=eip, attempt=attempt, ok=True, error='')
+                break
+            if okrow:
+                row(**okrow)
+                made += 1
+            else:
+                row(name='', loc='', server='', exit='', attempt=3, ok=False, error='het server de thu')
+        threading.Timer(3, vpn_refresh_exitips_async).start()
+        put(done=True, msg='xong: %d/%d tunnel co IP rieng' % (made, j['count']))
+    except Exception as e:
+        try:
+            _ss_log('DISTINCT loi: %s' % e)
+        except Exception:
+            pass
+        put(done=True, ok=False, msg='loi: %s' % e)
+
 def vpn_express_servers(loc='', fetch=False):
     """[Ver 2.94] IP server cu the cua 1 location (kieu MiniSocks endpoint_ip).
     Moi IP = 1 server = 1 IP ra rieng khi tao tunnel. Hostname thanh pho chi co 2-4 IP
@@ -6906,6 +7062,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'accounts': vpn_status_json(), 'machine_map': vpn_machine_map(), 'deps': vpn_deps_status()})
         if path == '/api/vpn/auto':
             return self._send_json(vpn_auto_public())
+        if path == '/api/vpn/distinct':
+            _qd = parse_qs(urlparse(self.path).query or '')
+            return self._send_json(vpn_distinct_status((_qd.get('job') or [''])[0]))
         if path == '/api/vpn/servers':
             # [Ver 2.94] parse query tai cho: bien 'q' chi ton tai trong nhanh /api/pm/flow
             _qs = parse_qs(urlparse(self.path).query or '')
@@ -7223,7 +7382,7 @@ class Handler(BaseHTTPRequestHandler):
                         r_iso['drop_pkts'] = None
                     return self._send_json(r_iso)
                 # [Ver 2.94] add-express-many/express-servers khong dung ten tai khoan do client gui
-                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth', 'xv-creds-save', 'xv-creds-del', 'auto-save', 'auto-run', 'add-express-many', 'express-servers') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
+                if action not in ('unassign', 'refresh-exitips', 'unassign-bulk', 'set-auth', 'xv-creds-save', 'xv-creds-del', 'auto-save', 'auto-run', 'add-express-many', 'express-servers', 'add-distinct', 'distinct-status') and (not re.match('^[A-Za-z0-9_.-]{1,64}$', name)):
                     return self._send_json({'ok': False, 'error': 'ten tai khoan khong hop le'})
                 if action == 'up':
                     return self._send_json(vpn_run(['up', name]))
@@ -7295,6 +7454,10 @@ class Handler(BaseHTTPRequestHandler):
                         _record_vpn_declaration_bulk([(s, '') for s in ips])
                     r['count'] = len(ips)
                     return self._send_json(r)
+                if action == 'add-distinct':
+                    return self._send_json(vpn_distinct_start(payload))
+                if action == 'distinct-status':
+                    return self._send_json(vpn_distinct_status(str(payload.get('job', ''))))
                 if action == 'express-servers':
                     loc = str(payload.get('loc', '')).strip().lower()
                     return self._send_json(vpn_express_servers(loc))
