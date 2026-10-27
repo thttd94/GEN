@@ -332,6 +332,10 @@
             <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
             <button class="view-tab" id="viewUnconfiguredBtn" onclick="switchViewMode('unconfigured')">CHƯA CẤU HÌNH</button>
           </div>
+          <span id="flowSummary" hidden style="font-size:13px;font-weight:700;white-space:nowrap;">
+            <span id="flowSummaryText"></span>
+            <button type="button" class="btn small" onclick="setFlow('reset')" title="Xoá số đếm theo dõi luồng">Reset</button>
+          </span>
                   </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap;">
         <div class="sub" id="countLabel" style="font-weight:800;white-space:nowrap;">0 rows</div>
@@ -2289,10 +2293,40 @@
       if (flowTimer) { clearInterval(flowTimer); flowTimer = null; }
       if (show) { loadFlow(); flowTimer = setInterval(loadFlow, 3000); }
     }
+    // [Ver 2.97] Tom tat luong canh tab: chi hien khi DANG BAT theo doi luong.
+    function paintFlowSummary(r) {
+      const sum = document.getElementById('flowSummary');
+      const txt = document.getElementById('flowSummaryText');
+      if (!sum || !txt) return;
+      const t = (r && r.totals) || {};
+      const tot = (t.proxy || 0) + (t.split || 0) + (t.direct || 0);
+      if (!r || r.enabled !== true || r.available !== true || !tot) { sum.hidden = true; return; }
+      const pct = x => Math.round(100 * x / tot);
+      let h = '<span style="color:#dc2626">Proxy: ' + fmtMB(t.proxy) + ' (' + pct(t.proxy) + '%)</span>';
+      h += ' · <span style="color:#16a34a">Cố định: ' + fmtMB(t.split) + ' (' + pct(t.split) + '%)</span>';
+      if (t.direct) h += ' · <span style="color:#2563eb">Trực tiếp: ' + fmtMB(t.direct) + ' (' + pct(t.direct) + '%)</span>';
+      txt.innerHTML = h;
+      sum.hidden = false;
+    }
+    let flowSumTimer = null;
+    async function pollFlowSummary() {
+      try {
+        const r = await fetchJSON('/api/pm/flow');
+        paintFlowSummary(r);
+      } catch (e) {
+        const sum = document.getElementById('flowSummary');
+        if (sum) sum.hidden = true;
+      }
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      pollFlowSummary();
+      if (!flowSumTimer) flowSumTimer = setInterval(pollFlowSummary, 5000);
+    });
     function renderFlow(r) {
       const off = document.getElementById('flowOff');
       const on = document.getElementById('flowOn');
       const err = document.getElementById('flowErr');
+      paintFlowSummary(r);
       off.hidden = !!r.enabled;
       on.hidden = !r.enabled;
       const fn = document.getElementById('cnN-flow'); if (fn) fn.textContent = r.enabled ? 'bật' : 'tắt';

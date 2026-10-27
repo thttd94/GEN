@@ -1,1 +1,1 @@
-Ver 2.96 (Cot Check: co quoc gia bang anh flagcdn (Windows khong co font emoji co), bo chu LIVE khi da live, chi hien IP + co; DEAD giu nguyen)
+Ver 2.97 (Fix may doi VPN->proxy van ra IP VPN (unassign moi IP con trong map.txt ma cau hinh khong khai VPN, truoc chi xet saved_text); GUI: tom tat luong canh tab Da/Chua cau hinh (Proxy/Codinh/Direct kem %), chi hien khi dang bat theo doi luong, kem nut Reset)

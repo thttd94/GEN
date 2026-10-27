@@ -3957,16 +3957,24 @@ def sync_vpn_state_on_apply(session_id, runtime_data, results):
             status = {str(a.get('name', '')): a for a in vpn_status_json()}
         except Exception:
             status = {}
+        # [Ver 2.97] Bo gan MOI ip con trong map.txt ma cau hinh khong con khai VPN.
+        # Loi cu: chi chay khi co saved_text, va chi khi may do nam trong saved_text.
+        # Vi du 192.10.0.16 tu promote (khong co trong saved_text) gan VPN xv-1,
+        # sau doi sang proxy Lumi => Apply xong van con ip rule lookup 371 => van ra IP VPN.
+        stale_ips = [ip for ip in sorted(current) if ip not in desired_ips]
+        if stale_ips:
+            bak = _backup_vpn_map(f'apply session {session_id}: sap bo gan {len(stale_ips)}/{len(current)} may')
+            if bak:
+                summary['map_backup'] = str(bak)
+            r = vpn_run(['unassign-many'] + stale_ips, timeout=max(120, 3 * len(stale_ips)))
+            ok = bool(r.get('ok'))
+            summary['unassigned'] = [{'ip': ip, 'ok': ok} for ip in stale_ips]
+            try:
+                _ss_log('VPN-SYNC unassign %d may khong con khai VPN: %s' % (len(stale_ips), ','.join(stale_ips[:20])))
+            except Exception:
+                pass
+        todo = {}
         if saved_text:
-            stale_ips = [ip for ip in sorted(current) if ip not in desired_ips]
-            if stale_ips:
-                bak = _backup_vpn_map(f'apply session {session_id}: sap bo gan {len(stale_ips)}/{len(current)} may')
-                if bak:
-                    summary['map_backup'] = str(bak)
-                r = vpn_run(['unassign-many'] + stale_ips, timeout=max(120, 3 * len(stale_ips)))
-                ok = bool(r.get('ok'))
-                summary['unassigned'] = [{'ip': ip, 'ok': ok} for ip in stale_ips]
-            todo = {}
             for ip, acc in sorted(desired_ips.items()):
                 if current.get(ip, '') == acc:
                     continue
