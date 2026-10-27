@@ -1,3 +1,6 @@
+## Ver 2.95 - 2026-10-27
+- Cot Check: hien quoc ky sau exit IP (proxy/VPN/PPPoE); them country_codes_for_ips, check_pppoe_session; CHECK ALL hien quoc ky theo lo
+
 ## Ver 2.94 (2026-10-26) - Cau hinh ket noi + may master + ExpressVPN chon location
 
 - GUI 9001: menu Cau hinh > `Cau hinh ket noi` (5 muc): internet truc tiep theo IP (may VPN bi chan chon), co lap LAN + ngoai le + may master, chan UDP (giu 53/DHCP), WebRTC chan STUN 3478/5349/19302-19309, ten mien/IP 3 danh sach (khong qua proxy / chan / dinh tuyen co dinh = Phan luong 2.93). API `GET/POST /api/pm/conn`, log `CONN`.

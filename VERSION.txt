@@ -1,1 +1,1 @@
-Ver 2.94 (Cau hinh ket noi: truc tiep / co lap LAN + may master / chan UDP / WebRTC / ten mien; trang /vpn ExpressVPN chon location)
+Ver 2.95 (Cot Check: hien quoc ky sau exit IP (proxy/VPN/PPPoE); them country_codes_for_ips, check_pppoe_session; CHECK ALL hien quoc ky theo lo)

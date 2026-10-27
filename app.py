@@ -4402,6 +4402,79 @@ def get_proxy_public_ip(proxy_host, proxy_port, username, password, timeout=15):
         raise last_error
     raise OSError('Không lấy được public IP')
 
+# [Ver 2.95] Quoc gia cua exit IP: chi lay ma 2 chu (US, VN...), UI doi thanh quoc ky.
+# Cache 24h/ip trong RAM de CHECK ALL khong dot het quota ip-api (45 req/phut).
+_CC_CACHE = {}
+_CC_LOCK = threading.Lock()
+_CC_TTL = 86400
+_CC_MAX = 5000
+
+def _cc_cache_get(ip):
+    with _CC_LOCK:
+        it = _CC_CACHE.get(ip)
+    if not it:
+        return ''
+    if time.time() - float(it.get('ts') or 0) > _CC_TTL:
+        return ''
+    return str(it.get('cc') or '')
+
+def _cc_cache_put(ip, cc):
+    if not ip or not cc:
+        return
+    with _CC_LOCK:
+        _CC_CACHE[ip] = {'cc': cc, 'ts': time.time()}
+        if len(_CC_CACHE) > _CC_MAX:
+            drop = sorted(_CC_CACHE, key=lambda k: float((_CC_CACHE.get(k) or {}).get('ts') or 0))[:1000]
+            for k in drop:
+                _CC_CACHE.pop(k, None)
+
+def country_codes_for_ips(ips, timeout=6):
+    """Doi IP -> ma quoc gia. Dung ip-api /batch (100 ip/lan), thieu thi hoi api.country.is.
+    Khong bao gio nem loi: khong biet quoc gia thi tra ve rong."""
+    out = {}
+    todo = []
+    for ip in [str(x).strip() for x in (ips or []) if str(x).strip()]:
+        cc = _cc_cache_get(ip)
+        if cc:
+            out[ip] = cc
+        elif ip not in todo:
+            todo.append(ip)
+    if not todo:
+        return out
+    for i in range(0, len(todo), 100):
+        chunk = todo[i:i + 100]
+        try:
+            body = json.dumps([{'query': ip, 'fields': 'status,countryCode,query'} for ip in chunk]).encode('utf-8')
+            req = urllib.request.Request('http://ip-api.com/batch', data=body, headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                rows = json.loads(resp.read().decode('utf-8', 'replace'))
+            for it in (rows if isinstance(rows, list) else []):
+                ip = str((it or {}).get('query') or '').strip()
+                cc = str((it or {}).get('countryCode') or '').strip().upper()
+                if ip and len(cc) == 2:
+                    out[ip] = cc
+                    _cc_cache_put(ip, cc)
+        except Exception:
+            pass
+    miss = [ip for ip in todo if ip not in out]
+    for ip in miss[:40]:
+        try:
+            with urllib.request.urlopen('https://api.country.is/%s' % ip, timeout=timeout) as resp:
+                d = json.loads(resp.read().decode('utf-8', 'replace'))
+            cc = str((d or {}).get('country') or '').strip().upper()
+            if len(cc) == 2:
+                out[ip] = cc
+                _cc_cache_put(ip, cc)
+        except Exception:
+            continue
+    return out
+
+def country_code_for_ip(ip, timeout=6):
+    ip = str(ip or '').strip()
+    if not ip:
+        return ''
+    return country_codes_for_ips([ip], timeout=timeout).get(ip, '')
+
 def find_duplicate_proxy_tags(public_ip, session='1'):
     duplicates = []
     try:
@@ -4418,7 +4491,7 @@ def find_duplicate_proxy_tags(public_ip, session='1'):
     duplicates.sort(key=proxy_tag_num)
     return duplicates
 
-def check_proxy(proxy: str, session='1'):
+def check_proxy(proxy: str, session='1', with_country=True):
     if not proxy.strip():
         return {'ok': False, 'status': 'empty', 'message': 'DEAD'}
     try:
@@ -4434,7 +4507,14 @@ def check_proxy(proxy: str, session='1'):
                 duplicates = find_duplicate_proxy_tags(public_ip, session=session)
         except Exception:
             pass
-        return {'ok': True, 'status': 'live', 'message': 'LIVE', 'ip': public_ip, 'public_ip': public_ip, 'duplicates': duplicates}
+        cc = ''
+        if with_country and public_ip:
+            try:
+                cc = country_code_for_ip(public_ip)
+            except Exception:
+                cc = ''
+        return {'ok': True, 'status': 'live', 'message': 'LIVE', 'ip': public_ip, 'public_ip': public_ip,
+                'country_code': cc, 'duplicates': duplicates}
     except Exception:
         return {'ok': False, 'status': 'dead', 'message': 'DEAD'}
 
@@ -4451,15 +4531,54 @@ def check_proxy_batch(items, session='1', max_workers=64):
     if not jobs:
         return results
     workers = max(1, min(len(jobs), int(max_workers or 64), 128))
+    def _one(tag, proxy):
+        # [Ver 2.95] Batch phai check duoc ca PPPoE va VPN, khong chi socks5/http.
+        p = str(proxy or '').strip()
+        if p.startswith('pppoe:'):
+            r = check_pppoe_session(p[6:], session=session, with_country=False)
+        elif p.startswith('vpn:'):
+            r = vpn_exit_ip(p[4:], with_country=False)
+            if isinstance(r, dict) and r.get('exit_ip'):
+                r['ip'] = r.get('exit_ip')
+        else:
+            r = check_proxy(p, session, False)
+        return r
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(check_proxy, proxy, session): tag for tag, proxy in jobs}
+        futs = {ex.submit(_one, tag, proxy): tag for tag, proxy in jobs}
         for fut in as_completed(futs):
             tag = futs[fut]
             try:
                 results[tag] = fut.result()
             except Exception as e:
                 results[tag] = {'ok': False, 'status': 'dead', 'message': 'DEAD', 'error': str(e)}
+    try:
+        ips = [str(r.get('ip') or r.get('exit_ip') or '').strip() for r in results.values() if isinstance(r, dict) and r.get('ok')]
+        cc = country_codes_for_ips([x for x in ips if x])
+        for r in results.values():
+            if not isinstance(r, dict) or not r.get('ok'):
+                continue
+            ip = str(r.get('ip') or r.get('exit_ip') or '').strip()
+            if ip and cc.get(ip):
+                r['country_code'] = cc[ip]
+    except Exception:
+        pass
     return results
+
+def check_pppoe_session(sid, session='1', with_country=True):
+    """[Ver 2.95] Check 1 phien PPPoE: glider SOCKS nam tren 127.0.0.1:15000+id-1.
+    Tra ve cung dinh dang voi check_proxy de UI dung chung 1 ham ve."""
+    sid = str(sid or '').strip()
+    if not sid.isdigit():
+        return {'ok': False, 'status': 'empty', 'message': 'DEAD'}
+    try:
+        port = pppoe_glider_port(sid)
+        _su, _hp, user, pw, sport = pppoe_session_credentials(sid)
+        port = int(port or sport or 0)
+        if not port:
+            return {'ok': False, 'status': 'dead', 'message': 'DEAD', 'error': 'khong ro port phien'}
+        return check_proxy('127.0.0.1:%d:%s:%s' % (port, user, pw), session=session, with_country=with_country)
+    except Exception as e:
+        return {'ok': False, 'status': 'dead', 'message': 'DEAD', 'error': str(e)}
 
 # [Ver 2.68] Quy tac cong WAN/LAN (Anh Thai chot 2026-10-21):
 #   - eth0 LUON LA WAN, khong bao gio nam trong br-lan.
@@ -5504,7 +5623,7 @@ def exitip_watch_loop():
             pass
         time.sleep(45 if miss else 90)
 
-def vpn_exit_ip(name):
+def vpn_exit_ip(name, with_country=True):
     acc = next((a for a in vpn_status_json() if a.get('name') == name), None)
     if not acc:
         return {'ok': False, 'error': f'khong co tai khoan {name}'}
@@ -5543,7 +5662,13 @@ def vpn_exit_ip(name):
             subprocess.run(['ip', 'rule', 'del', 'from', lip, 'table', tbl, 'priority', '5'], capture_output=True)
     if err:
         return {'ok': False, 'error': err}
-    return {'ok': True, 'exit_ip': ip_out, 'local_tunnel_ip': lip, 'dev': dev}
+    cc = ''
+    if with_country and ip_out:
+        try:
+            cc = country_code_for_ip(ip_out)
+        except Exception:
+            cc = ''
+    return {'ok': True, 'exit_ip': ip_out, 'local_tunnel_ip': lip, 'dev': dev, 'country_code': cc}
 EXITIP_CACHE_FILE = '/data/vpn/exitips.json'
 _EXITIPS = {}
 _EXITIPS_BUSY = {'v': False}
@@ -7252,7 +7377,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', '')), session=str(payload.get('session', '1'))))
             if path == '/api/pm/check-proxy-batch':
-                return self._send_json({'ok': True, 'results': check_proxy_batch(payload.get('items', []), session=str(payload.get('session', '1')))})
+                return self._send_json({'ok': True, 'results': check_proxy_batch(payload.get('items', []), session=str(payload.get('session', '1')))}) 
+            if path == '/api/pm/check-pppoe':
+                return self._send_json(check_pppoe_session(payload.get('id', ''), session=str(payload.get('session', '1'))))
             if path == '/api/pm/reboot-router':
                 return self._send_json(call_old_gui('/api/system/reboot', method='GET'))
             if path == '/api/pm/collector-config':
