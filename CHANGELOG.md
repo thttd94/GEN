@@ -1,3 +1,6 @@
+## Ver 2.101 - 2026-10-27
+- Tai app tu App Store luon ra WAN chinh (khong ton proxy/VPN): them *.mzstatic.com, *.aaplimg.com, *.itunes.apple.com, *.safebrowsing.apple, *.cdn-apple.com, *.phobos.apple.com vao CONN bypass mot lan (co bypass_defaults, xoa duoc); may proxy qua rule gen_bypass, may VPN qua set bypass4 fwmark 0x4d5
+
 ## Ver 2.100 - 2026-10-27
 - Phan luong: du lieu su kien TikTok (domain_keyword incentive) di CUNG duong proxy voi API/claim cua chinh may do, khong vao duong tach; rule dat truoc rule tach, co co bat/tat (split.incentive, mac dinh bat)
 

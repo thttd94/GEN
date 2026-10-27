@@ -2786,6 +2786,22 @@ def split_watch_loop():
 #   fixed: ten mien/IP di duong co dinh = split cu (target/proxy giu trong __meta__.split)
 # }
 CONN_FIXED_MASTER = '192.10.1.10'
+# [Ver 2.101] Tai app tu App Store phai ra WAN CHINH, khong ton dung luong proxy/VPN.
+# Do bang DNS sniff tren Gen12 2026-10-27 (may .244, tai app that):
+#   bag.itunes.apple.com       -> goi app chinh (Fastly, 66.8 MB trong 1 ket noi)
+#   is1-ssl.mzstatic.com       -> CDN goi/asset  (TRUOC DAY di proxy Lumi)
+#   *.g.aaplimg.com            -> bi danh CDN cua Apple (TRUOC DAY di proxy Lumi)
+#   token.safebrowsing.apple   -> duoi '.apple' chu khong phai '.apple.com' (bi lot)
+# Danh sach nay do vao CONN bypass => rule gen_bypass (direct) cho may proxy/PPPoE,
+# va set bypass4 (fwmark 0x4d5 -> table main) cho may VPN trong gen_conn_vpn.sh.
+CONN_DEFAULT_BYPASS = [
+    '*.mzstatic.com',
+    '*.aaplimg.com',
+    '*.itunes.apple.com',
+    '*.safebrowsing.apple',
+    '*.cdn-apple.com',
+    '*.phobos.apple.com',
+]
 CONN_BYPASS_TAG = 'gen_bypass'
 CONN_DIRECT_TAG = 'direct'
 ISO_MASTER_FILE = '/data/vpn/isolate.master'
@@ -2846,7 +2862,8 @@ def get_conn_config():
     L = lambda k: [str(x) for x in c.get(k) or []] if isinstance(c.get(k), list) else []
     return {'direct': L('direct'), 'iso_allow': L('iso_allow'), 'iso_master': L('iso_master'),
             'udp_block': bool(c.get('udp_block', True)), 'webrtc': 'off' if c.get('webrtc') == 'off' else 'block',
-            'bypass': L('bypass'), 'block': L('block'), 'migrated': bool(c.get('migrated'))}
+            'bypass': L('bypass'), 'block': L('block'), 'migrated': bool(c.get('migrated')),
+            'bypass_defaults': bool(c.get('bypass_defaults'))}
 
 def set_conn_config(cfg):
     state = load_session_state()
@@ -2854,7 +2871,7 @@ def set_conn_config(cfg):
     if not isinstance(meta, dict):
         meta = {}
         state['__meta__'] = meta
-    keep = ('direct', 'iso_allow', 'iso_master', 'udp_block', 'webrtc', 'bypass', 'block')
+    keep = ('direct', 'iso_allow', 'iso_master', 'udp_block', 'webrtc', 'bypass', 'block', 'bypass_defaults')
     meta['conn'] = dict({k: cfg.get(k) for k in keep}, migrated=True)
     save_session_state(state)
 
@@ -2863,7 +2880,20 @@ def conn_migrate_once():
     Chi danh dau migrated; khong doi hanh vi mang."""
     try:
         cfg = get_conn_config()
-        if cfg['migrated']:
+        # [Ver 2.101] Them danh sach tai-app- App-Store vao bypass MOT LAN (sau do nguoi dung
+        # xoa duoc). Chi them domain chua co, khong dung toi muc nguoi dung da nhap.
+        if not cfg.get('bypass_defaults'):
+            cur = list(cfg.get('bypass') or [])
+            add = [d for d in CONN_DEFAULT_BYPASS if d not in cur]
+            cfg['bypass'] = cur + add
+            cfg['bypass_defaults'] = True
+            try:
+                _ss_log('CONN: them %d ten mien App Store vao bypass (ra WAN chinh): %s'
+                        % (len(add), ', '.join(add)))
+            except Exception:
+                pass
+        if cfg['migrated'] and cfg.get('bypass_defaults'):
+            set_conn_config(cfg)
             return
         set_conn_config(cfg)
         _ss_log('CONN: migrate 2.93 -> 2.94 (split giu nguyen lam danh sach duong co dinh)')
