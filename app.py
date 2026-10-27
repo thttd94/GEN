@@ -2841,7 +2841,7 @@ CONN_BYPASS_TAG = 'gen_bypass'
 # => phan giai ten mien that bai => mat mang (su co 2026-10-28, 192.12.3.25 Gen12).
 # Them DNS server rieng di thang WAN cho nhom may nay.
 CONN_DIRECT_DNS_TAG = 'gen_direct_dns'
-CONN_DIRECT_DNS_ADDRESS = '8.8.8.8'
+CONN_DIRECT_DNS_ADDRESS = '127.0.0.1:5353'   # fallback: dnsmasq cua router (da chay duoc)
 CONN_DIRECT_TAG = 'direct'
 ISO_MASTER_FILE = '/data/vpn/isolate.master'
 ISO_ALLOW_FILE = '/data/vpn/isolate.allow'
@@ -3048,8 +3048,25 @@ def ensure_conn_rules(data, cfg=None):
                              and (str(r.get('server') or '').startswith('proxy_')
                                   or str(r.get('server') or '') == CONN_DIRECT_DNS_TAG))]
         dns_servers = [s for s in dns_servers if str((s or {}).get('tag') or '') != CONN_DIRECT_DNS_TAG]
+        # server cu (2.106) thieu detour => go luon, se them lai ben duoi voi detour.
         if dips:
-            dns_servers.append({'tag': CONN_DIRECT_DNS_TAG, 'address': CONN_DIRECT_DNS_ADDRESS})
+            # [Ver 2.107] May 'Internet truc tiep' mat mang vi DNS.
+            # Do duoc tren Gen12: 251/253 dns server co 'detour', chi 'google' (khong dung) va
+            # 'gen_direct_dns' (them o 2.106) la khong. Config that co route.final = null va
+            # rule cuoi {'action': 'reject', 'method': 'drop'}; goi query cua gencore khong co
+            # source_ip_cidr nen roi vao rule cuoi => bi DROP => may khong phan giai duoc ten.
+            # Cach sua: dung lai DUNG server dnsmasq dang chay duoc tren router nay (da co
+            # detour), khong tu dat 8.8.8.8.
+            _ref = next((s for s in dns_servers
+                         if isinstance(s, dict) and str(s.get('tag') or '') == 'dnsmasq'), None)
+            if isinstance(_ref, dict) and _ref.get('address'):
+                _srv = {'tag': CONN_DIRECT_DNS_TAG, 'address': str(_ref['address'])}
+                if _ref.get('detour'):
+                    _srv['detour'] = str(_ref['detour'])
+            else:
+                _srv = {'tag': CONN_DIRECT_DNS_TAG, 'address': CONN_DIRECT_DNS_ADDRESS,
+                        'detour': CONN_DIRECT_TAG}
+            dns_servers.append(_srv)
             # dat TRUOC moi dns rule tro proxy_ (first-match-wins), giu nguyen cac rule khac
             dpos = len(dns_rules)
             for i, r in enumerate(dns_rules):

@@ -1,3 +1,6 @@
+## Ver 2.107 - 2026-10-28
+- Fix may Internet truc tiep mat mang (tiep 2.106): server DNS gen_direct_dns gio dung lai dnsmasq cua router (127.0.0.1:5353) kem detour=direct, thay vi tu dat 8.8.8.8 khong detour nen bi rule cuoi reject-drop chan
+
 ## Ver 2.106 - 2026-10-28
 - Fix may Internet truc tiep mat mang: DNS rule con tro proxy_<N> (type block) => them server gen_direct_dns (8.8.8.8) va rule DNS rieng dat truoc rule proxy_; them cu phap dai IP viet tat 192.12.3.1-250
 
