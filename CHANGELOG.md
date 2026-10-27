@@ -1,3 +1,6 @@
+## Ver 2.99 - 2026-10-27
+- VPN-AUTO khong tu gan VPN cho may dang cau hinh proxy that (socks/http/PPPoE glider): _vpn_auto_manual_proxy_ips loc ca chieu gan moi lan va chieu go; sua loi may .16 doi sang proxy Lumi JP van bi VPN-AUTO gan lai xv-1 moi 20s
+
 ## Ver 2.98 - 2026-10-27
 - Them vpn_map_sweep: don gan VPN thua (IP con trong map.txt ma cau hinh khong khai VPN) sau Apply + dinh ky 5 phut + API /api/pm/vpn-sweep, co chan an toan khi khong map duoc IP; GUI: bam Reset thi tom tat luong hien 0 thay vi mat
 

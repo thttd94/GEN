@@ -5377,6 +5377,39 @@ def _vpn_auto_excluded():
         pass
     return ex
 
+def _vpn_auto_manual_proxy_ips():
+    """[Ver 2.99] IP dang duoc cau hinh chay PROXY THAT (socks/http, gom ca PPPoE glider)
+    trong cau hinh DANG CHAY => VPN-AUTO khong duoc tu gan VPN cho may do.
+
+    Su co 2026-10-27: may 192.10.0.16 doi tu VPN xv-1 sang proxy Lumi JP. Proxy trong
+    gencore dung, nhung VPN-AUTO (auto_assign.json, dai '192.10.0.16 192.10.0.121')
+    cu ~20s lai gan lai xv-1 => may van ra IP VPN. VPN-SYNC go thi VPN-AUTO gan lai
+    (log: unassign 12:19:51 -> assign 12:19:55)."""
+    out = set()
+    try:
+        data = load_json(RUNTIME_SOURCE_FILE)
+    except Exception:
+        return out
+    try:
+        route_by_ip = build_route_ip_to_tag(data)
+    except Exception:
+        route_by_ip = {}
+    if not route_by_ip:
+        return out
+    for ob in data.get('outbounds') or []:
+        if not isinstance(ob, dict):
+            continue
+        tag = str(ob.get('tag') or '')
+        if not tag.startswith('proxy_'):
+            continue
+        if str(ob.get('type') or '').strip().lower() not in ('socks', 'http'):
+            continue
+        for ip, t in route_by_ip.items():
+            if t == tag and ip:
+                out.add(str(ip).strip())
+    return out
+
+
 def vpn_auto_tick():
     """[Ver 2.94] Giong MiniSocks 'EnableAuto/AllowDuplicate': may song trong dai IP, chua gan VPN
     => gan vao tunnel UP trong danh sach co it may nhat (khong trung: chi tunnel 0 may).
@@ -5400,6 +5433,8 @@ def vpn_auto_tick():
         arp = _arp_online_map() or {}
         auto, now, done, changed = cfg['auto'], time.time(), [], False
         excl = _vpn_auto_excluded()
+        # [Ver 2.99] May dang cau hinh proxy that thi khong phai may VPN.
+        manual = _vpn_auto_manual_proxy_ips()
         for ip in list(auto):
             rec = auto[ip] if isinstance(auto[ip], dict) else {}
             cur = vmap.get(ip)
@@ -5409,7 +5444,8 @@ def vpn_auto_tick():
                 rec['seen'] = now
             off = now - float(rec.get('seen') or now)
             dead = cur not in run
-            drop = (cfg['release_min'] and off > cfg['release_min'] * 60) or ip in excl or not _vpn_auto_in(ip, ranges)
+            drop = ((cfg['release_min'] and off > cfg['release_min'] * 60) or ip in excl
+                    or ip in manual or not _vpn_auto_in(ip, ranges))
             if dead or drop:
                 r = vpn_run(['unassign', ip], timeout=60)
                 if r.get('ok'):
@@ -5421,7 +5457,8 @@ def vpn_auto_tick():
         for n in vmap.values():
             if n in cnt:
                 cnt[n] += 1
-        want = sorted((ip for ip in arp if ip not in vmap and ip not in excl and _vpn_auto_in(ip, ranges)),
+        want = sorted((ip for ip in arp if ip not in vmap and ip not in excl and ip not in manual
+                       and _vpn_auto_in(ip, ranges)),
                       key=lambda x: socket.inet_aton(x))
         short = 0
         for ip in want[:24]:
