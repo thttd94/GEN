@@ -1,1 +1,1 @@
-Ver 2.107 (Fix may Internet truc tiep mat mang (tiep 2.106): server DNS gen_direct_dns gio dung lai dnsmasq cua router (127.0.0.1:5353) kem detour=direct, thay vi tu dat 8.8.8.8 khong detour nen bi rule cuoi reject-drop chan)
+Ver 2.108 (Fix may chuyen tu Internet truc tiep sang proxy bi mat mang: dns rule gen_direct_dns con sot (2.106 chi xoa khi IP con trong danh sach direct) => nay xoa khong dieu kien; khoi phuc dns rule proxy_N cho may proxy bi thieu)

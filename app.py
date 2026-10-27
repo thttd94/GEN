@@ -3042,11 +3042,18 @@ def ensure_conn_rules(data, cfg=None):
         dns_servers = list(dns.get('servers') or [])
         dips_set = set(dips)
         before_dns = json.dumps([dns_rules, dns_servers], sort_keys=True)
+        # [Ver 2.108] Xoa MOI dns rule gen_direct_dns, KHONG phu thuoc dips_set.
+        # Loi 2.106/2.107: may .1-250 tung o danh sach 'Internet truc tiep' => bi xoa dns rule
+        # proxy_N va thay bang gen_direct_dns. Khi chuyen 250 may sang proxy Gen15, route doi
+        # sang proxy_N nhung dns rule gen_direct_dns con SOT (vi IP khong con trong dips_set
+        # nen dieu kien xoa khong khop) => may dung DNS sai duong => MAT MANG.
+        dns_rules = [r for r in dns_rules
+                     if not (isinstance(r, dict) and r.get('action') == 'route'
+                             and str(r.get('server') or '') == CONN_DIRECT_DNS_TAG)]
         dns_rules = [r for r in dns_rules
                      if not (isinstance(r, dict) and r.get('action') == 'route'
                              and str(r.get('source_ip_cidr') or '') in dips_set
-                             and (str(r.get('server') or '').startswith('proxy_')
-                                  or str(r.get('server') or '') == CONN_DIRECT_DNS_TAG))]
+                             and str(r.get('server') or '').startswith('proxy_'))]
         dns_servers = [s for s in dns_servers if str((s or {}).get('tag') or '') != CONN_DIRECT_DNS_TAG]
         # server cu (2.106) thieu detour => go luon, se them lai ben duoi voi detour.
         if dips:
@@ -3075,6 +3082,34 @@ def ensure_conn_rules(data, cfg=None):
                     break
             dns_rules[dpos:dpos] = [{'action': 'route', 'server': CONN_DIRECT_DNS_TAG, 'source_ip_cidr': ip}
                                     for ip in dips]
+        # [Ver 2.108] Khoi phuc dns rule proxy_N cho may proxy bi thieu rule.
+        # 2.106 da xoa rule nay khi may nam trong danh sach direct; bo may ra khoi danh sach
+        # thi rule khong tu quay lai => phai tao lai, neu khong may mat DNS.
+        _ip_proxy = {}
+        for _r in rules:
+            if not (isinstance(_r, dict) and str(_r.get('action')) == 'route'):
+                continue
+            _t = str(_r.get('outbound') or '')
+            _ip = _r.get('source_ip_cidr')
+            if (_t.startswith('proxy_') and isinstance(_ip, str) and _ip.strip()
+                    and _ip.strip() not in dips_set):
+                _ip_proxy.setdefault(_ip.strip(), _t)
+        _have_dns = {str(r.get('source_ip_cidr')) for r in dns_rules if isinstance(r, dict)}
+        _tags = {str(s.get('tag')) for s in dns_servers if isinstance(s, dict)}
+        _restored = []
+        for _ip, _t in sorted(_ip_proxy.items()):
+            if _ip in _have_dns:
+                continue
+            if _t not in _tags:
+                dns_servers.append({'address': PROXY_DNS_ADDRESS, 'detour': _t, 'tag': _t})
+                _tags.add(_t)
+            _restored.append({'action': 'route', 'server': _t, 'source_ip_cidr': _ip})
+        if _restored:
+            dns_rules = _restored + dns_rules
+            try:
+                _ss_log('CONN-DNS: khoi phuc %d dns rule proxy_ cho may thieu rule' % len(_restored))
+            except Exception:
+                pass
         dns['rules'] = dns_rules
         dns['servers'] = dns_servers
         _dns_changed = 0 if json.dumps([dns_rules, dns_servers], sort_keys=True) == before_dns else 1
