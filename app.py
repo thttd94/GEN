@@ -2837,6 +2837,11 @@ CONN_APPSTORE_BYPASS = [
     '*.phobos.apple.com',
 ]
 CONN_BYPASS_TAG = 'gen_bypass'
+# [Ver 2.106] May trong 'Internet truc tiep' van bi DNS rule tro proxy_<N> (type=block)
+# => phan giai ten mien that bai => mat mang (su co 2026-10-28, 192.12.3.25 Gen12).
+# Them DNS server rieng di thang WAN cho nhom may nay.
+CONN_DIRECT_DNS_TAG = 'gen_direct_dns'
+CONN_DIRECT_DNS_ADDRESS = '8.8.8.8'
 CONN_DIRECT_TAG = 'direct'
 ISO_MASTER_FILE = '/data/vpn/isolate.master'
 ISO_ALLOW_FILE = '/data/vpn/isolate.allow'
@@ -2861,6 +2866,14 @@ def parse_conn_items(text, allow_domain=True, allow_ip=True, allow_mac=False, li
             d = '*.' + d[4:].lstrip('*.')  # [Ver 2.94] sub:abc.com = *.abc.com
         if not d or d.startswith('#'):
             continue
+        # [Ver 2.106] Dai IP viet tat (vd 192.12.3.1-250) => mo thanh tung IP.
+        if allow_ip:
+            _rng = _conn_expand_range(d)
+            if _rng:
+                for _ip in _rng:
+                    if _ip not in out:
+                        out.append(_ip)
+                continue
         numeric = bool(re.match(r'^[\d./]+$', d))
         ok = (allow_ip and _conn_valid_ip(d)) or (allow_mac and _CONN_MAC_RE.match(d.replace('-', ':'))) \
             or (allow_domain and not numeric and _SPLIT_DOMAIN_RE.match(d))
@@ -2875,6 +2888,33 @@ def parse_conn_items(text, allow_domain=True, allow_ip=True, allow_mac=False, li
     if len(out) > limit:
         raise ValueError('Toi da %d %s' % (limit, label))
     return out
+
+def _conn_expand_range(s):
+    """[Ver 2.106] Dai IP viet tat:
+       '192.12.3.1-250'        -> 192.12.3.1 .. 192.12.3.250
+       '192.12.3.1-192.12.3.50'-> 192.12.3.1 .. 192.12.3.50
+    Loi / khong phai dai => [] (de nhanh kiem tra thuong xu ly tiep)."""
+    t = str(s or '').strip()
+    if '-' not in t:
+        return []
+    a, b = t.split('-', 1)
+    a, b = a.strip(), b.strip()
+    if not a or not b or '/' in a or not _conn_valid_ip(a):
+        return []
+    head, _sep, last = a.rpartition('.')
+    if not last.isdigit():
+        return []
+    lo = int(last)
+    if b.isdigit():
+        hi = int(b)
+    elif _conn_valid_ip(b) and b.rpartition('.')[0] == head and b.rpartition('.')[2].isdigit():
+        hi = int(b.rpartition('.')[2])
+    else:
+        return []
+    if hi < lo or hi - lo > 1024:
+        return []
+    return ['%s.%d' % (head, i) for i in range(lo, hi + 1)]
+
 
 def _conn_split_fields(items):
     """ten mien -> domain/domain_suffix, IP/CIDR -> ip_cidr (sing-box)."""
@@ -2993,7 +3033,35 @@ def ensure_conn_rules(data, cfg=None):
             rules[pos:pos] = new
         route['rules'] = rules
         data['outbounds'] = obs
-        return 0 if json.dumps([rules, obs], sort_keys=True) == before else 1
+        # [Ver 2.106] DNS cho may 'Internet truc tiep'.
+        # Loi cu: may direct van giu dns rule {'server': 'proxy_<N>', 'source_ip_cidr': <ip>}.
+        # Sau khi proxy_<N> thanh 'block', DNS cua may bi chan => route dung nhung mat mang.
+        # Nay: bo dns rule tro proxy_ cho cac IP nay va tro sang server di thang WAN.
+        dns = data.setdefault('dns', {})
+        dns_rules = list(dns.get('rules') or [])
+        dns_servers = list(dns.get('servers') or [])
+        dips_set = set(dips)
+        before_dns = json.dumps([dns_rules, dns_servers], sort_keys=True)
+        dns_rules = [r for r in dns_rules
+                     if not (isinstance(r, dict) and r.get('action') == 'route'
+                             and str(r.get('source_ip_cidr') or '') in dips_set
+                             and (str(r.get('server') or '').startswith('proxy_')
+                                  or str(r.get('server') or '') == CONN_DIRECT_DNS_TAG))]
+        dns_servers = [s for s in dns_servers if str((s or {}).get('tag') or '') != CONN_DIRECT_DNS_TAG]
+        if dips:
+            dns_servers.append({'tag': CONN_DIRECT_DNS_TAG, 'address': CONN_DIRECT_DNS_ADDRESS})
+            # dat TRUOC moi dns rule tro proxy_ (first-match-wins), giu nguyen cac rule khac
+            dpos = len(dns_rules)
+            for i, r in enumerate(dns_rules):
+                if isinstance(r, dict) and str(r.get('server') or '').startswith('proxy_'):
+                    dpos = i
+                    break
+            dns_rules[dpos:dpos] = [{'action': 'route', 'server': CONN_DIRECT_DNS_TAG, 'source_ip_cidr': ip}
+                                    for ip in dips]
+        dns['rules'] = dns_rules
+        dns['servers'] = dns_servers
+        _dns_changed = 0 if json.dumps([dns_rules, dns_servers], sort_keys=True) == before_dns else 1
+        return 1 if (_dns_changed or json.dumps([rules, obs], sort_keys=True) != before) else 0
     except Exception as e:
         try:
             _ss_log('CONN loi: %s' % e)
