@@ -306,7 +306,8 @@ ensure_routes() {
       if (!(acc in DEV) || !(acc in TBL) || !(acc in PRI)) next
       d = DEV[acc]; t = TBL[acc]; p = PRI[acc]
       if (d == "" || t == "" || p == "") next
-      if (!(d in HAVEDEV)) { print "DOWN|" acc "|" d "|" ip; next }
+      # [Ver 2.105] DOWN phai kem TABLE de chan duong (khong fallback sang WAN).
+      if (!(d in HAVEDEV)) { print "DOWN|" t "|" d "|" ip; next }
 
       if (!(t in HAVEDEF) && !("def" t in DONE)) {
         print "DEF|" t "|" d; DONE["def" t] = 1
@@ -324,7 +325,18 @@ ensure_routes() {
   # ---- thuc thi (hoac bao cao khi MODE=check) ----
   while IFS='|' read -r kind a b cc; do
     case "$kind" in
-      DOWN) log "[DOWN] tunnel $a ($b) khong ton tai - bo qua $cc" ;;
+      DOWN)
+        # [Ver 2.105] Tunnel chet: table $a => unreachable default.
+        # May dang co ip rule from $cc lookup $a => traffic DUT, KHONG roi xuong main (WAN).
+        # Anh Thai chot 2026-10-27: da dinh tuyen thi khong duoc di qua duong/mang khac.
+        if [ "$MODE" = check ]; then
+          log "[DOWN] tunnel $b chet (may $cc) - table $a chua chan"
+          ip route show table "$a" 2>/dev/null | grep -q "^unreachable default" \
+            || log "[MISS] table $a thieu unreachable default (may $cc se roi ra WAN)"
+        else
+          ip route replace unreachable default table "$a" 2>/dev/null \
+            && note "[FIX] table $a <- unreachable default (tunnel $b chet, may $cc DUT mang)"
+        fi ;;
       DEF)
         if [ "$MODE" = check ]; then
           log "[MISS] table $a thieu default dev $b"

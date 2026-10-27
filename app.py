@@ -2601,11 +2601,42 @@ def ensure_split_rules(data, cfg=None, strict=False):
                 except ValueError as e:
                     if strict:
                         raise
-                    # pppoe: glider chap chon => giu outbound cu. vpn: tunnel chet => BO tach,
-                    # may ve proxy chinh (giu bind vao dev chet = video chet).
-                    ob = old_ob if str(cfg.get('target') or '').lower().startswith('pppoe:') else None
+                    # [Ver 2.105] KHONG BAO GIO roi sang duong khac. Anh Thai chot 2026-10-27:
+                    # luong da dinh tuyen ma mat mang / chet proxy thi DUT, khong duoc lay proxy
+                    # chinh, WAN hay mang khac de thong qua.
+                    #   pppoe: kiem tra glider THAT; con song => giu outbound cu, chet => block.
+                    #   vpn/wan/proxy/block: khong dung duoc => block.
+                    ob = None
+                    tgt = str(cfg.get('target') or '').strip().lower()
+                    if tgt.startswith('pppoe:'):
+                        sid = tgt.split(':', 1)[1].strip()
+                        try:
+                            if (isinstance(old_ob, dict) and old_ob.get('type') == 'socks'
+                                    and int(old_ob.get('server_port') or 0) == pppoe_glider_port(sid)
+                                    and pppoe_glider_forward_alive(sid)):
+                                ob = old_ob
+                        except Exception:
+                            ob = None
+                    if ob is None:
+                        ob = {'tag': SPLIT_TAG, 'type': 'block'}
                     try:
-                        _ss_log('SPLIT: %s => %s' % (e, 'giu outbound cu' if ob else 'tam bo rule, may di proxy chinh'))
+                        _ss_log('SPLIT: %s => %s' % (e, 'giu outbound cu (glider con song)'
+                                                     if ob.get('type') != 'block' else 'CHAN luong tach (khong fallback)'))
+                    except Exception:
+                        pass
+            # [Ver 2.105] PPPoE: build_split_outbound giu outbound cu khi con dung port/username
+            # ma KHONG kiem tra glider con song (early return trong build_split_outbound).
+            # Kiem tra that; glider chet => CHAN, khong de may roi sang duong khac.
+            if ob is not None and str(cfg.get('target') or '').strip().lower().startswith('pppoe:'):
+                _sid = str(cfg.get('target')).split(':', 1)[1].strip()
+                try:
+                    _alive = pppoe_glider_forward_alive(_sid)
+                except Exception:
+                    _alive = False
+                if not _alive:
+                    ob = {'tag': SPLIT_TAG, 'type': 'block'}
+                    try:
+                        _ss_log('SPLIT: glider PPPoE %s chet => CHAN luong tach (khong fallback)' % _sid)
                     except Exception:
                         pass
             if ob:
@@ -2750,8 +2781,9 @@ def split_update(payload, strict=True):
     return out
 
 def split_watch_loop():
-    """[Ver 2.93] Duong tach = VPN: tunnel chet => bo tach (may ve proxy chinh, khong mat video);
-    tunnel song lai => tach lai. Kiem moi 30s, doi config toi da 1 lan / 120s, log SPLIT-WATCH."""
+    """[Ver 2.105] Duong tach = VPN: tunnel chet => CHAN luong tach (khong day may ve proxy chinh);
+    tunnel song lai => tach lai. Kiem moi 30s, doi config toi da 1 lan / 120s, log SPLIT-WATCH.
+    Anh Thai chot 2026-10-27: da dinh tuyen thi khong duoc fallback sang duong/mang khac."""
     last_fix = 0.0
     while True:
         time.sleep(30)
@@ -5372,6 +5404,8 @@ def xv_cred_get(cid):
 
 VPN_AUTO_FILE = '/data/vpn/auto_assign.json'
 VPN_AUTO_LOCK = threading.Lock()
+# [Ver 2.105] Chi log 1 lan moi IP khi tunnel chet lau, khoi rac log.
+_VPN_AUTO_DEAD_SEEN = set()
 VPN_AUTO_RT = {'ts': 0, 'msg': '', 'last': []}
 
 def _vpn_auto_load():
@@ -5504,12 +5538,20 @@ def vpn_auto_tick():
             dead = cur not in run
             drop = ((cfg['release_min'] and off > cfg['release_min'] * 60) or ip in excl
                     or ip in manual or not _vpn_auto_in(ip, ranges))
-            if dead or drop:
+            # [Ver 2.105] Tunnel chet: GIU nguyen gan (ip rule -> table tunnel chet => may DUT mang).
+            # Khong unassign, vi unassign day may ve proxy chinh = fallback sang duong khac.
+            if dead and not drop:
+                if ip not in _VPN_AUTO_DEAD_SEEN:
+                    _VPN_AUTO_DEAD_SEEN.add(ip)
+                    done.append('%s giu %s (tunnel chet: may DUT mang, khong fallback)' % (ip, cur))
+                continue
+            if drop:
                 r = vpn_run(['unassign', ip], timeout=60)
                 if r.get('ok'):
                     _record_vpn_declaration(ip, '')
                     vmap.pop(ip, None)
-                    done.append('%s bo %s (%s)' % (ip, cur, 'tunnel chet' if dead else 'offline/ngoai dai'))
+                    _VPN_AUTO_DEAD_SEEN.discard(ip)
+                    done.append('%s bo %s (offline/ngoai dai/la may proxy)' % (ip, cur))
                 auto.pop(ip); changed = True
         cnt = {n: 0 for n in pool}
         for n in vmap.values():

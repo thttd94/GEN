@@ -1,3 +1,6 @@
+## Ver 2.105 - 2026-10-27
+- KHONG FALLBACK: luong da dinh tuyen ma chet thi DUT. ensure_split_rules: VPN/PPPoE/wan/proxy chet => outbound block (kiem tra glider PPPoE that); vpn_auto khong unassign khi tunnel chet; gen_vpn_guard.sh: tunnel chet => unreachable default table
+
 ## Ver 2.104 - 2026-10-27
 - Theo doi luong: WAN la so doc lap, KHONG tinh %; % chi chia trong nhom Proxy + Luong phu (doi ten tu Co dinh); sua lai mo ta tab
 
