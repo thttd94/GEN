@@ -2282,8 +2282,8 @@
       if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
       return (n / 1024).toFixed(0) + ' KB';
     }
-    const FLOW_KIND = { proxy: 'Proxy', split: 'Cố định', direct: 'Trực tiếp', other: 'Khác' };
-    const FLOW_COLOR = { proxy: '#dc2626', split: '#16a34a', direct: '#2563eb', other: '#6b7280' };
+    const FLOW_KIND = { proxy: 'Proxy', split: 'Cố định', bypass: 'WAN', direct: 'Trực tiếp', other: 'Khác' };
+    const FLOW_COLOR = { proxy: '#dc2626', split: '#16a34a', bypass: '#d97706', direct: '#2563eb', other: '#6b7280' };
     function toggleFlowPanel(force) {
       const p = document.getElementById('flowPanel');
       const b = document.getElementById('flowPanelBtn');
@@ -2299,12 +2299,14 @@
       const txt = document.getElementById('flowSummaryText');
       if (!sum || !txt) return;
       const t = (r && r.totals) || {};
-      const tot = (t.proxy || 0) + (t.split || 0) + (t.direct || 0);
+      const tot = (t.proxy || 0) + (t.split || 0) + (t.bypass || 0) + (t.direct || 0);
       // [Ver 2.98] Chi an khi TAT / chua co so lieu. Bam Reset => tong = 0 van hien 0, khong bien mat.
       if (!r || r.enabled !== true || r.available !== true) { sum.hidden = true; return; }
       const pct = x => tot ? Math.round(100 * x / tot) : 0;
       let h = '<span style="color:#dc2626">Proxy: ' + fmtMB(t.proxy) + ' (' + pct(t.proxy) + '%)</span>';
       h += ' · <span style="color:#16a34a">Cố định: ' + fmtMB(t.split) + ' (' + pct(t.split) + '%)</span>';
+      // [Ver 2.103] WAN = luong khop danh sach 'khong qua Proxy/VPN' (gen_bypass), khong phai tong WAN router.
+      h += ' · <span style="color:#d97706" title="Tên miền/IP trong danh sách không qua Proxy/VPN (ra WAN chính)">WAN: ' + fmtMB(t.bypass) + ' (' + pct(t.bypass || 0) + '%)</span>';
       if (t.direct) h += ' · <span style="color:#2563eb">Trực tiếp: ' + fmtMB(t.direct) + ' (' + pct(t.direct) + '%)</span>';
       txt.innerHTML = h;
       sum.hidden = false;
@@ -2339,11 +2341,12 @@
       const want = '<option value="">Tất cả</option>' + ips.map(ip => `<option value="${esc(ip)}">${esc(ip)}</option>`).join('');
       if (sel.dataset.sig !== ips.join(',')) { sel.innerHTML = want; sel.dataset.sig = ips.join(','); sel.value = cur; }
       const t = r.totals || {};
-      const sum = (t.proxy || 0) + (t.split || 0) + (t.direct || 0) + (t.other || 0);
+      const sum = (t.proxy || 0) + (t.split || 0) + (t.bypass || 0) + (t.direct || 0) + (t.other || 0);
       const pct = k => sum ? Math.round((t[k] || 0) * 100 / sum) + '%' : '0%';
       document.getElementById('flowTotals').innerHTML =
         `<span style="color:${FLOW_COLOR.proxy}">Proxy: ${fmtMB(t.proxy)} (${pct('proxy')})</span> · ` +
-        `<span style="color:${FLOW_COLOR.split}">Cố định: ${fmtMB(t.split)} (${pct('split')})</span>` +
+        `<span style="color:${FLOW_COLOR.split}">Cố định: ${fmtMB(t.split)} (${pct('split')})</span> · ` +
+        `<span style="color:${FLOW_COLOR.bypass}">WAN: ${fmtMB(t.bypass)} (${pct('bypass')})</span>` +
         ((t.direct || t.other) ? ` · Khác: ${fmtMB((t.direct || 0) + (t.other || 0))}` : '');
       document.getElementById('flowSince').textContent = r.since ? ('đếm từ ' + new Date(r.since * 1000).toLocaleTimeString()) : '';
       document.getElementById('flowRows').innerHTML = (r.rows || []).map(x =>

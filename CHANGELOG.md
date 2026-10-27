@@ -1,3 +1,6 @@
+## Ver 2.103 - 2026-10-27
+- Theo doi luong: them so do WAN (luong khop danh sach khong qua Proxy/VPN = gen_bypass), hien o tom tat canh tab va trong panel; van hien ca khi bang 0
+
 ## Ver 2.102 - 2026-10-27
 - BO tu dong chen ten mien vao danh sach khong qua Proxy/VPN (2.101 chen cung luc start). Nay chi la GOI Y: 2 nut + Nhom App Store / - Go App Store trong tab ten mien, bam moi chen vao o, bam Luu moi ap dung
 

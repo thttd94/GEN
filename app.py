@@ -3177,6 +3177,9 @@ def _flow_kind(chain):
     c = str(chain or '')
     if c == SPLIT_TAG:
         return 'split'
+    # [Ver 2.103] gen_bypass = danh sach 'khong qua Proxy/VPN' nguoi dung cau hinh => ra WAN chinh.
+    if c == CONN_BYPASS_TAG:
+        return 'bypass'
     if c.startswith('proxy_'):
         return 'proxy'
     if c == 'direct':
@@ -3264,7 +3267,7 @@ def flow_reset():
 
 def flow_summary(agg, ip=''):
     ip = str(ip or '').strip()
-    rows, totals = [], {'proxy': 0, 'split': 0, 'direct': 0, 'other': 0}
+    rows, totals = [], {'proxy': 0, 'split': 0, 'bypass': 0, 'direct': 0, 'other': 0}
     for (sip, host, chain), a in agg.items():
         if ip and sip != ip:
             continue
