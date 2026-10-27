@@ -2364,6 +2364,11 @@ def remap_ip_by_tag(data):
     return data
 
 SPLIT_TAG = 'gen_split'
+# [Ver 2.100] Tu khoa ten mien DU LIEU SU KIEN TikTok (con meo + vong chay, tu cong diem).
+# Do duoc tren Gen12 2026-10-27: p16-ug-incentive-img-sg / -material-sg / -material-us / -va.
+# Cac host nay nam trong *.tiktokcdn.com nen bi rule phan luong cuon sang VPN, trong khi
+# API + log su kien di proxy Lumi => TikTok thay 2 IP khac nhau => khong cong diem.
+SPLIT_INCENTIVE_KEYWORDS = ['incentive']
 SPLIT_DEFAULT_DOMAINS = [
     '*.googlevideo.com', '*.fbcdn.net', '*.tiktokcdn.com', '*.ibyteimg.com', '*.tiktokcdn-us.com',
     '*.bromite.org', '*.ytimg.com', '*.ggpht.com', '*.gvt1.com', '*.gvt2.com', '*.googleusercontent.com',
@@ -2406,7 +2411,9 @@ def get_split_config():
     if not isinstance(doms, list):
         doms = list(SPLIT_DEFAULT_DOMAINS)
     px = c.get('proxy') if isinstance(c.get('proxy'), dict) else {}
-    return {'enabled': bool(c.get('enabled')), 'target': str(c.get('target') or ''), 'domains': [str(d) for d in doms], 'proxy': dict(px)}
+    inc = c.get('incentive')
+    return {'enabled': bool(c.get('enabled')), 'target': str(c.get('target') or ''), 'domains': [str(d) for d in doms],
+            'proxy': dict(px), 'incentive': True if inc is None else bool(inc)}
 
 def set_split_config(cfg):
     state = load_session_state()
@@ -2415,7 +2422,7 @@ def set_split_config(cfg):
         meta = {}
         state['__meta__'] = meta
     meta['split'] = {'enabled': bool(cfg.get('enabled')), 'target': str(cfg.get('target') or ''), 'domains': list(cfg.get('domains') or []),
-                     'proxy': dict(cfg.get('proxy') or {})}
+                     'proxy': dict(cfg.get('proxy') or {}), 'incentive': bool(cfg.get('incentive', True))}
     save_session_state(state)
 
 def _split_match_fields(domains):
@@ -2572,6 +2579,10 @@ def ensure_split_rules(data, cfg=None, strict=False):
         before = json.dumps([rules, obs], sort_keys=True)
         old_ob = next((o for o in obs if isinstance(o, dict) and o.get('tag') == SPLIT_TAG), None)
         rules = [r for r in rules if not (isinstance(r, dict) and r.get('outbound') == SPLIT_TAG)]
+        # [Ver 2.100] Don rule incentive cu (nhan dien bang dung danh sach keyword cua minh).
+        rules = [r for r in rules
+                 if not (isinstance(r, dict) and r.get('action') == 'route'
+                         and r.get('domain_keyword') == list(SPLIT_INCENTIVE_KEYWORDS))]
         obs = [o for o in obs if not (isinstance(o, dict) and o.get('tag') == SPLIT_TAG)]
         fields = _split_match_fields(cfg.get('domains'))
         if cfg.get('enabled') and fields:
@@ -2603,6 +2614,26 @@ def ensure_split_rules(data, cfg=None, strict=False):
                     if (isinstance(r, dict) and r.get('action') == 'route' and str(r.get('outbound', '')).startswith('proxy_')) or is_route_deny_rule(r):
                         pos = i
                         break
+                # [Ver 2.100] Du lieu su kien (incentive) phai di CUNG duong voi API/claim
+                # cua chinh may do, KHONG vao duong tach. Rule dat TRUOC rule tach.
+                inc_rules = []
+                if cfg.get('incentive', True):
+                    ip_tag = {}
+                    for r in rules:
+                        if not (isinstance(r, dict) and r.get('action') == 'route'):
+                            continue
+                        t = str(r.get('outbound') or '')
+                        sip = r.get('source_ip_cidr')
+                        if t.startswith('proxy_') and isinstance(sip, str) and sip.strip() and ob_type.get(t) in ('socks', 'http'):
+                            ip_tag[sip.strip()] = t
+                    for ip in ips:
+                        t = ip_tag.get(ip)
+                        if t:
+                            inc_rules.append({'action': 'route', 'outbound': t, 'source_ip_cidr': ip,
+                                              'domain_keyword': list(SPLIT_INCENTIVE_KEYWORDS)})
+                if inc_rules:
+                    rules[pos:pos] = inc_rules
+                    pos += len(inc_rules)
                 rule = {'action': 'route', 'outbound': SPLIT_TAG, 'source_ip_cidr': ips}
                 rule.update(fields)
                 rules.insert(pos, rule)
@@ -2663,6 +2694,8 @@ def split_update(payload, strict=True):
         new['target'] = t
     if str(payload.get('proxy') or '').strip():
         new['proxy'] = parse_split_proxy(payload.get('proxy'), payload.get('proxy_type') or 'socks5')
+    if 'incentive' in payload:
+        new['incentive'] = bool(payload.get('incentive'))
     if 'enabled' in payload:
         new['enabled'] = bool(payload.get('enabled'))
     if new['enabled']:

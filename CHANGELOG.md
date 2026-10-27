@@ -1,3 +1,6 @@
+## Ver 2.100 - 2026-10-27
+- Phan luong: du lieu su kien TikTok (domain_keyword incentive) di CUNG duong proxy voi API/claim cua chinh may do, khong vao duong tach; rule dat truoc rule tach, co co bat/tat (split.incentive, mac dinh bat)
+
 ## Ver 2.99 - 2026-10-27
 - VPN-AUTO khong tu gan VPN cho may dang cau hinh proxy that (socks/http/PPPoE glider): _vpn_auto_manual_proxy_ips loc ca chieu gan moi lan va chieu go; sua loi may .16 doi sang proxy Lumi JP van bi VPN-AUTO gan lai xv-1 moi 20s
 
