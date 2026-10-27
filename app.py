@@ -4678,96 +4678,96 @@ def socks5_probe_multi(proxy_host, proxy_port, username, password, timeout=12):
         raise last_error
     return (False, None, None)
 
+def _socks5_http_get(proxy_host, proxy_port, username, password, host, port, path,
+                     host_header=None, timeout=12):
+    """[Ver 2.109] GET qua SOCKS5 bang tay, tra ve body.
+
+    VI SAO: truoc day dung urllib ProxyHandler voi 'socks5://' -> urllib KHONG ho tro
+    socks5 => luon loi => CHECK proxy bao LIVE nhung khong lay duoc IP (ip rong).
+    Proxy PPPoE cua Gen15 chay tot (da do: 1.1.1.1:80 OK, api.ipify.org tra dung IP).
+    Dung http (khong TLS) cho api.ipify.org de khong phu thuoc chung chi.
+    """
+    sock = None
+    try:
+        sock = socket.create_connection((proxy_host, proxy_port), timeout=timeout)
+        sock.settimeout(timeout)
+        sock.sendall(b'\x05\x01\x02')
+        r = sock.recv(2)
+        if len(r) < 2 or r[0] != 5:
+            raise OSError('SOCKS5 greet sai')
+        if r[1] == 2:
+            u = str(username or '').encode('utf-8')
+            p = str(password or '').encode('utf-8')
+            if len(u) > 255 or len(p) > 255:
+                raise OSError('user/pass qua dai')
+            sock.sendall(b'\x01' + bytes([len(u)]) + u + bytes([len(p)]) + p)
+            a = sock.recv(2)
+            if len(a) < 2 or a[1] != 0:
+                raise OSError('SOCKS5 sai user/pass')
+        # CONNECT bang ten mien (proxy tu phan giai, tranh DNS tren router)
+        hb = host.encode('idna')
+        sock.sendall(b'\x05\x01\x00\x03' + bytes([len(hb)]) + hb + struct.pack('!H', int(port)))
+        h4 = sock.recv(4)
+        if len(h4) < 4:
+            raise OSError('SOCKS5 khong tra loi CONNECT')
+        if h4[1] != 0:
+            raise OSError('SOCKS5 CONNECT bi tu choi (rep=%d)' % h4[1])
+        atyp = h4[3]
+        if atyp == 1:
+            sock.recv(4)
+        elif atyp == 3:
+            ln = sock.recv(1)
+            if ln:
+                sock.recv(ln[0])
+        elif atyp == 4:
+            sock.recv(16)
+        sock.recv(2)
+        req = ('GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: curl/8\r\nConnection: close\r\n\r\n'
+               % (path, host_header or host))
+        sock.sendall(req.encode('ascii'))
+        data = b''
+        while True:
+            chunk = sock.recv(1024)
+            if not chunk:
+                break
+            data += chunk
+            if len(data) > 8192:
+                break
+        head, _sep, body = data.partition(b'\r\n\r\n')
+        first = head.split(b'\r\n')[0].decode('utf-8', 'replace') if head else ''
+        if ' 200 ' not in first:
+            raise OSError('HTTP tra ve: %s' % (first[:60] or 'khong co du lieu'))
+        return body
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+
 def get_proxy_public_ip(proxy_host, proxy_port, username, password, timeout=15):
-    proxy_url = f'socks5://{username}:{password}@{proxy_host}:{proxy_port}'
-    handlers = [urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url}), urllib.request.HTTPSHandler(context=None)]
-    opener = urllib.request.build_opener(*handlers)
-    urls = ['https://api.ipify.org', 'https://ifconfig.me/ip', 'https://icanhazip.com']
+    """Lay exit IP qua proxy. Dung SOCKS5 bang tay + HTTP thuan (xem _socks5_http_get)."""
+    targets = [
+        ('api.ipify.org', 80, '/', 'api.ipify.org'),
+        ('icanhazip.com', 80, '/', 'icanhazip.com'),
+        ('ipinfo.io', 80, '/ip', 'ipinfo.io'),
+    ]
     last_error = None
-    for url in urls:
+    for host, port, path, hdr in targets:
         try:
-            with opener.open(url, timeout=timeout) as resp:
-                ip = resp.read().decode('utf-8', errors='ignore').strip()
-                if ip:
-                    return ip
+            body = _socks5_http_get(proxy_host, proxy_port, username, password,
+                                    host, port, path, hdr, timeout=timeout)
+            ip = body.decode('utf-8', 'replace').strip()
+            ip = ip.split()[0] if ip else ''
+            if ip and len(ip) <= 45 and (ip.count('.') == 3 or ':' in ip):
+                return ip
         except Exception as e:
             last_error = e
     if last_error:
         raise last_error
     raise OSError('Không lấy được public IP')
 
-# [Ver 2.95] Quoc gia cua exit IP: chi lay ma 2 chu (US, VN...), UI doi thanh quoc ky.
-# Cache 24h/ip trong RAM de CHECK ALL khong dot het quota ip-api (45 req/phut).
-_CC_CACHE = {}
-_CC_LOCK = threading.Lock()
-_CC_TTL = 86400
-_CC_MAX = 5000
-
-def _cc_cache_get(ip):
-    with _CC_LOCK:
-        it = _CC_CACHE.get(ip)
-    if not it:
-        return ''
-    if time.time() - float(it.get('ts') or 0) > _CC_TTL:
-        return ''
-    return str(it.get('cc') or '')
-
-def _cc_cache_put(ip, cc):
-    if not ip or not cc:
-        return
-    with _CC_LOCK:
-        _CC_CACHE[ip] = {'cc': cc, 'ts': time.time()}
-        if len(_CC_CACHE) > _CC_MAX:
-            drop = sorted(_CC_CACHE, key=lambda k: float((_CC_CACHE.get(k) or {}).get('ts') or 0))[:1000]
-            for k in drop:
-                _CC_CACHE.pop(k, None)
-
-def country_codes_for_ips(ips, timeout=6):
-    """Doi IP -> ma quoc gia. Dung ip-api /batch (100 ip/lan), thieu thi hoi api.country.is.
-    Khong bao gio nem loi: khong biet quoc gia thi tra ve rong."""
-    out = {}
-    todo = []
-    for ip in [str(x).strip() for x in (ips or []) if str(x).strip()]:
-        cc = _cc_cache_get(ip)
-        if cc:
-            out[ip] = cc
-        elif ip not in todo:
-            todo.append(ip)
-    if not todo:
-        return out
-    for i in range(0, len(todo), 100):
-        chunk = todo[i:i + 100]
-        try:
-            body = json.dumps([{'query': ip, 'fields': 'status,countryCode,query'} for ip in chunk]).encode('utf-8')
-            req = urllib.request.Request('http://ip-api.com/batch', data=body, headers={'Content-Type': 'application/json'})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                rows = json.loads(resp.read().decode('utf-8', 'replace'))
-            for it in (rows if isinstance(rows, list) else []):
-                ip = str((it or {}).get('query') or '').strip()
-                cc = str((it or {}).get('countryCode') or '').strip().upper()
-                if ip and len(cc) == 2:
-                    out[ip] = cc
-                    _cc_cache_put(ip, cc)
-        except Exception:
-            pass
-    miss = [ip for ip in todo if ip not in out]
-    for ip in miss[:40]:
-        try:
-            with urllib.request.urlopen('https://api.country.is/%s' % ip, timeout=timeout) as resp:
-                d = json.loads(resp.read().decode('utf-8', 'replace'))
-            cc = str((d or {}).get('country') or '').strip().upper()
-            if len(cc) == 2:
-                out[ip] = cc
-                _cc_cache_put(ip, cc)
-        except Exception:
-            continue
-    return out
-
-def country_code_for_ip(ip, timeout=6):
-    ip = str(ip or '').strip()
-    if not ip:
-        return ''
-    return country_codes_for_ips([ip], timeout=timeout).get(ip, '')
 
 def find_duplicate_proxy_tags(public_ip, session='1'):
     duplicates = []

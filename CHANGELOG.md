@@ -1,3 +1,6 @@
+## Ver 2.109 - 2026-10-28
+- Fix CHECK proxy bao LIVE nhung khong co IP (o Check trong): urllib KHONG ho tro socks5:// nen get_proxy_public_ip luon loi, mat 45s va tra ip rong. Nay dung SOCKS5 bang tay + HTTP thuan (api.ipify.org/icanhazip/ipinfo), 5.4s, tra dung exit IP
+
 ## Ver 2.108 - 2026-10-28
 - Fix may chuyen tu Internet truc tiep sang proxy bi mat mang: dns rule gen_direct_dns con sot (2.106 chi xoa khi IP con trong danh sach direct) => nay xoa khong dieu kien; khoi phuc dns rule proxy_N cho may proxy bi thieu
 
