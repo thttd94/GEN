@@ -1,3 +1,6 @@
+## Ver 2.104 - 2026-10-27
+- Theo doi luong: WAN la so doc lap, KHONG tinh %; % chi chia trong nhom Proxy + Luong phu (doi ten tu Co dinh); sua lai mo ta tab
+
 ## Ver 2.103 - 2026-10-27
 - Theo doi luong: them so do WAN (luong khop danh sach khong qua Proxy/VPN = gen_bypass), hien o tom tat canh tab va trong panel; van hien ca khi bang 0
 
