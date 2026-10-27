@@ -2786,15 +2786,17 @@ def split_watch_loop():
 #   fixed: ten mien/IP di duong co dinh = split cu (target/proxy giu trong __meta__.split)
 # }
 CONN_FIXED_MASTER = '192.10.1.10'
-# [Ver 2.101] Tai app tu App Store phai ra WAN CHINH, khong ton dung luong proxy/VPN.
+# [Ver 2.102] GOI Y cho nut bam trong GUI - KHONG tu ap dung.
+# Anh Thai chot 2026-10-27: danh sach 'khong qua Proxy/VPN' do nguoi dung tu bam nut hoac
+# tu nhap, de con go ra khi can. Ngay xua 2.101 tu chen 6 muc nay luc start.
 # Do bang DNS sniff tren Gen12 2026-10-27 (may .244, tai app that):
 #   bag.itunes.apple.com       -> goi app chinh (Fastly, 66.8 MB trong 1 ket noi)
-#   is1-ssl.mzstatic.com       -> CDN goi/asset  (TRUOC DAY di proxy Lumi)
-#   *.g.aaplimg.com            -> bi danh CDN cua Apple (TRUOC DAY di proxy Lumi)
+#   is1-ssl.mzstatic.com       -> CDN goi/asset  (dang di proxy Lumi truoc day)
+#   *.g.aaplimg.com            -> bi danh CDN cua Apple (dang di proxy Lumi)
 #   token.safebrowsing.apple   -> duoi '.apple' chu khong phai '.apple.com' (bi lot)
-# Danh sach nay do vao CONN bypass => rule gen_bypass (direct) cho may proxy/PPPoE,
-# va set bypass4 (fwmark 0x4d5 -> table main) cho may VPN trong gen_conn_vpn.sh.
-CONN_DEFAULT_BYPASS = [
+# Bam nut => chen vao o bypass; may proxy => rule gen_bypass (direct),
+# may VPN => set bypass4 (fwmark 0x4d5 -> table main) trong gen_conn_vpn.sh.
+CONN_APPSTORE_BYPASS = [
     '*.mzstatic.com',
     '*.aaplimg.com',
     '*.itunes.apple.com',
@@ -2880,20 +2882,9 @@ def conn_migrate_once():
     Chi danh dau migrated; khong doi hanh vi mang."""
     try:
         cfg = get_conn_config()
-        # [Ver 2.101] Them danh sach tai-app- App-Store vao bypass MOT LAN (sau do nguoi dung
-        # xoa duoc). Chi them domain chua co, khong dung toi muc nguoi dung da nhap.
-        if not cfg.get('bypass_defaults'):
-            cur = list(cfg.get('bypass') or [])
-            add = [d for d in CONN_DEFAULT_BYPASS if d not in cur]
-            cfg['bypass'] = cur + add
-            cfg['bypass_defaults'] = True
-            try:
-                _ss_log('CONN: them %d ten mien App Store vao bypass (ra WAN chinh): %s'
-                        % (len(add), ', '.join(add)))
-            except Exception:
-                pass
-        if cfg['migrated'] and cfg.get('bypass_defaults'):
-            set_conn_config(cfg)
+        # [Ver 2.102] KHONG tu chen ten mien nao vao bypass. Danh sach do nguoi dung tu
+        # bam nut / tu nhap trong GUI (xem connBypassPreset), de con go ra khi can.
+        if cfg['migrated']:
             return
         set_conn_config(cfg)
         _ss_log('CONN: migrate 2.93 -> 2.94 (split giu nguyen lam danh sach duong co dinh)')
@@ -3021,7 +3012,8 @@ def conn_public_state():
         pass
     vpn_ips = sorted(load_vpn_map().keys())
     return {'ok': True, 'conn': cfg, 'fixed_master': CONN_FIXED_MASTER, 'split': sp, 'vpn_ips': vpn_ips,
-            'isolate': str(iso.get('output') or '').strip(), 'stun_ports': '3478, 5349, 19302-19309'}
+            'isolate': str(iso.get('output') or '').strip(), 'stun_ports': '3478, 5349, 19302-19309',
+            'appstore_preset': list(CONN_APPSTORE_BYPASS)}
 
 def conn_update(payload):
     """POST /api/pm/conn. payload co the chua: direct, iso_allow, iso_master, udp_block, webrtc, bypass, block,

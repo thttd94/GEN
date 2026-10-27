@@ -2656,6 +2656,8 @@
      <div class="cn-syntax"><b>Cách ghi:</b> <code>abc.com</code> = đúng tên đó &nbsp;·&nbsp; <code>*.abc.com</code> hoặc <code>sub:abc.com</code> = abc.com và mọi tên miền con &nbsp;·&nbsp; <code>1.2.3.4</code>, <code>1.2.3.0/24</code> = IP / dải IP</div>
      <div class="cn-blk"><h5>Danh sách các tên miền/IP không đi qua Proxy/VPN</h5><ul class="cn-notes"><li>Các địa chỉ này sẽ kết nối trực tiếp bằng mạng gốc.</li><li>Lưu ý: tên miền nhận theo DNS của router. Máy dùng DNS riêng (DoH, 8.8.8.8 trong app) có thể không khớp.</li></ul>
       <textarea id="connBypass" rows="5" spellcheck="false" aria-label="connBypass" placeholder="Nhập IP hoặc tên miền (mỗi dòng 1 giá trị). Ví dụ:&#10;104.244.42.1&#10;*.tiktok.com&#10;sub:facebook.com"></textarea><div class="cn-meta"><span></span><span data-cnt="connBypass"></span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><button type="button" class="btn small" onclick="connBypassPreset('appstore')" title="Chèn tên miền tải app từ App Store (mzstatic, aaplimg…): tải app ra WAN chính, không tốn proxy/VPN">+ Nhóm App Store</button><button type="button" class="btn small" onclick="connBypassPreset('appstore', true)" title="Bỏ tên miền App Store khỏi danh sách">− Gỡ App Store</button></div>
+      <div class="sub" style="margin-top:4px;">Nút chỉ <b>chèn vào ô trên</b> — chưa áp dụng. Bấm <b>Lưu &amp; Áp dụng</b> thì mới có hiệu lực. Gỡ ra cũng vậy.</div>
      </div>
      <div class="cn-blk"><h5>Danh sách các tên miền/IP bị chặn truy cập</h5><ul class="cn-notes"><li>Các tên miền/IP này sẽ bị ngắt kết nối hoàn toàn.</li><li>Áp dụng cho máy đi Proxy, PPPoE, VPN và máy internet trực tiếp.</li><li>Lưu ý: một mục không được nằm ở cả 2 danh sách.</li></ul>
       <textarea id="connBlock" rows="5" spellcheck="false" aria-label="connBlock" placeholder="Nhập IP hoặc tên miền (mỗi dòng 1 giá trị). Ví dụ:&#10;104.244.42.1&#10;*.tiktok.com&#10;sub:facebook.com"></textarea><div class="cn-meta"><span></span><span data-cnt="connBlock"></span></div>
@@ -2757,6 +2759,27 @@ function connTargetUi() {
   $c('connTgPppoe').hidden = v !== 'pppoe'; $c('connTgVpn').hidden = v !== 'vpn'; $c('connTgProxy').hidden = v !== 'proxy';
 }
 function connFixedDefault() { connSet('connFixed', CONN_DEF_FIXED); connRefresh(); }
+// [Ver 2.102] Nhóm tải app App Store: CHỈ chèn/gỡ trong ô, bấm Lưu mới áp dụng.
+const CONN_DEF_APPSTORE = ['*.mzstatic.com', '*.aaplimg.com', '*.itunes.apple.com',
+                           '*.safebrowsing.apple', '*.cdn-apple.com', '*.phobos.apple.com'];
+function connBypassPreset(kind, remove) {
+  if (kind !== 'appstore') return;
+  const ta = document.getElementById('connBypass');
+  if (!ta) return;
+  const cur = ta.value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+  if (remove) {
+    const drop = new Set(CONN_DEF_APPSTORE);
+    const next = cur.filter(x => !drop.has(x));
+    ta.value = next.join('\n');
+    connMsg('Đã gỡ ' + (cur.length - next.length) + ' mục App Store (chưa áp dụng)');
+  } else {
+    const have = new Set(cur);
+    const add = CONN_DEF_APPSTORE.filter(x => !have.has(x));
+    ta.value = cur.concat(add).join('\n');
+    connMsg(add.length ? ('Đã chèn ' + add.length + ' mục App Store (chưa áp dụng)') : 'Đã có đủ mục App Store');
+  }
+  connRefresh();
+}
 async function openConnPanel() {
   connFocusBack = document.activeElement;
   $c('connPanel').hidden = false; connShowTab(connTab, true);
