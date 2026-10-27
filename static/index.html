@@ -2300,8 +2300,9 @@
       if (!sum || !txt) return;
       const t = (r && r.totals) || {};
       const tot = (t.proxy || 0) + (t.split || 0) + (t.direct || 0);
-      if (!r || r.enabled !== true || r.available !== true || !tot) { sum.hidden = true; return; }
-      const pct = x => Math.round(100 * x / tot);
+      // [Ver 2.98] Chi an khi TAT / chua co so lieu. Bam Reset => tong = 0 van hien 0, khong bien mat.
+      if (!r || r.enabled !== true || r.available !== true) { sum.hidden = true; return; }
+      const pct = x => tot ? Math.round(100 * x / tot) : 0;
       let h = '<span style="color:#dc2626">Proxy: ' + fmtMB(t.proxy) + ' (' + pct(t.proxy) + '%)</span>';
       h += ' · <span style="color:#16a34a">Cố định: ' + fmtMB(t.split) + ' (' + pct(t.split) + '%)</span>';
       if (t.direct) h += ' · <span style="color:#2563eb">Trực tiếp: ' + fmtMB(t.direct) + ' (' + pct(t.direct) + '%)</span>';

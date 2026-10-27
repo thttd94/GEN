@@ -1,1 +1,1 @@
-Ver 2.97 (Fix may doi VPN->proxy van ra IP VPN (unassign moi IP con trong map.txt ma cau hinh khong khai VPN, truoc chi xet saved_text); GUI: tom tat luong canh tab Da/Chua cau hinh (Proxy/Codinh/Direct kem %), chi hien khi dang bat theo doi luong, kem nut Reset)
+Ver 2.98 (Them vpn_map_sweep: don gan VPN thua (IP con trong map.txt ma cau hinh khong khai VPN) sau Apply + dinh ky 5 phut + API /api/pm/vpn-sweep, co chan an toan khi khong map duoc IP; GUI: bam Reset thi tom tat luong hien 0 thay vi mat)

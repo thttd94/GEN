@@ -3961,7 +3961,16 @@ def sync_vpn_state_on_apply(session_id, runtime_data, results):
         # Loi cu: chi chay khi co saved_text, va chi khi may do nam trong saved_text.
         # Vi du 192.10.0.16 tu promote (khong co trong saved_text) gan VPN xv-1,
         # sau doi sang proxy Lumi => Apply xong van con ip rule lookup 371 => van ra IP VPN.
-        stale_ips = [ip for ip in sorted(current) if ip not in desired_ips]
+        # [Ver 2.98] CHAN AN TOAN: config khai co may VPN nhung khong map duoc IP nao
+        # => nghi doc config loi, KHONG xoa (tranh bo gan sach lam mat mang ca router).
+        if desires_by_tag and not any(tag_ip.get(t) for t in desires_by_tag):
+            stale_ips = []
+            try:
+                _ss_log('VPN-SYNC bo qua unassign: co %d may khai VPN nhung khong map duoc IP nao' % len(desires_by_tag))
+            except Exception:
+                pass
+        else:
+            stale_ips = [ip for ip in sorted(current) if ip not in desired_ips]
         if stale_ips:
             bak = _backup_vpn_map(f'apply session {session_id}: sap bo gan {len(stale_ips)}/{len(current)} may')
             if bak:
@@ -3994,6 +4003,73 @@ def sync_vpn_state_on_apply(session_id, runtime_data, results):
         results.append({'cmd': cmd, 'ok': True, **summary})
     except Exception as e:
         results.append({'cmd': cmd, 'ok': False, 'error': str(e), **summary})
+
+def vpn_map_sweep(session_id=None):
+    """[Ver 2.98] Don gan VPN THUA: IP con trong /data/vpn/map.txt ma cau hinh active
+    khong con khai VPN. Chay sau Apply va dinh ky 5 phut.
+
+    Vi sao can: 2026-10-27 may 192.10.0.16 doi tu VPN xv-1 sang proxy Lumi JP, Apply xong
+    van ra IP My vi map.txt con dong '.16 xv-1' => ip rule lookup 371 + ipset genrouter_vpn
+    (rule RETURN o mangle PREROUTING) nen traffic khong bao gio toi gencore/proxy moi.
+    """
+    res = {'ok': False, 'session': '', 'removed': [], 'reason': ''}
+    try:
+        sid = str(session_id or '').strip()
+        if not sid:
+            try:
+                sid = str((json.loads(ACTIVE_SESSION_FILE.read_text(encoding='utf-8')) or {}).get('active', '1')).strip() or '1'
+            except Exception:
+                return dict(res, reason='khong doc duoc session active')
+        res['session'] = sid
+        preset = SESSION_FILES.get(str(sid))
+        if not preset or not Path(preset).exists():
+            return dict(res, reason='khong co preset session %s' % sid)
+        data = load_json(preset)
+        desires_by_tag, _adopt = _session_vpn_desires(sid, data)
+        tag_ip = {}
+        saved_text = get_saved_ip_identity_text(sid)
+        if saved_text:
+            try:
+                for it in parse_ip_identity_text(saved_text):
+                    t = normalize_tag(it.get('tag', ''))
+                    ip = str(it.get('ip', '')).strip()
+                    if t and ip:
+                        tag_ip[t] = ip
+            except Exception:
+                tag_ip = {}
+        for _ip, _t in effective_auto_ip_tags().items():
+            tag_ip.setdefault(_t, _ip)
+        # Chan an toan: config khai co may VPN nhung khong map duoc IP nao => nghi doc loi, KHONG xoa.
+        if desires_by_tag and not any(tag_ip.get(t) for t in desires_by_tag):
+            return dict(res, reason='khong map duoc IP cho may VPN nao (nghi config loi) - khong xoa')
+        desired_ips = {tag_ip[t]: acc for t, acc in desires_by_tag.items() if tag_ip.get(t)}
+        current = load_vpn_map()
+        stale = [ip for ip in sorted(current) if ip not in desired_ips]
+        if not stale:
+            return dict(res, ok=True, reason='khong co gan thua')
+        _backup_vpn_map('sweep session %s: %d/%d may' % (sid, len(stale), len(current)))
+        r = vpn_run(['unassign-many'] + stale, timeout=max(120, 3 * len(stale)))
+        res['removed'] = stale
+        res['ok'] = bool(r.get('ok'))
+        try:
+            _ss_log('VPN-SWEEP session=%s removed=%d con=%d: %s' % (
+                sid, len(stale), len(current) - len(stale), ','.join(stale[:20])))
+        except Exception:
+            pass
+        return res
+    except Exception as e:
+        return dict(res, reason=str(e))
+
+
+def vpn_map_sweep_loop():
+    time.sleep(120)
+    while True:
+        try:
+            vpn_map_sweep()
+        except Exception:
+            pass
+        time.sleep(300)
+
 
 def config_doc_stats(doc):
     """Dem cac chi so bat bien cua mot doc gencore (dung de phat hien config bi sut)."""
@@ -7388,6 +7464,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json({'ok': True, 'results': check_proxy_batch(payload.get('items', []), session=str(payload.get('session', '1')))}) 
             if path == '/api/pm/check-pppoe':
                 return self._send_json(check_pppoe_session(payload.get('id', ''), session=str(payload.get('session', '1'))))
+            if path == '/api/pm/vpn-sweep':
+                return self._send_json(vpn_map_sweep(payload.get('session', '')))
             if path == '/api/pm/reboot-router':
                 return self._send_json(call_old_gui('/api/system/reboot', method='GET'))
             if path == '/api/pm/collector-config':
@@ -7829,6 +7907,7 @@ if __name__ == '__main__':
     threading.Thread(target=conn_watch_loop, daemon=True, name='conn-watch').start()
     threading.Thread(target=exitip_watch_loop, daemon=True, name='exitip-watch').start()
     threading.Thread(target=vpn_auto_loop, daemon=True, name='vpn-auto').start()
+    threading.Thread(target=vpn_map_sweep_loop, daemon=True, name='vpn-sweep').start()
     threading.Thread(target=pppoe_glider_stale_loop, daemon=True, name='glider-stale').start()
     class _GUIServer(ThreadingHTTPServer):
         # [Ver 2.63] Backlog mac dinh cua socketserver la 5. Khi GUI go dong thoi
