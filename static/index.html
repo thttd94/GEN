@@ -1494,11 +1494,12 @@
       document.getElementById("dupModal").classList.remove("show");
     }
 
-    // [Ver 2.95] Ma quoc gia 2 chu -> emoji quoc ky (US -> co My).
-    function flagEmoji(cc) {
-      const s = String(cc || '').trim().toUpperCase();
-      if (!/^[A-Z]{2}$/.test(s)) return '';
-      return String.fromCodePoint(...[...s].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+    // [Ver 2.95] Co quoc gia bang <img> (flagcdn.com 16px), fallback rong.
+    function flagImg(cc) {
+      const s = String(cc || '').trim().toLowerCase();
+      if (!/^[a-z]{2}$/.test(s)) return '';
+      const cc2 = s.toUpperCase();
+      return '<img src="https://flagcdn.com/16x12/' + s + '.png" width="16" height="12" alt="' + cc2 + '" title="' + cc2 + '" style="vertical-align:middle;margin-left:4px;" loading="lazy" onerror="this.replaceWith(document.createTextNode(\' \' + this.alt))">';
     }
     // [Ver 2.95] Ve ket qua CHECK dung chung cho 1 dong va CHECK ALL: LIVE/PPPOE/VPN | IP <co>.
     function paintCheck(box, data, label) {
@@ -1511,9 +1512,9 @@
         return;
       }
       const ip = String(d.exit_ip || d.ip || d.public_ip || (d.result && d.result.ip) || '').trim();
-      const fl = flagEmoji(d.country_code);
+      const fl = flagImg(d.country_code);
       box.className = 'check-ok';
-      let out = (label || 'LIVE') + (ip ? ' | ' + esc(ip) : '') + (fl ? ' ' + fl : '');
+      let out = (ip ? esc(ip) : (label || 'LIVE')) + fl;
       const dup = Array.isArray(d.duplicates) ? d.duplicates : [];
       if (dup.length) {
         window['__dup_' + box.id] = dup;

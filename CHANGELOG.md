@@ -1,3 +1,6 @@
+## Ver 2.96 - 2026-10-27
+- Cot Check: co quoc gia bang anh flagcdn (Windows khong co font emoji co), bo chu LIVE khi da live, chi hien IP + co; DEAD giu nguyen
+
 ## Ver 2.95 - 2026-10-27
 - Cot Check: hien quoc ky sau exit IP (proxy/VPN/PPPoE); them country_codes_for_ips, check_pppoe_session; CHECK ALL hien quoc ky theo lo
 
