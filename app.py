@@ -3275,7 +3275,7 @@ def conn_watch_loop():
         time.sleep(20)
 
 FLOW_API_ADDR = '127.0.0.1:19090'
-FLOW_MAX_KEYS = 5000
+FLOW_MAX_KEYS = 30000
 FLOW = {'lock': threading.Lock(), 'agg': {}, 'last': {}, 'since': 0.0, 'last_req': 0.0, 'thread': None, 'err': '', 'polls': 0}
 
 def get_flow_config():
@@ -3367,8 +3367,15 @@ def flow_ingest(snapshot, agg, last):
         a = agg.get(key)
         if a is None:
             if len(agg) >= FLOW_MAX_KEYS:
-                key = (ip, '(khac)', chain)
-                a = agg.get(key)
+                # [fix] drop the lightest buckets instead of collapsing every new
+                # host into '(khac)', which hid all real domain names in the GUI.
+                try:
+                    _v = sorted(agg, key=lambda k: agg[k]['up'] + agg[k]['down'])
+                    for _k in _v[:max(1, len(_v) // 10)]:
+                        agg.pop(_k, None)
+                except (KeyError, TypeError):
+                    agg.clear()
+            a = agg.get(key)
             if a is None:
                 a = agg[key] = {'up': 0, 'down': 0, 'conns': 0, 'ids': set()}
         a['up'] += du
@@ -3428,7 +3435,7 @@ def flow_summary(agg, ip=''):
         totals[k] += b
         rows.append({'ip': sip, 'host': host, 'out': chain, 'kind': k, 'up': a['up'], 'down': a['down'], 'bytes': b, 'conns': a['conns']})
     rows.sort(key=lambda r: -r['bytes'])
-    return rows[:300], totals
+    return rows[:5000], totals
 
 def flow_public_state(ip=''):
     cfg = get_flow_config()
