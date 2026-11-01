@@ -2737,6 +2737,7 @@ body.dark .pt .pt-hole { fill:#111827; }
 .cn-ports th,.cn-ports td{padding:6px 8px;border-bottom:1px solid var(--line-2);text-align:left;white-space:nowrap}
 .cn-ports th{font-size:12px;color:var(--text-dim)}
 .cn-ports tr.is-wan td{color:#ea580c;font-weight:700}
+.cn-port-acts{display:inline-flex;gap:6px;flex-wrap:wrap}
 .cn-fs{border:1px solid var(--line-3);border-radius:10px;padding:6px 12px 10px;margin:0 0 12px;background:var(--surface-4)}
 .cn-fs legend{font-size:12.5px;color:var(--text-dim);padding:0 6px}
 .cn-fs select,.cn-fs input{box-sizing:border-box;border:1px solid var(--line-3);border-radius:8px;background:var(--surface);color:var(--text);padding:7px 9px;font-size:13px}
@@ -2955,13 +2956,18 @@ function portsPaint(r) {
   if (portsBusy) return;
   tb.innerHTML = ps.map(p => {
     const spd = p.up ? (p.speed ? (p.speed >= 1000 ? (p.speed / 1000) + ' Gbps' : p.speed + ' Mbps') : 'C\u00f3 d\u00e2y') : 'Ch\u01b0a c\u1eafm';
-    const role = p.is_wan ? 'WAN ch\u00ednh' : (p.pppoe ? 'WAN PPPoE' : (p.role === 'LAN' ? 'LAN' : (p.role || 'Kh\u00f4ng d\u00f9ng')));
-    let why = '';
-    if (p.is_wan) why = '\u0110ang l\u00e0 WAN ch\u00ednh';
-    else if (!p.up) why = 'Ch\u01b0a c\u1eafm d\u00e2y';
-    else if (p.pppoe) why = '\u0110ang ch\u1ea1y PPPoE';
-    const act = why ? '<span class="sub">' + esc(why) + '</span>'
-      : '<button type="button" class="btn small" data-wan="' + esc(p.name) + '" aria-label="\u0110\u1eb7t ' + esc(p.name) + ' l\u00e0m WAN ch\u00ednh">\u0110\u1eb7t l\u00e0m WAN ch\u00ednh</button>';
+    const role = p.is_wan ? 'WAN ch\u00ednh' : (p.pppoe ? 'WAN PPPoE' : (p.lan === false ? 'WAN ph\u1ee5' : 'LAN'));
+    const B = (attr, txt, lbl) => '<button type="button" class="btn small" ' + attr + ' aria-label="' + esc(lbl) + '">' + txt + '</button>';
+    let act = '';
+    if (p.is_wan) act = '<span class="sub">\u0110ang l\u00e0 WAN ch\u00ednh</span>';
+    else if (p.pppoe) act = '<span class="sub">\u0110ang ch\u1ea1y PPPoE</span>';
+    else {
+      const parts = [];
+      if (p.up) parts.push(B('data-wan="' + esc(p.name) + '"', '\u0110\u1eb7t l\u00e0m WAN ch\u00ednh', '\u0110\u1eb7t ' + p.name + ' l\u00e0m WAN ch\u00ednh'));
+      if (p.lan === false) parts.push(B('data-role="lan" data-port="' + esc(p.name) + '"', 'Tr\u1ea3 v\u1ec1 LAN', 'Tr\u1ea3 ' + p.name + ' v\u1ec1 LAN'));
+      else parts.push(B('data-role="wan" data-port="' + esc(p.name) + '"', 'Chuy\u1ec3n sang WAN', 'Chuy\u1ec3n ' + p.name + ' sang WAN'));
+      act = '<span class="cn-port-acts">' + parts.join('') + '</span>';
+    }
     return '<tr class="' + (p.is_wan ? 'is-wan' : '') + '"><td><b>' + esc(p.name) + '</b></td><td>' + esc(spd) + '</td><td>' + esc(role)
       + '</td><td>' + (p.is_wan ? '-' : String(p.clients || 0)) + '</td><td style="font-family:Consolas,monospace">' + esc(p.mac || '') + '</td><td>' + act + '</td></tr>';
   }).join('') || '<tr><td colspan="6">Kh\u00f4ng \u0111\u1ecdc \u0111\u01b0\u1ee3c c\u1ed5ng</td></tr>';
@@ -2986,9 +2992,32 @@ async function setWanPort(port) {
     connMsg('\u0110\u1ed5i WAN l\u1ed7i: ' + e.message);
   } finally { portsBusy = false; loadPorts(); }
 }
+// [Ver 2.117] Cong LAN <-> WAN phu.
+async function setPortRole(port, role) {
+  if (portsBusy || !port) return;
+  const q = role === 'wan'
+    ? 'Chuy\u1ec3n ' + port + ' sang WAN?\n\n- ' + port + ' r\u1eddi kh\u1ecfi LAN, m\u00e1y \u0111ang c\u1eafm c\u1ed5ng n\u00e0y s\u1ebd m\u1ea5t m\u1ea1ng.\n- WAN ch\u00ednh kh\u00f4ng \u0111\u1ed5i. T\u1ea1o PPPoE tr\u00ean ' + port + ' \u0111\u1ec3 d\u00f9ng.'
+    : 'Tr\u1ea3 ' + port + ' v\u1ec1 LAN?\n\nM\u00e1y c\u1eafm v\u00e0o ' + port + ' s\u1ebd v\u00e0o m\u1ea1ng LAN c\u1ee7a router.';
+  if (!confirm(q)) return;
+  portsBusy = true; connMsg('\u0110ang \u0111\u1ed5i ' + port + '...');
+  try {
+    let r = await fetchJSON('/api/pm/port-role', { method: 'POST', body: JSON.stringify({ port, role }) });
+    if (r && r.need_confirm) {
+      const typed = (prompt((r.error || '') + '\nM\u00e1y c\u1eafm c\u1ed5ng n\u00e0y s\u1ebd m\u1ea5t m\u1ea1ng.\nG\u00f5 ' + port + ' \u0111\u1ec3 x\u00e1c nh\u1eadn:') || '').trim();
+      if (typed !== port) { connMsg('\u0110\u00e3 hu\u1ef7'); return; }
+      r = await fetchJSON('/api/pm/port-role', { method: 'POST', body: JSON.stringify({ port, role, confirm: typed }) });
+    }
+    connMsg(r && r.ok ? (r.msg || 'OK') : ('Kh\u00f4ng \u0111\u1ed5i \u0111\u01b0\u1ee3c: ' + ((r && r.error) || 'l\u1ed7i')));
+  } catch (e) {
+    connMsg('\u0110\u1ed5i c\u1ed5ng l\u1ed7i: ' + e.message);
+  } finally { portsBusy = false; loadPorts(); }
+}
 document.addEventListener('click', e => {
-  const b = e.target.closest && e.target.closest('#connPortsRows [data-wan]');
-  if (b) setWanPort(b.dataset.wan);
+  if (!e.target.closest) return;
+  const b = e.target.closest('#connPortsRows [data-wan]');
+  if (b) return setWanPort(b.dataset.wan);
+  const r = e.target.closest('#connPortsRows [data-role]');
+  if (r) setPortRole(r.dataset.port, r.dataset.role);
 });
 
 let trafficTargets = { proxies: [], vpns: [] };

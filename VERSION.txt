@@ -1,1 +1,1 @@
-Ver 2.116 (Doi WAN/LAN o Cau hinh ket noi > Cong mang; hang tieu de chi hien thi; cong co may LAN phai go ten cong de xac nhan)
+Ver 2.117 (Tab Cong mang: moi cong co nut Chuyen sang WAN / Tra ve LAN rieng, WAN chinh khong doi; cong dat tay la WAN duoc ghi nho)

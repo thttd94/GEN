@@ -1,3 +1,6 @@
+## Ver 2.117 - 2026-11-01
+- Tab Cong mang: moi cong LAN co nut Chuyen sang WAN (roi br-lan, cho tao PPPoE, WAN chinh khong doi); cong WAN phu co nut Tra ve LAN (chan neu dang PPPoE). Cong dat tay la WAN ghi nho trong port_roles.json, het PPPoE khong tu tra ve LAN. Chan cong may admin dang cam, het cong LAN; cong co may LAN phai go ten cong. Moi lan doi backup gen_backup/network_pre_role_*. API POST /api/pm/port-role
+
 ## Ver 2.116 - 2026-11-01
 - Doi WAN/LAN chuyen vao Cau hinh ket noi > tab Cong mang: bang cong (day, toc do, vai tro, so may LAN, MAC) + nut Dat lam WAN chinh. Hang tieu de chi hien thi, bam cong khong doi gi nua
 - Cong dang co may LAN: phai go dung ten cong (vd eth3) moi doi duoc. Kiem PPPoE khong con bao nham khi router khong dung PPPoE (doc uci + macvlan/vlan). API GET /api/pm/ports

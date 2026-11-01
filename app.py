@@ -5560,11 +5560,101 @@ def ports_public_state():
     busy = _pppoe_busy_ports()
     cl = bridge_port_clients()
     w = wan_port()
+    try:
+        lanset = set(_lan_ports_get())
+    except Exception:
+        lanset = None
+    mw = set(manual_wan_ports())
     for p in ports:
+        p['lan'] = None if lanset is None else (p['name'] in lanset)
+        p['extra_wan'] = p['name'] in mw
         p['clients'] = cl.get(p['name'], 0)
         p['pppoe'] = None if busy is None else (p['name'] in busy)
         p['is_wan'] = p['name'] == w
     return {'ok': True, 'ports': ports, 'wan_port': w, 'wan_switch': dict(WAN_SWITCH), 'wait': WAN_SWITCH_WAIT}
+
+PORT_ROLES_FILE = BASE_DIR / 'port_roles.json'
+
+def manual_wan_ports():
+    """[Ver 2.117] Cong anh dat tay la WAN phu (khong tu tra ve LAN khi het PPPoE)."""
+    try:
+        v = json.loads(PORT_ROLES_FILE.read_text(encoding='utf-8')).get('wan_extra') or []
+        return [x for x in v if re.match(r'^eth[0-9]+$', str(x))]
+    except Exception:
+        return []
+
+def _manual_wan_save(ports):
+    PORT_ROLES_FILE.write_text(json.dumps({'wan_extra': sorted(set(ports))}), encoding='utf-8')
+
+def _manual_wan_discard(port):
+    try:
+        cur = manual_wan_ports()
+        if port in cur:
+            _manual_wan_save([x for x in cur if x != port])
+    except Exception:
+        pass
+
+def _net_backup(tag):
+    bdir = BASE_DIR / 'gen_backup'
+    bdir.mkdir(parents=True, exist_ok=True)
+    bak = str(bdir / ('network_pre_%s_%s' % (tag, time.strftime('%Y%m%d_%H%M%S'))))
+    shutil.copy2('/etc/config/network', bak)
+    return bak
+
+def _client_dev(client_ip):
+    try:
+        rt = subprocess.run(['ip', 'route', 'get', client_ip], capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r'\bdev (\S+)', rt)
+        return m.group(1).split('@')[0] if m else ''
+    except Exception:
+        return ''
+
+def set_port_role(port, role, client_ip='', confirm=''):
+    """[Ver 2.117] role='wan': cong LAN -> WAN phu (roi br-lan, cho tao PPPoE). role='lan': WAN phu -> LAN.
+    WAN chinh khong doi o day (dung set_wan_port). ValueError = bi chan."""
+    port = str(port or '').strip()
+    role = str(role or '').strip().lower()
+    if role not in ('wan', 'lan'):
+        raise ValueError('Vai tr\u00f2 kh\u00f4ng h\u1ee3p l\u1ec7: ' + role)
+    if not re.match(r'^eth[0-9]+$', port) or not (Path('/sys/class/net') / port / 'device').exists():
+        raise ValueError('C\u1ed5ng kh\u00f4ng h\u1ee3p l\u1ec7: ' + port)
+    with WAN_SWITCH_LOCK:
+        if WAN_SWITCH.get('state') == 'pending':
+            raise ValueError('\u0110ang \u0111\u1ed5i WAN, ch\u1edd xong r\u1ed3i th\u1eed l\u1ea1i')
+        if port == wan_port():
+            raise ValueError(port + ' l\u00e0 WAN ch\u00ednh. Mu\u1ed1n \u0111\u1ed5i th\u00ec \u0111\u1eb7t c\u1ed5ng kh\u00e1c l\u00e0m WAN ch\u00ednh')
+        lan = _lan_ports_get()
+        if role == 'wan':
+            if port not in lan:
+                return {'ok': True, 'changed': False, 'msg': port + ' \u0111\u00e3 l\u00e0 WAN'}
+            if client_ip and _client_dev(client_ip) == 'br-lan' and _bridge_port_of_ip(client_ip) == port:
+                raise ValueError('M\u00e1y anh \u0111ang c\u1eafm v\u00e0o %s. Chuy\u1ec3n c\u1ed5ng n\u00e0y sang WAN s\u1ebd m\u1ea5t truy c\u1eadp GUI' % port)
+            new_lan = [x for x in lan if x != port]
+            if not new_lan:
+                raise ValueError('Kh\u00f4ng c\u00f2n c\u1ed5ng LAN n\u00e0o sau khi \u0111\u1ed5i, kh\u00f4ng \u0111\u1ed5i \u0111\u01b0\u1ee3c')
+            nc = bridge_port_clients().get(port, 0)
+            if nc and str(confirm or '').strip() != port:
+                raise WanConfirmNeeded('%s \u0111ang c\u00f3 %d m\u00e1y trong LAN. G\u00f5 t\u00ean c\u1ed5ng \u0111\u1ec3 x\u00e1c nh\u1eadn' % (port, nc), nc)
+            bak = _net_backup('role')
+            _lan_ports_set(new_lan)
+            subprocess.run(['ip', 'link', 'set', port, 'nomaster'], timeout=5, capture_output=True)
+            subprocess.run(['ip', 'link', 'set', port, 'up'], timeout=5, capture_output=True)
+            mw = manual_wan_ports(); mw.append(port); _manual_wan_save(mw)
+            _wd_log('[WAN] %s LAN -> WAN phu, LAN=%s, backup %s' % (port, ' '.join(new_lan), bak))
+            return {'ok': True, 'changed': True, 'lan': new_lan, 'backup': bak,
+                    'msg': port + ' \u0111\u00e3 chuy\u1ec3n sang WAN (r\u1eddi LAN). T\u1ea1o PPPoE tr\u00ean c\u1ed5ng n\u00e0y \u0111\u1ec3 d\u00f9ng'}
+        if port in lan:
+            _manual_wan_discard(port)
+            return {'ok': True, 'changed': False, 'msg': port + ' \u0111\u00e3 l\u00e0 LAN'}
+        if _port_pppoe_busy(port):
+            raise ValueError(port + ' \u0111ang ch\u1ea1y PPPoE. Xo\u00e1 phi\u00ean PPPoE tr\u00ean c\u1ed5ng n\u00e0y tr\u01b0\u1edbc r\u1ed3i m\u1edbi tr\u1ea3 v\u1ec1 LAN')
+        bak = _net_backup('role')
+        new_lan = lan + [port]
+        _lan_ports_set(new_lan)
+        subprocess.run(['ip', 'link', 'set', port, 'master', 'br-lan'], timeout=5, capture_output=True)
+        _manual_wan_discard(port)
+        _wd_log('[WAN] %s WAN phu -> LAN, LAN=%s, backup %s' % (port, ' '.join(new_lan), bak))
+        return {'ok': True, 'changed': True, 'lan': new_lan, 'backup': bak, 'msg': port + ' \u0111\u00e3 tr\u1ea3 v\u1ec1 LAN'}
 
 def set_wan_port(port, client_ip='', confirm=''):
     """Dat cong <port> lam WAN chinh. ValueError = bi chan (ly do hien len GUI)."""
@@ -5617,6 +5707,7 @@ def set_wan_port(port, client_ip='', confirm=''):
         if old in new_lan:
             subprocess.run(['ip', 'link', 'set', old, 'master', 'br-lan'], timeout=5, capture_output=True)
         subprocess.run(['ubus', 'call', 'network', 'reload'], timeout=20, capture_output=True)
+        _manual_wan_discard(port)
         WAN_SWITCH.update({'state': 'pending', 'old': old, 'new': port, 'ts': int(time.time()),
                            'msg': 'Đang chờ %s nhận IP (tối đa %ss)' % (port, WAN_SWITCH_WAIT)})
         _wd_log('[WAN] doi WAN chinh %s -> %s, LAN=%s, backup %s' % (old, port, ' '.join(new_lan), bak))
@@ -5737,6 +5828,9 @@ def pppoe_return_port(base, deleted_ids=None):
     if not re.match(r'^eth[0-9]+$',port): return port_state
     if port==wan_port():
         port_state['reason']=port+' la WAN chinh, khong tra ve LAN'
+        return port_state
+    if port in manual_wan_ports():
+        port_state['reason']=port+' dat tay la WAN, giu WAN'
         return port_state
     try:
         if _port_in_use_by_pppoe(port, deleted_ids):
@@ -8353,6 +8447,17 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json({'ok': False, 'error': str(te)})
                 return self._send_json({'ok': True, 'mode': m, 'target': tg, 'sample': traffic_sample(),
                                         'targets': traffic_targets()})
+            if path == '/api/pm/port-role':
+                # [Ver 2.117] Cong LAN <-> WAN phu.
+                try:
+                    pl = payload if isinstance(payload, dict) else {}
+                    return self._send_json(set_port_role(pl.get('port'), pl.get('role'), self.client_address[0], pl.get('confirm')))
+                except WanConfirmNeeded as we:
+                    return self._send_json({'ok': False, 'need_confirm': True, 'clients': we.clients, 'error': str(we)})
+                except ValueError as we:
+                    return self._send_json({'ok': False, 'error': str(we)})
+                except Exception as we:
+                    return self._send_json({'ok': False, 'error': 'L\u1ed7i \u0111\u1ed5i c\u1ed5ng: ' + str(we)[:160]})
             if path == '/api/pm/wan-port':
                 # [Ver 2.115] Chon cong WAN chinh. Bi chan => ok=false + ly do.
                 try:
