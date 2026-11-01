@@ -2280,6 +2280,10 @@ def apply_rows_to_data(data, rows_by_tag, session='1'):
             pppoe_acc_row = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
         touched_rows.append({'tag': tag, 'mac': row.get('mac', ''), 'note': row.get('note', ''), 'vpn_account': vpn_acc_row, 'pppoe_account': pppoe_acc_row})
     update_session_rows_meta(session, touched_rows)
+    # [Ver 2.111] Doi proxy = doi server outbound (vd as.lumiproxy.io -> us.arxlabs.io).
+    # Rule pha vong lap DNS phai tinh lai theo DANH SACH TEN MIEN MOI, neu khong proxy
+    # ten mien moi khong resolve duoc (DNS query loopback in transport[proxy_N]) => may mat mang.
+    ensure_dns_loop_breaker(data)
     return data
 
 _PPPOE_LAN_HOST_CACHE = {'ip': '', 'ts': 0.0}
@@ -3112,6 +3116,10 @@ def ensure_conn_rules(data, cfg=None):
                 pass
         dns['rules'] = dns_rules
         dns['servers'] = dns_servers
+        # [Ver 2.111] 2.108 chen dns rule proxy_N (_restored) LEN DAU => day rule pha vong lap
+        # xuong duoi => proxy dung TEN MIEN bi vong lap DNS. Chot lai: breaker luon o vi tri 0.
+        ensure_dns_loop_breaker(data)
+        dns_rules = dns.get('rules') or []
         _dns_changed = 0 if json.dumps([dns_rules, dns_servers], sort_keys=True) == before_dns else 1
         return 1 if (_dns_changed or json.dumps([rules, obs], sort_keys=True) != before) else 0
     except Exception as e:
@@ -4293,7 +4301,7 @@ def config_doc_stats(doc):
     stats = {'proxy_outbounds': 0, 'source_ip_cidr': 0, 'route_rules': 0, 'dns_servers': 0,
              'dns_proxy_doh': 0, 'dns_proxy_legacy': 0,
              'dns_loop_breaker': 0, 'proxy_dns_hosts': 0, 'proxy_username_uniq': 0,
-             'dns_local_detour': 0}
+             'dns_local_detour': 0, 'dns_loop_breaker_ok': 0}
     try:
         outbounds = (doc or {}).get('outbounds') or []
         route_rules = ((doc or {}).get('route') or {}).get('rules') or []
@@ -4323,6 +4331,15 @@ def config_doc_stats(doc):
     try:
         stats['proxy_dns_hosts'] = len(collect_proxy_dns_hosts(doc))
         stats['dns_loop_breaker'] = sum(1 for r in dns_rules if is_dns_loop_breaker(r))
+    except Exception:
+        pass
+    # [Ver 2.111] Chi DEM breaker la khong du: 2026-11-01 Gen10 doi 17 may sang us.arxlabs.io,
+    # preset + runtime deu KHONG co breaker (want=0, got=0) => guard im lang, may mat mang.
+    # Nay kiem DUNG/SAI: breaker phai o vi tri 0 va phu du moi ten mien server proxy_*.
+    # 1 = dung (hoac khong can), 0 = thieu/lech. Chay tren ban sao nong, khong sua doc.
+    try:
+        probe = {'outbounds': outbounds, 'dns': {'rules': list(dns_rules), 'servers': dns_servers}}
+        stats['dns_loop_breaker_ok'] = 0 if ensure_dns_loop_breaker(probe) else 1
     except Exception:
         pass
     # Ver 2.40: canh SO SESSION STRING RIENG cua cac outbound proxy_*.
@@ -4369,7 +4386,7 @@ def config_doc_stats(doc):
         pass
     return stats
 
-CONFIG_GUARD_KEYS = ('proxy_outbounds', 'source_ip_cidr', 'route_rules', 'dns_proxy_doh', 'dns_loop_breaker', 'proxy_username_uniq', 'dns_local_detour')
+CONFIG_GUARD_KEYS = ('proxy_outbounds', 'source_ip_cidr', 'route_rules', 'dns_proxy_doh', 'dns_loop_breaker', 'proxy_username_uniq', 'dns_local_detour', 'dns_loop_breaker_ok')
 
 def config_guard_restore(expected_doc, results=None, reason='post-vendor'):
     """So config tren disk voi ban dung trong RAM, sut thi ghi lai ngay + log vet.
@@ -4544,8 +4561,12 @@ def _run_apply_inner(session: str, rows_override=None):
     # Ver 2.41: apply cung phai bao dam detour cua DNS local, neu khong
     # config vua ghi se lai roi vao vong lap hijack-dns (mat DNS toan bo).
     dns_migrated += ensure_dns_local_detour(runtime_data)
+    # [Ver 2.111] Apply LUON chot rule pha vong lap DNS cho MOI ten mien proxy (khong rieng Lumi).
+    dns_migrated += ensure_dns_loop_breaker(runtime_data)
     if dns_migrated:
         save_gencore_json(RUNTIME_SOURCE_FILE, runtime_data)
+        if str(preset_source) != str(RUNTIME_SOURCE_FILE):
+            save_gencore_json(preset_source, runtime_data)
         results.append({'cmd': 'migrate proxy DNS servers to DoH 443', 'ok': True, 'target': str(RUNTIME_SOURCE_FILE), 'count': dns_migrated})
     if _PPPOE_APPLY_MISS:
         kept = sum(1 for m in _PPPOE_APPLY_MISS if m.get('kept'))
@@ -4775,6 +4796,80 @@ def get_proxy_public_ip(proxy_host, proxy_port, username, password, timeout=15):
         raise last_error
     raise OSError('Không lấy được public IP')
 
+
+# [Ver 2.111] Khoi phuc tra ma quoc gia (2.109 viet lai get_proxy_public_ip da XOA NHAM
+# country_codes_for_ips + country_code_for_ip, nhung check_proxy / CHECK ALL / vpn_exit_ip
+# van goi => NameError bi try nuot => country_code luon rong => cot Check MAT CO).
+_CC_CACHE = {}
+_CC_LOCK = threading.Lock()
+_CC_TTL = 86400
+_CC_MAX = 5000
+
+def _cc_cache_get(ip):
+    with _CC_LOCK:
+        it = _CC_CACHE.get(ip)
+    if not it:
+        return ''
+    if time.time() - float(it.get('ts') or 0) > _CC_TTL:
+        return ''
+    return str(it.get('cc') or '')
+
+def _cc_cache_put(ip, cc):
+    if not ip or not cc:
+        return
+    with _CC_LOCK:
+        _CC_CACHE[ip] = {'cc': cc, 'ts': time.time()}
+        if len(_CC_CACHE) > _CC_MAX:
+            drop = sorted(_CC_CACHE, key=lambda k: float((_CC_CACHE.get(k) or {}).get('ts') or 0))[:1000]
+            for k in drop:
+                _CC_CACHE.pop(k, None)
+
+def country_codes_for_ips(ips, timeout=6):
+    """Doi IP -> ma quoc gia. Dung ip-api /batch (100 ip/lan), thieu thi hoi api.country.is.
+    Khong bao gio nem loi: khong biet quoc gia thi tra ve rong."""
+    out = {}
+    todo = []
+    for ip in [str(x).strip() for x in (ips or []) if str(x).strip()]:
+        cc = _cc_cache_get(ip)
+        if cc:
+            out[ip] = cc
+        elif ip not in todo:
+            todo.append(ip)
+    if not todo:
+        return out
+    for i in range(0, len(todo), 100):
+        chunk = todo[i:i + 100]
+        try:
+            body = json.dumps([{'query': ip, 'fields': 'status,countryCode,query'} for ip in chunk]).encode('utf-8')
+            req = urllib.request.Request('http://ip-api.com/batch', data=body, headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                rows = json.loads(resp.read().decode('utf-8', 'replace'))
+            for it in (rows if isinstance(rows, list) else []):
+                ip = str((it or {}).get('query') or '').strip()
+                cc = str((it or {}).get('countryCode') or '').strip().upper()
+                if ip and len(cc) == 2:
+                    out[ip] = cc
+                    _cc_cache_put(ip, cc)
+        except Exception:
+            pass
+    miss = [ip for ip in todo if ip not in out]
+    for ip in miss[:40]:
+        try:
+            with urllib.request.urlopen('https://api.country.is/%s' % ip, timeout=timeout) as resp:
+                d = json.loads(resp.read().decode('utf-8', 'replace'))
+            cc = str((d or {}).get('country') or '').strip().upper()
+            if len(cc) == 2:
+                out[ip] = cc
+                _cc_cache_put(ip, cc)
+        except Exception:
+            continue
+    return out
+
+def country_code_for_ip(ip, timeout=6):
+    ip = str(ip or '').strip()
+    if not ip:
+        return ''
+    return country_codes_for_ips([ip], timeout=timeout).get(ip, '')
 
 def find_duplicate_proxy_tags(public_ip, session='1'):
     duplicates = []
@@ -6403,6 +6498,14 @@ def config_self_heal(reason='watchdog'):
     except Exception as e:
         res['reason'] = f'preset session {active} khong doc duoc: {e}'
         return res
+    # [Ver 2.111] Preset (nguon su that) cung co the thieu breaker => sua preset truoc,
+    # sau do so sanh se thay runtime lech (dns_loop_breaker_ok 0<-1) va tu chua + restart gencore.
+    try:
+        if ensure_dns_loop_breaker(expected):
+            save_gencore_json(preset, expected)
+            _wd_log(f'LOOP-BREAKER-HEAL ({reason}): preset session {active} thieu/lech rule pha vong lap DNS ({", ".join(collect_proxy_dns_hosts(expected))}) -> da sua')
+    except Exception as e:
+        _wd_log(f'LOOP-BREAKER-HEAL loi: {e}')
     want = config_doc_stats(expected)
     if want.get('proxy_outbounds', 0) == 0 and want.get('source_ip_cidr', 0) == 0:
         # Preset cung rong => khong co ban dung nao de dua vao. Ghi de luc nay

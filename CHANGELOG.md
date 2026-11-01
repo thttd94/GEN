@@ -1,3 +1,7 @@
+## Ver 2.111 - 2026-11-01
+- Fix proxy dung TEN MIEN khac Lumi (vd us.arxlabs.io) gan xong may MAT MANG du proxy song: rule pha vong lap DNS (ten mien proxy -> dnsmasq) khong duoc tinh lai khi doi proxy, va 2.108 chen dns rule proxy_N len truoc no. Nay apply_rows / Apply / ensure_conn_rules deu chot breaker o vi tri 0 cho MOI ten mien server proxy_*; guard + watchdog kiem dns_loop_breaker_ok (dung vi tri + du ten mien), lech thi tu sua preset + runtime va restart gencore
+- Fix mat quoc ky o cot Check: 2.109 xoa nham country_codes_for_ips / country_code_for_ip => khoi phuc (ip-api batch + api.country.is, cache 24h)
+
 ## Ver 2.110 - 2026-10-31
 - Fix Theo doi luong: ten mien bi gop thanh (khac). FLOW_MAX_KEYS=5000 bi vuot voi 160 phien nen moi host MOI bi don vao bucket (khac), bucket nay cong don byte nhieu host nen luon dung dau bang va che het ten mien that. Nay khi day thi xa 10% bucket nhe nhat, nang FLOW_MAX_KEYS=30000; nang tran hien thi rows 300 -> 5000 de GUI thay du ten mien
 
