@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>VPN / PPPoE - Router GEN</title>
+<!-- [Ver 2.122] Gop /vpn + /pppoe vao 1 trang, 2 tab. Moi tab nhung trang goc (iframe) nen logic giu nguyen. -->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #060b12; color: #e8f6ff; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  .nt-bar { display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 12px; background: #0b1622; border-bottom: 1px solid #1c3044; }
+  .nt-tab { border: 1px solid #1f3a52; background: #0f1d2b; color: #8fb8cc; padding: 8px 18px; border-radius: 10px; font: 700 13px/1 system-ui, sans-serif; letter-spacing: .4px; cursor: pointer; }
+  .nt-tab[aria-selected="true"] { color: #04220f; border-color: transparent; }
+  .nt-tab[data-k="vpn"][aria-selected="true"] { background: #f056c7; }
+  .nt-tab[data-k="pppoe"][aria-selected="true"] { background: #38bdf8; }
+  .nt-tab:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .nt-frames { position: relative; height: calc(100% - 48px); }
+  .nt-frames iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #060b12; }
+  .nt-frames iframe[hidden] { display: none; }
+  @media (max-width: 480px) { .nt-tab { flex: 1 1 0; padding: 8px 0; } }
+</style>
+</head>
+<body>
+<div class="nt-bar" role="tablist" aria-label="VPN / PPPoE">
+  <button type="button" class="nt-tab" role="tab" id="tab-vpn" data-k="vpn" aria-controls="fr-vpn">VPN</button>
+  <button type="button" class="nt-tab" role="tab" id="tab-pppoe" data-k="pppoe" aria-controls="fr-pppoe">PPPoE</button>
+</div>
+<div class="nt-frames">
+  <iframe id="fr-vpn" title="VPN" role="tabpanel" aria-labelledby="tab-vpn" hidden></iframe>
+  <iframe id="fr-pppoe" title="PPPoE" role="tabpanel" aria-labelledby="tab-pppoe" hidden></iframe>
+</div>
+<script>
+(function () {
+  const KEYS = ['vpn', 'pppoe'];
+  function pick(k, push) {
+    if (!KEYS.includes(k)) k = 'vpn';
+    KEYS.forEach(x => {
+      const on = x === k, tab = document.getElementById('tab-' + x), fr = document.getElementById('fr-' + x);
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      tab.tabIndex = on ? 0 : -1;
+      fr.hidden = !on;
+      // nap lan dau khi mo tab; giu iframe da nap de khong mat trang thai khi chuyen qua lai
+      if (on && !fr.getAttribute('src')) fr.setAttribute('src', '/' + x + '?embed=1');
+    });
+    try { localStorage.setItem('pm_net_tab', k); } catch (e) {}
+    if (push && location.hash !== '#' + k) history.replaceState(null, '', '#' + k);
+  }
+  document.querySelectorAll('.nt-tab').forEach(b => {
+    b.addEventListener('click', () => pick(b.dataset.k, true));
+    b.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const i = KEYS.indexOf(b.dataset.k), n = KEYS[(i + (e.key === 'ArrowRight' ? 1 : KEYS.length - 1)) % KEYS.length];
+      pick(n, true); document.getElementById('tab-' + n).focus();
+    });
+  });
+  let k = location.hash.replace('#', '');
+  if (!KEYS.includes(k)) { try { k = localStorage.getItem('pm_net_tab') || 'vpn'; } catch (e) { k = 'vpn'; } }
+  pick(k, true);
+  window.addEventListener('hashchange', () => pick(location.hash.replace('#', ''), false));
+})();
+</script>
+</body>
+</html>

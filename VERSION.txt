@@ -1,1 +1,1 @@
-Ver 2.120 (VPN giu dung trang thai UP/DOWN sau reboot, bo nut AUTO; cum cong len thanh tieu de /pppoe /vpn; bo chu thich thua)
+Ver 2.122 (gop VPN + PPPoE vao 1 trang 2 tab; may dang mo GUI dung dau danh sach)

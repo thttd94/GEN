@@ -243,6 +243,13 @@ body.dark .pt .pt-hole { fill:#111827; }
     body.dark .btn, body.dark .icon-btn { color:var(--text); }
     body.dark .icon-btn:hover { border-color:var(--accent-hi); }
   </style>
+<style>/* [Ver 2.121] may dang mo GUI */
+tr.me-row > td{background:rgba(34,197,94,.13)!important}
+tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
+.me-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#22c55e;color:#04220f;font:700 11px/16px system-ui,sans-serif;letter-spacing:.3px;vertical-align:middle;white-space:nowrap}
+.view-tab.has-me{position:relative}
+.view-tab.has-me::after{content:'';position:absolute;top:3px;right:4px;width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 2px #0b1220}
+</style>
 </head>
 <body>
   <script>
@@ -280,8 +287,7 @@ body.dark .pt .pt-hole { fill:#111827; }
         <button class="btn apply" onclick="applyCurrentSession()">NẠP & APPLY CẤU HÌNH ĐANG MỞ</button>
       </div>
       <div class="toolbar-right">
-        <button class="btn warn" onclick="window.open('/vpn','_blank')" title="Trang cấu hình VPN">VPN</button>
-        <button class="btn warn" onclick="window.open('/pppoe','_blank')" title="Trang quản lý PPPoE đa phiên">PPPOE</button>
+        <button class="btn warn" onclick="window.open('/net','_blank')" title="VPN / PPPoE">VPN / PPPOE</button>
         <!-- [Ver 2.76] Gom GÁN IP / GÁN MAC / SETUP / REBOOT vào 1 nút CẤU HÌNH (popup) -->
         <div class="cfg-menu" id="cfgMenu">
           <button class="btn warn cfg-menu-btn" id="cfgMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="cfgMenuPop" onclick="toggleCfgMenu(event)">⚙ CẤU HÌNH <span class="cfg-caret">▾</span></button>
@@ -498,6 +504,11 @@ body.dark .pt .pt-hole { fill:#111827; }
     let currentSession = '1';
     let currentRows = [];
     let viewMode = 'configured';
+    let MY_CLIENT_IP = '';  // [Ver 2.121] may dang mo GUI -> dung dau danh sach
+    fetch('/api/pm/whoami', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      MY_CLIENT_IP = String((d && d.ip) || '').trim();
+      if (MY_CLIENT_IP && typeof render === 'function') { try { render(); } catch (e) {} }
+    }).catch(() => {});
     let availableSessions = [];
     let allSessions = [];
     let sessionMeta = {};
@@ -851,6 +862,10 @@ body.dark .pt .pt-hole { fill:#111827; }
     function getVisibleRows() {
       const rows = currentRows.filter(r => viewMode === 'configured' ? !!r.configured : !r.configured);
       return rows.slice().sort((a, b) => {
+        if (MY_CLIENT_IP) {
+          const sa = String(a.ip || '').trim() === MY_CLIENT_IP, sb = String(b.ip || '').trim() === MY_CLIENT_IP;
+          if (sa !== sb) return sa ? -1 : 1;
+        }
         const ma = Number(String(a.machine || '').trim());
         const mb = Number(String(b.machine || '').trim());
         const validMa = Number.isFinite(ma) ? ma : Number.MAX_SAFE_INTEGER;
@@ -935,6 +950,7 @@ body.dark .pt .pt-hole { fill:#111827; }
       renderProxyMachineNote();
       document.getElementById('viewConfiguredBtn').classList.toggle('active', viewMode === 'configured');
       document.getElementById('viewUnconfiguredBtn').classList.toggle('active', viewMode === 'unconfigured');
+      renderMeBadge();
       renderAppTitle();
       document.getElementById('sessionLabel').textContent = sessionNameOf(currentSession);
       applySessionTheme();
@@ -948,11 +964,12 @@ body.dark .pt .pt-hole { fill:#111827; }
       renderPager(visibleRows.length);
       const ps = pageSizeOf(visibleRows.length);
       const pageRows = visibleRows.slice((currentPage - 1) * ps, currentPage * ps);
+      const isMe = row => !!MY_CLIENT_IP && String(row.ip || '').trim() === MY_CLIENT_IP;
       document.getElementById('rows').innerHTML = pageRows.map((row, idx) => `
-        <tr>
+        <tr${isMe(row) ? ' class="me-row"' : ''}>
           <td>${(currentPage - 1) * ps + idx + 1}</td>
           <td class="mono">${esc(row.mac || '')}</td>
-          <td class="mono">${esc(row.ip)}</td>
+          <td class="mono">${esc(row.ip)}${isMe(row) ? ' <span class="me-tag" title="Thiết bị bạn đang dùng để mở GUI">MÁY BẠN</span>' : ''}</td>
           <td><span class="badge ${row.status === 'online' ? 'online' : 'offline'}">${esc(row.status || 'offline')}</span></td>
           <td class="mono">${esc(row.machine || '')}</td>
           <td>
@@ -975,11 +992,17 @@ body.dark .pt .pt-hole { fill:#111827; }
                </select><span class="pp-face">${pppoeFaceHtml(row.proxy)}</span></span> <button class="btn small" onclick="rotatePPPoE(this)" title="Xoay IP phien PPPoE may nay dang chon (mat mang ~5 phut)">🔄 Xoay IP</button><span class="pppoe-rot sub"></span> <button class="btn small" onclick="suggestPPPoE(this)" title="Tự động chọn phiên PPPoE chưa được gán">💡 Đề xuất</button>${unassignBtnHtml(row)}</td>`
             : `<td style="white-space:nowrap;"><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass" style="width:calc(100% - 34px);">${unassignBtnHtml(row)}</td>`}
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
-          <td><button class="btn small" onclick="checkProxy('${esc(row.tag)}')">CHECK</button><div id="check-${esc(row.tag)}" class="sub"></div></td>
+          <td><button class="btn small" onclick="checkProxy('${esc(checkKey(row))}')">CHECK</button><div id="check-${esc(checkKey(row))}" class="sub"></div></td>
         </tr>`).join('');
       renderNotesSummary();
       renderVpnAssigned();
       paintPppoeRot();
+    }
+    // [Ver 2.121] Cham xanh tren tab chua may dang mo GUI.
+    function renderMeBadge() {
+      const me = MY_CLIENT_IP ? (currentRows || []).find(r => String(r.ip || '').trim() === MY_CLIENT_IP) : null;
+      ['viewConfiguredBtn', 'viewUnconfiguredBtn'].forEach(id => document.getElementById(id)?.classList.remove('has-me'));
+      if (me) document.getElementById(me.configured ? 'viewConfiguredBtn' : 'viewUnconfiguredBtn')?.classList.add('has-me');
     }
     function compressRanges(nums) {
       if (!nums.length) return '';
@@ -1550,9 +1573,14 @@ body.dark .pt .pt-hole { fill:#111827; }
       box.innerHTML = out;
     }
 
-    async function checkProxy(tag) {
-      const row = currentRows.find(r => r.tag === tag);
-      const box = document.getElementById(`check-${tag}`);
+    // [Ver 2.122] khoa rieng tung hang: tag (da cau hinh) hoac IP (chua cau hinh, tag rong)
+    function checkKey(row) {
+      const t = String((row && row.tag) || '').trim();
+      return t || ('ip-' + String((row && row.ip) || '').trim().replace(/[^0-9A-Za-z]/g, '_'));
+    }
+    async function checkProxy(key) {
+      const row = currentRows.find(r => checkKey(r) === key);
+      const box = document.getElementById(`check-${key}`);
       if (!row || !box) return;
       const ppId = String(row.proxy || '').startsWith('pppoe:') ? String(row.proxy).slice(6).trim() : '';
       if (ppId) {
@@ -1595,7 +1623,7 @@ body.dark .pt .pt-hole { fill:#111827; }
         const results = resp?.results || {};
         for (const row of rows) {
           const data = results[row.tag] || {};
-          const box = document.getElementById(`check-${row.tag}`);
+          const box = document.getElementById(`check-${checkKey(row)}`);
           if (!box) continue;
           paintCheck(box, data, 'LIVE');
         }

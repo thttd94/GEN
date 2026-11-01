@@ -8395,6 +8395,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(sysinfo_json())
         if path == '/api/pm/ports':
             return self._send_json(ports_public_state())
+        if path == '/api/pm/whoami':
+            return self._send_json({'ok': True, 'ip': self.client_address[0]})  # [Ver 2.121]
         if path == '/api/pm/traffic':
             cfg = _traffic_cfg()
             return self._send_json({'ok': True, 'mode': cfg[0], 'target': cfg[1], 'sample': traffic_sample(),
@@ -8404,6 +8406,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(get_repo_version_info())
         if path == '/api/pm/health':
             return self._send_json(wd_health_json())
+        if path == '/net':
+            return self._send_file(STATIC_DIR / 'net.html')  # [Ver 2.122]
         if path == '/vpn':
             return self._send_file(STATIC_DIR / 'vpn.html')
         if path == '/pppoe':

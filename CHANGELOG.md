@@ -1,3 +1,10 @@
+## Ver 2.122 - 2026-11-02
+- Gop VPN + PPPoE vao trang /net co 2 tab (nho tab vua mo, #vpn / #pppoe). GUI chinh con 1 nut VPN / PPPOE. /vpn va /pppoe van mo rieng duoc
+- Sua CHECK o tab CHUA CAU HINH: ket qua luon hien o hang 1 (moi hang tag rong, trung id). Nay moi hang co khoa rieng theo IP
+
+## Ver 2.121 - 2026-11-02
+- May dang mo GUI (theo IP truy cap) luon dung dau danh sach o ca tab DA CAU HINH va CHUA CAU HINH, hang to xanh + nhan MAY BAN canh IP. Cham xanh tren tab chua may. API GET /api/pm/whoami
+
 ## Ver 2.120 - 2026-11-02
 - VPN nho trang thai UP/DOWN qua reboot: bam UP/DOWN (ca UP ALL/DOWN ALL) tu ghi co auto; app khoi dong lai thi bat lai dung cac tunnel dang UP truoc do (thu 6 lan, cach 45s). Lan dau chay ban nay chup trang thai dang chay hien tai. Bo nut AUTO va o Tu khoi dong tren /vpn
 - Cum cong RJ45 gon dua len thanh tieu de /pppoe va /vpn, bo the Trang thai cong rieng; nut Bat PPPoE vao hang nut Danh sach phien. Bo cac dong chu thich thua tren /pppoe, /vpn, tab Cong mang
