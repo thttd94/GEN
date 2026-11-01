@@ -277,6 +277,12 @@ def sysinfo_json():
         out['ports'] = physical_ports()
     except Exception:
         out['ports'] = []
+    # [Ver 2.115] WAN chinh hien tai + trang thai doi WAN (pending/ok/rolled_back).
+    try:
+        out['wan_port'] = wan_port()
+        out['wan_switch'] = dict(WAN_SWITCH)
+    except Exception:
+        pass
     return out
 
 def _uci_net_roles(text):
@@ -5404,7 +5410,172 @@ def check_pppoe_session(sid, session='1', with_country=True):
 # /etc/init.d/network reload vi reload ifdown/ifup moi phien dang chay => mat IP.
 # Ban 2.64-2.67 thieu chan eth0 trong pppoe_return_port => xoa phien tren eth0
 # day eth0 vao br-lan, macvlan dev_xxx khong claim duoc, toan bo PPPoE chet.
-PPPOE_WAN_FIXED = 'eth0'
+PPPOE_WAN_FIXED = 'eth0'  # [Ver 2.115] chi con la gia tri du phong; WAN chinh doc tu uci qua wan_port()
+
+# [Ver 2.115] WAN chinh CHON DUOC tu GUI (bam cong eth tren hang tieu de), khong co dinh eth0
+# (router hong eth0 van doi sang cong khac). Doi = sua uci network.wan(.wan6).device, cong moi ra khoi
+# br-lan, cong WAN cu vao br-lan (tru khi con phien PPPoE). Sau WAN_SWITCH_WAIT giay cong moi khong len
+# (ubus network.interface.wan up=false) => tu tra lai file network backup.
+WAN_SWITCH = {'state': '', 'old': '', 'new': '', 'ts': 0, 'msg': ''}
+WAN_SWITCH_LOCK = threading.Lock()
+WAN_SWITCH_WAIT = 45
+
+def wan_port():
+    """Cong WAN chinh = network.wan.device (uci). Loi doc => eth0."""
+    for key in ('network.wan.device', 'network.wan.ifname'):
+        try:
+            v = subprocess.run(['uci', '-q', 'get', key], capture_output=True, text=True, timeout=5).stdout.strip()
+        except Exception:
+            v = ''
+        b = v.split('.', 1)[0]
+        if re.match(r'^eth[0-9]+$', b):
+            return b
+    return PPPOE_WAN_FIXED
+
+def _brforward_port(raw, mac, port_names):
+    """Tim cong bridge cua 1 MAC trong /sys/class/net/<br>/brforward (struct __fdb_entry 16 byte:
+    mac[6] port_no[1] is_local[1] ageing[4] port_hi[1] pad[1] unused[2])."""
+    try:
+        want = bytes.fromhex(str(mac).replace(':', '').lower())
+    except Exception:
+        return ''
+    if len(want) != 6:
+        return ''
+    for i in range(0, len(raw) - 15, 16):
+        e = raw[i:i + 16]
+        if e[:6] == want and not e[7]:
+            return port_names.get(e[6] | (e[12] << 8), '')
+    return ''
+
+def _bridge_port_of_ip(ip, br='br-lan'):
+    """Cong vat ly trong br-lan ma may <ip> dang cam vao ('' neu khong biet)."""
+    try:
+        out = subprocess.run(['ip', 'neigh', 'show', ip, 'dev', br], capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r'lladdr ([0-9a-fA-F:]{17})', out)
+        if not m:
+            return ''
+        names = {}
+        for p in (Path('/sys/class/net') / br / 'brif').iterdir():
+            names[int((p / 'port_no').read_text().strip(), 16)] = p.name
+        return _brforward_port((Path('/sys/class/net') / br / 'brforward').read_bytes(), m.group(1), names)
+    except Exception:
+        return ''
+
+def _wan_iface_up(dev):
+    """Interface wan cua netifd da len tren cong dev (co IP)."""
+    try:
+        j = json.loads(subprocess.run(['ubus', 'call', 'network.interface.wan', 'status'], capture_output=True,
+                                      text=True, timeout=5).stdout or '{}')
+    except Exception:
+        return False
+    d = str(j.get('device') or j.get('l3_device') or '').split('.', 1)[0]
+    return bool(j.get('up')) and bool(j.get('ipv4-address')) and d == dev
+
+def _wan_switch_watch(old, new, bak):
+    dl = time.time() + WAN_SWITCH_WAIT
+    while time.time() < dl:
+        time.sleep(3)
+        if _wan_iface_up(new):
+            WAN_SWITCH.update({'state': 'ok', 'msg': 'WAN chính đã chuyển sang %s' % new})
+            _wd_log('[WAN] doi WAN chinh %s -> %s OK' % (old, new))
+            try:
+                _TRAFFIC['wan_ts'] = 0
+            except Exception:
+                pass
+            return
+    try:
+        shutil.copy2(bak, '/etc/config/network')
+        subprocess.run(['ubus', 'call', 'network', 'reload'], timeout=20, capture_output=True)
+        subprocess.run(['ip', 'link', 'set', old, 'nomaster'], timeout=5, capture_output=True)
+        if new in _lan_ports_get():
+            subprocess.run(['ip', 'link', 'set', new, 'master', 'br-lan'], timeout=5, capture_output=True)
+        msg = '%s không nhận được IP sau %ss, đã tự quay lại WAN %s' % (new, WAN_SWITCH_WAIT, old)
+    except Exception as e:
+        msg = 'Quay lại WAN %s lỗi: %s (backup %s)' % (old, str(e)[:120], bak)
+    WAN_SWITCH.update({'state': 'rolled_back', 'msg': msg})
+    _wd_log('[WAN] ' + msg)
+
+def _port_pppoe_busy(port):
+    """[Ver 2.115] Cong co PPPoE that khong. Doc danh sach server cu; loi (vd HTTP 400 tren router
+    khong dung PPPoE) => kiem truc tiep: uci proto=pppoe tren cong, hoac macvlan/vlan gan vao cong.
+    Khong doc duoc gi => coi la BAN (an toan)."""
+    try:
+        old = call_old_gui('/api/router/pppoe'); raw = (old or {}).get('data')
+        if isinstance(raw, dict): raw = raw.get('data', raw)
+        if isinstance(raw, list):
+            return any(str(x.get('device') or '').split('.', 1)[0] == port for x in raw if isinstance(x, dict))
+    except Exception:
+        pass
+    try:
+        txt = subprocess.run(['uci', '-q', 'show', 'network'], capture_output=True, text=True, timeout=5).stdout
+        secs = {}
+        for ln in txt.splitlines():
+            m = re.match(r"^network\.([^.=]+)\.(proto|device|ifname)='?([^']*)'?$", ln.strip())
+            if m:
+                secs.setdefault(m.group(1), {})[m.group(2)] = m.group(3)
+        for s in secs.values():
+            if s.get('proto') == 'pppoe' and (s.get('device') or s.get('ifname') or '').split('.', 1)[0] == port:
+                return True
+        for u in (Path('/sys/class/net') / port).glob('upper_*'):
+            if u.name[len('upper_'):] != 'br-lan':
+                return True  # macvlan dev_xxx / vlan ethX.N cua PPPoE
+        return False
+    except Exception:
+        return True
+
+def set_wan_port(port, client_ip=''):
+    """Dat cong <port> lam WAN chinh. ValueError = bi chan (ly do hien len GUI)."""
+    port = str(port or '').strip()
+    if not re.match(r'^eth[0-9]+$', port) or not (Path('/sys/class/net') / port / 'device').exists():
+        raise ValueError('Cổng không hợp lệ: ' + port)
+    with WAN_SWITCH_LOCK:
+        if WAN_SWITCH.get('state') == 'pending':
+            raise ValueError('Đang đổi WAN, chờ xong rồi thử lại')
+        old = wan_port()
+        if port == old:
+            return {'ok': True, 'changed': False, 'old': old, 'new': port, 'msg': port + ' đã là WAN chính'}
+        try:
+            carrier = (Path('/sys/class/net') / port / 'carrier').read_text().strip() == '1'
+        except Exception:
+            carrier = False
+        if not carrier:
+            raise ValueError(port + ' chưa cắm dây, không đặt làm WAN được')
+        if _port_pppoe_busy(port):
+            raise ValueError(port + ' đang chạy PPPoE, không đặt làm WAN chính được')
+        if client_ip:
+            try:
+                rt = subprocess.run(['ip', 'route', 'get', client_ip], capture_output=True, text=True, timeout=5).stdout
+                m = re.search(r'\bdev (\S+)', rt)
+                dev = m.group(1).split('@')[0] if m else ''
+            except Exception:
+                dev = ''
+            if dev.split('.', 1)[0] == old:
+                raise ValueError('Anh đang vào router qua cổng WAN %s. Đổi WAN sẽ mất truy cập, hãy mở GUI từ máy trong LAN' % old)
+            if dev == 'br-lan' and _bridge_port_of_ip(client_ip) == port:
+                raise ValueError('Máy anh đang cắm vào %s. Đặt cổng này làm WAN sẽ mất truy cập GUI' % port)
+        lan = _lan_ports_get()
+        old_pppoe = _port_pppoe_busy(old)
+        new_lan = [x for x in lan if x != port] + ([] if (old_pppoe or old in lan) else [old])
+        if not new_lan:
+            raise ValueError('Không còn cổng LAN nào sau khi đổi, không đổi được')
+        bdir = BASE_DIR / 'gen_backup'
+        bdir.mkdir(parents=True, exist_ok=True)
+        bak = str(bdir / ('network_pre_wan_%s' % time.strftime('%Y%m%d_%H%M%S')))
+        shutil.copy2('/etc/config/network', bak)
+        for sec in ('wan', 'wan6'):
+            if subprocess.run(['uci', '-q', 'get', 'network.' + sec], capture_output=True, timeout=5).returncode == 0:
+                subprocess.run(['uci', 'set', 'network.%s.device=%s' % (sec, port)], check=True, timeout=5)
+        _lan_ports_set(new_lan)  # commit network
+        subprocess.run(['ip', 'link', 'set', port, 'nomaster'], timeout=5, capture_output=True)
+        subprocess.run(['ip', 'link', 'set', port, 'up'], timeout=5, capture_output=True)
+        if old in new_lan:
+            subprocess.run(['ip', 'link', 'set', old, 'master', 'br-lan'], timeout=5, capture_output=True)
+        subprocess.run(['ubus', 'call', 'network', 'reload'], timeout=20, capture_output=True)
+        WAN_SWITCH.update({'state': 'pending', 'old': old, 'new': port, 'ts': int(time.time()),
+                           'msg': 'Đang chờ %s nhận IP (tối đa %ss)' % (port, WAN_SWITCH_WAIT)})
+        _wd_log('[WAN] doi WAN chinh %s -> %s, LAN=%s, backup %s' % (old, port, ' '.join(new_lan), bak))
+        threading.Thread(target=_wan_switch_watch, args=(old, port, bak), daemon=True).start()
+        return {'ok': True, 'changed': True, 'old': old, 'new': port, 'lan': new_lan, 'msg': WAN_SWITCH['msg']}
 
 def router_physical_ports():
     """[Ver 2.81] Cong vat ly cua router: ten, vai tro WAN/LAN, dang co day (up) hay khong.
@@ -5478,15 +5649,16 @@ def ensure_wan_port_not_bridged():
     # Tu chua: eth0 bi nhet vao br-lan (uci hoac kernel) => go ra + log vet.
     st={'ok':True,'changed':False}
     try:
+        w=wan_port(); st['port']=w
         ports=_lan_ports_get()
-        if PPPOE_WAN_FIXED in ports:
-            _lan_ports_set([x for x in ports if x!=PPPOE_WAN_FIXED]); st['changed']=True; st['uci']=True
-        link=subprocess.run(['ip','-o','link','show',PPPOE_WAN_FIXED],capture_output=True,text=True,timeout=5).stdout
+        if w in ports:
+            _lan_ports_set([x for x in ports if x!=w]); st['changed']=True; st['uci']=True
+        link=subprocess.run(['ip','-o','link','show',w],capture_output=True,text=True,timeout=5).stdout
         if 'master br-lan' in link:
-            subprocess.run(['ip','link','set',PPPOE_WAN_FIXED,'nomaster'],timeout=5,capture_output=True)
+            subprocess.run(['ip','link','set',w,'nomaster'],timeout=5,capture_output=True)
             st['changed']=True; st['kernel']=True
         if st['changed']:
-            print('[HEAL] eth0 (WAN) bi nam trong br-lan -> da go ra', st, flush=True)
+            print('[HEAL] %s (WAN chinh) bi nam trong br-lan -> da go ra' % w, st, flush=True)
     except Exception as e:
         st.update({'ok':False,'error':str(e)[:160]})
     return st
@@ -5496,9 +5668,9 @@ def pppoe_prepare_port(device):
     if not re.match(r'^eth[0-9]+$',base): return {'ok':False,'error':('port PPPoE khong hop le: '+base)}
     port_state={'ok':True,'port':base,'changed':False,'reloaded':False}
     try:
-        if base==PPPOE_WAN_FIXED:
+        if base==wan_port():
             heal=ensure_wan_port_not_bridged()
-            port_state.update({'reason':'eth0 luon la WAN','changed':heal.get('changed',False)})
+            port_state.update({'reason':base+' la WAN chinh','changed':heal.get('changed',False)})
             return port_state
         cur=_lan_ports_get()
         if base not in cur:
@@ -5517,8 +5689,8 @@ def pppoe_return_port(base, deleted_ids=None):
     port=(str(base or '').split('.',1)[0] or '').strip()
     port_state={'ok':True,'port':port,'changed':False}
     if not re.match(r'^eth[0-9]+$',port): return port_state
-    if port==PPPOE_WAN_FIXED:
-        port_state['reason']='eth0 luon la WAN, khong tra ve LAN'
+    if port==wan_port():
+        port_state['reason']=port+' la WAN chinh, khong tra ve LAN'
         return port_state
     try:
         if _port_in_use_by_pppoe(port, deleted_ids):
@@ -7811,7 +7983,7 @@ def gencore_watchdog_loop():
             try:
                 _h = ensure_wan_port_not_bridged()
                 if _h.get('changed'):
-                    _wd_log('[HEAL] eth0 WAN bi nhet vao br-lan -> da go ra %s' % _h)
+                    _wd_log('[HEAL] WAN chinh bi nhet vao br-lan -> da go ra %s' % _h)
             except Exception:
                 pass
             thr = _wd_thresholds()
@@ -8133,6 +8305,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json({'ok': False, 'error': str(te)})
                 return self._send_json({'ok': True, 'mode': m, 'target': tg, 'sample': traffic_sample(),
                                         'targets': traffic_targets()})
+            if path == '/api/pm/wan-port':
+                # [Ver 2.115] Chon cong WAN chinh. Bi chan => ok=false + ly do.
+                try:
+                    pl = payload if isinstance(payload, dict) else {}
+                    return self._send_json(set_wan_port(pl.get('port'), self.client_address[0]))
+                except ValueError as we:
+                    return self._send_json({'ok': False, 'error': str(we)})
+                except Exception as we:
+                    return self._send_json({'ok': False, 'error': 'Lỗi đổi WAN: ' + str(we)[:160]})
             if path == '/api/pm/flow':
                 try:
                     return self._send_json(flow_update(payload if isinstance(payload, dict) else {}))
@@ -8288,12 +8469,12 @@ class Handler(BaseHTTPRequestHandler):
                     data['rotate']=bool(payload.get('rotate'))
                     vlan=str(payload.get('vlan','') or '').strip()
                     if 1<=int(vlan)<=4094 if vlan.isdigit() else False:
-                        vdev=(str(data.get('device') or 'eth0')+'.'+vlan)
-                        subprocess.run(['ip','link','add','link',str(data.get('device') or 'eth0'),'name',vdev,'type','vlan','id',vlan],timeout=10,capture_output=True)
+                        vdev=(str(data.get('device') or wan_port())+'.'+vlan)
+                        subprocess.run(['ip','link','add','link',str(data.get('device') or wan_port()),'name',vdev,'type','vlan','id',vlan],timeout=10,capture_output=True)
                         subprocess.run(['ip','link','set',vdev,'up'],timeout=10,capture_output=True)
                         data['device']=vdev
                     # choc den port khong nam trong bridge nua khong bi tranh
-                    port_state=pppoe_prepare_port(data.get('device') or 'eth0')
+                    port_state=pppoe_prepare_port(data.get('device') or wan_port())
                     # khong tai bridge khi tao nhieu phien
                     out=[]; last=None
                     for _ in range(data['number']):
@@ -8310,7 +8491,7 @@ class Handler(BaseHTTPRequestHandler):
                 if action == 'acc-save':
                     u=str(payload.get('username','')).strip(); pw=str(payload.get('password',''))
                     if not u or not pw: return self._send_json({'ok':False,'error':'thieu user/pass'})
-                    a_=pppoe_accounts_load(); row={'u':u,'p':pw,'d':str(payload.get('device','eth0')),'v':str(payload.get('vlan',''))}
+                    a_=pppoe_accounts_load(); row={'u':u,'p':pw,'d':str(payload.get('device') or wan_port()),'v':str(payload.get('vlan',''))}
                     old=next((z for z in a_ if z.get('u')==u),None)
                     if old: old.update(row)
                     else: a_.append(row)

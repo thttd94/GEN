@@ -1,3 +1,8 @@
+## Ver 2.115 - 2026-11-01
+- Chon cong WAN chinh tu GUI: bam 1 cong Eth tren hang tieu de => dat lam WAN chinh (khong co dinh eth0, router hong eth0 van doi duoc). Sua uci network.wan/wan6.device, cong moi ra khoi br-lan, WAN cu ve LAN (tru khi con PPPoE), backup gen_backup/network_pre_wan_*
+- Chan: cong chua cam day, cong dang PPPoE, may admin dang cam vao cong do, dang vao GUI qua WAN cu, het cong LAN. 45s cong moi khong nhan IP => tu quay lai WAN cu
+- WAN chinh doc tu uci (wan_port()) thay vi hardcode eth0: tu chua WAN bi nhet vao br-lan, PPPoE mac dinh, tra cong ve LAN
+
 ## Ver 2.114 - 2026-11-01
 - Giao dien NOC: giu thanh thong so router o hang tieu de (nhiet do/CPU/RAM/Disk/uptime). Bo o CPU + Nhiet do trong hang so lieu, thay bang 2 o luu luong: Luong Proxy (tong, Proxy / Luong phu kem %, thanh ty le) va Luong WAN (WAN, Truc tiep/khac, dem tu) + nut Reset. An o traffic PROXY|VPN|WAN va dong tom tat luong canh tab vi trung lap. Giao dien cu giu nguyen
 - Giao dien NOC: may offline hien mau DO (nhan offline + vach trai dong/the)

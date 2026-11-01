@@ -65,7 +65,8 @@
 .titlebar .conn-badge { min-width:0; padding:5px 10px; font-size:12px; border-radius:8px; }
 .titlebar-mid { flex:1 1 auto; min-width:0; display:flex; align-items:flex-end; justify-content:center; gap:4px; overflow-x:auto; scrollbar-width:none; }
 .titlebar-mid::-webkit-scrollbar { display:none; }
-.pt { display:flex; flex-direction:column; align-items:center; gap:1px; min-width:30px; padding:2px 3px; border-radius:6px; cursor:default; outline:none; }
+.pt { display:flex; flex-direction:column; align-items:center; gap:1px; min-width:30px; padding:2px 3px; border-radius:6px; cursor:pointer; outline:none; }
+.pt:focus-visible { box-shadow:0 0 0 2px #2dd4bf; }
 .pt:hover, .pt:focus-visible { background:rgba(127,127,127,.15); }
 .pt svg { width:22px; height:20px; }
 .pt .pt-body { fill:#9ca3af; } .pt .pt-hole { fill:#fff; } .pt .pt-led { fill:#6b7280; }
@@ -2630,10 +2631,42 @@ body.dark .pt .pt-hole { fill:#111827; }
       var st = p.up ? '\u0110\u00e3 c\u1eafm d\u00e2y' + (p.speed ? ' \u00b7 ' + fmtSpd(p.speed).replace('M', ' Mbps').replace('G', ' Gbps') : '') : 'Ch\u01b0a c\u1eafm d\u00e2y';
       var tip = p.name + ' \u00b7 ' + role + ' \u00b7 ' + st + (p.master ? ' \u00b7 ' + p.master : '') + (p.mac ? '\nMAC ' + p.mac : '');
       var cls = 'pt ' + (p.up ? 'up' : 'down') + (p.role === 'WAN' ? ' wan' : '');
-      return '<div class="' + cls + '" role="listitem" tabindex="0" title="' + escT(tip) + '" aria-label="' + escT(tip) + '">' + RJ45
+      tip += p.role === 'WAN' ? '\n(WAN ch\u00ednh)' : '\nB\u1ea5m \u0111\u1ec3 \u0111\u1eb7t l\u00e0m WAN ch\u00ednh';
+      return '<div class="' + cls + '" role="listitem" tabindex="0" data-port="' + escT(p.name) + '" title="' + escT(tip) + '" aria-label="' + escT(tip) + '">' + RJ45
         + '<span class="pt-n">' + escT(p.name.replace(/^eth/, 'Eth')) + '</span>'
         + '<span class="pt-s">' + escT((p.role ? p.role : '') + (p.up && p.speed ? ' ' + fmtSpd(p.speed) : '')) + '</span></div>';
     }).join('');
+  }
+  // [Ver 2.115] Bam 1 cong => dat lam WAN chinh (xac nhan truoc). Server chan neu mat truy cap / chua cam day.
+  var wanBusy = false, lastWanMsg = '';
+  async function pickWan(port) {
+    if (wanBusy || !port) return;
+    var cur = (window.__wanPort || '');
+    if (port === cur) { setStatus(port + ' \u0111\u00e3 l\u00e0 WAN ch\u00ednh'); return; }
+    if (!confirm('\u0110\u1eb7t ' + port + ' l\u00e0m WAN ch\u00ednh?\n\n- ' + port + ' r\u1eddi kh\u1ecfi LAN, m\u00e1y \u0111ang c\u1eafm c\u1ed5ng n\u00e0y s\u1ebd m\u1ea5t m\u1ea1ng.\n- ' + (cur || 'WAN c\u0169') + ' tr\u1edf v\u1ec1 LAN (tr\u1eeb khi \u0111ang ch\u1ea1y PPPoE).\n- Internet ch\u1edbp v\u00e0i gi\u00e2y. Sau ' + 45 + ' gi\u00e2y ' + port + ' kh\u00f4ng nh\u1eadn IP th\u00ec router t\u1ef1 quay l\u1ea1i.')) return;
+    wanBusy = true;
+    try {
+      var r = await fetchJSON('/api/pm/wan-port', { method: 'POST', body: JSON.stringify({ port: port }) });
+      setStatus(r.ok ? (r.msg || 'OK') : ('Kh\u00f4ng \u0111\u1ed5i WAN: ' + (r.error || 'l\u1ed7i')));
+      if (!r.ok) alert(r.error || 'L\u1ed7i');
+      setTimeout(tick, 1500);
+    } catch (e) {
+      setStatus('\u0110\u1ed5i WAN l\u1ed7i: ' + e.message);
+    } finally { wanBusy = false; }
+  }
+  if (pb) {
+    pb.addEventListener('click', function (e) { var t = e.target.closest('[data-port]'); if (t) pickWan(t.dataset.port); });
+    pb.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var t = e.target.closest('[data-port]'); if (t) { e.preventDefault(); pickWan(t.dataset.port); }
+    });
+  }
+  function paintWanSwitch(d) {
+    window.__wanPort = d.wan_port || '';
+    var s = d.wan_switch || {};
+    if (s.msg && s.state && s.state !== 'pending' && s.msg !== lastWanMsg && s.ts && (Date.now() / 1000 - s.ts) < 600) {
+      lastWanMsg = s.msg; setStatus(s.msg);
+    }
   }
   function trafficTitle(t) {
     if (!t || !t.items) return '';
@@ -2662,6 +2695,7 @@ body.dark .pt .pt-hole { fill:#111827; }
         + ' | Uptime: ' + fmtUp(d.uptime_s || 0) + trafficTitle(d.traffic);
       paintTraffic(d.traffic);
       paintPorts(d.ports);
+      paintWanSwitch(d);
     } catch (e) { bar.textContent = 'máy: ?'; }
   }
   tick();

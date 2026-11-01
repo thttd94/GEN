@@ -1,1 +1,1 @@
-Ver 2.114 (Giao dien NOC: giu thanh thong so router; 2 o cuoi = Luong Proxy (Chinh / Luong phu tach 2 dong) va Luong WAN kem nut Reset; may offline mau do; an o traffic + tom tat luong trung lap)
+Ver 2.115 (Chon cong WAN chinh tu GUI: bam cong Eth tren hang tieu de, khong co dinh eth0; chan mat truy cap, tu quay lai neu cong moi khong nhan IP)
