@@ -5495,35 +5495,78 @@ def _wan_switch_watch(old, new, bak):
     WAN_SWITCH.update({'state': 'rolled_back', 'msg': msg})
     _wd_log('[WAN] ' + msg)
 
-def _port_pppoe_busy(port):
-    """[Ver 2.115] Cong co PPPoE that khong. Doc danh sach server cu; loi (vd HTTP 400 tren router
-    khong dung PPPoE) => kiem truc tiep: uci proto=pppoe tren cong, hoac macvlan/vlan gan vao cong.
-    Khong doc duoc gi => coi la BAN (an toan)."""
+def _pppoe_busy_ports():
+    """[Ver 2.116] Tap cong dang co PPPoE. Doc danh sach server cu; loi (vd HTTP 400 tren router
+    khong dung PPPoE) => kiem truc tiep: uci proto=pppoe, hoac macvlan/vlan gan vao cong.
+    Khong doc duoc gi => None (noi goi coi la BAN cho an toan)."""
     try:
         old = call_old_gui('/api/router/pppoe'); raw = (old or {}).get('data')
         if isinstance(raw, dict): raw = raw.get('data', raw)
         if isinstance(raw, list):
-            return any(str(x.get('device') or '').split('.', 1)[0] == port for x in raw if isinstance(x, dict))
+            return {str(x.get('device') or '').split('.', 1)[0] for x in raw if isinstance(x, dict)} - {''}
     except Exception:
         pass
     try:
+        busy = set()
         txt = subprocess.run(['uci', '-q', 'show', 'network'], capture_output=True, text=True, timeout=5).stdout
         secs = {}
         for ln in txt.splitlines():
             m = re.match(r"^network\.([^.=]+)\.(proto|device|ifname)='?([^']*)'?$", ln.strip())
             if m:
                 secs.setdefault(m.group(1), {})[m.group(2)] = m.group(3)
-        for s in secs.values():
-            if s.get('proto') == 'pppoe' and (s.get('device') or s.get('ifname') or '').split('.', 1)[0] == port:
-                return True
-        for u in (Path('/sys/class/net') / port).glob('upper_*'):
-            if u.name[len('upper_'):] != 'br-lan':
-                return True  # macvlan dev_xxx / vlan ethX.N cua PPPoE
-        return False
+        for sc in secs.values():
+            if sc.get('proto') == 'pppoe':
+                busy.add((sc.get('device') or sc.get('ifname') or '').split('.', 1)[0])
+        for d in Path('/sys/class/net').iterdir():
+            if re.match(r'^eth[0-9]+$', d.name):
+                for u in d.glob('upper_*'):
+                    if u.name[len('upper_'):] != 'br-lan':
+                        busy.add(d.name)  # macvlan dev_xxx / vlan ethX.N cua PPPoE
+        return busy - {''}
     except Exception:
-        return True
+        return None
 
-def set_wan_port(port, client_ip=''):
+def _port_pppoe_busy(port):
+    b = _pppoe_busy_ports()
+    return True if b is None else port in b
+
+def bridge_port_clients(br='br-lan'):
+    """[Ver 2.116] So MAC may khach dang hoc tren tung cong cua br-lan (bo entry local)."""
+    try:
+        names = {}
+        for p in (Path('/sys/class/net') / br / 'brif').iterdir():
+            names[int((p / 'port_no').read_text().strip(), 16)] = p.name
+        raw = (Path('/sys/class/net') / br / 'brforward').read_bytes()
+    except Exception:
+        return {}
+    out = {}
+    for i in range(0, len(raw) - 15, 16):
+        e = raw[i:i + 16]
+        if e[7]:
+            continue
+        n = names.get(e[6] | (e[12] << 8))
+        if n:
+            out[n] = out.get(n, 0) + 1
+    return out
+
+class WanConfirmNeeded(ValueError):
+    def __init__(self, msg, clients=0):
+        ValueError.__init__(self, msg)
+        self.clients = clients
+
+def ports_public_state():
+    """[Ver 2.116] GET /api/pm/ports: cong vat ly + WAN chinh + so may LAN + PPPoE + trang thai doi WAN."""
+    ports = physical_ports()
+    busy = _pppoe_busy_ports()
+    cl = bridge_port_clients()
+    w = wan_port()
+    for p in ports:
+        p['clients'] = cl.get(p['name'], 0)
+        p['pppoe'] = None if busy is None else (p['name'] in busy)
+        p['is_wan'] = p['name'] == w
+    return {'ok': True, 'ports': ports, 'wan_port': w, 'wan_switch': dict(WAN_SWITCH), 'wait': WAN_SWITCH_WAIT}
+
+def set_wan_port(port, client_ip='', confirm=''):
     """Dat cong <port> lam WAN chinh. ValueError = bi chan (ly do hien len GUI)."""
     port = str(port or '').strip()
     if not re.match(r'^eth[0-9]+$', port) or not (Path('/sys/class/net') / port / 'device').exists():
@@ -5553,6 +5596,9 @@ def set_wan_port(port, client_ip=''):
                 raise ValueError('Anh đang vào router qua cổng WAN %s. Đổi WAN sẽ mất truy cập, hãy mở GUI từ máy trong LAN' % old)
             if dev == 'br-lan' and _bridge_port_of_ip(client_ip) == port:
                 raise ValueError('Máy anh đang cắm vào %s. Đặt cổng này làm WAN sẽ mất truy cập GUI' % port)
+        nc = bridge_port_clients().get(port, 0)
+        if nc and str(confirm or '').strip() != port:
+            raise WanConfirmNeeded('%s \u0111ang c\u00f3 %d m\u00e1y trong LAN. G\u00f5 t\u00ean c\u1ed5ng \u0111\u1ec3 x\u00e1c nh\u1eadn' % (port, nc), nc)
         lan = _lan_ports_get()
         old_pppoe = _port_pppoe_busy(old)
         new_lan = [x for x in lan if x != port] + ([] if (old_pppoe or old in lan) else [old])
@@ -8206,6 +8252,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
         if path == '/api/pm/sysinfo':
             return self._send_json(sysinfo_json())
+        if path == '/api/pm/ports':
+            return self._send_json(ports_public_state())
         if path == '/api/pm/traffic':
             cfg = _traffic_cfg()
             return self._send_json({'ok': True, 'mode': cfg[0], 'target': cfg[1], 'sample': traffic_sample(),
@@ -8309,7 +8357,9 @@ class Handler(BaseHTTPRequestHandler):
                 # [Ver 2.115] Chon cong WAN chinh. Bi chan => ok=false + ly do.
                 try:
                     pl = payload if isinstance(payload, dict) else {}
-                    return self._send_json(set_wan_port(pl.get('port'), self.client_address[0]))
+                    return self._send_json(set_wan_port(pl.get('port'), self.client_address[0], pl.get('confirm')))
+                except WanConfirmNeeded as we:
+                    return self._send_json({'ok': False, 'need_confirm': True, 'clients': we.clients, 'error': str(we)})
                 except ValueError as we:
                     return self._send_json({'ok': False, 'error': str(we)})
                 except Exception as we:

@@ -65,8 +65,7 @@
 .titlebar .conn-badge { min-width:0; padding:5px 10px; font-size:12px; border-radius:8px; }
 .titlebar-mid { flex:1 1 auto; min-width:0; display:flex; align-items:flex-end; justify-content:center; gap:4px; overflow-x:auto; scrollbar-width:none; }
 .titlebar-mid::-webkit-scrollbar { display:none; }
-.pt { display:flex; flex-direction:column; align-items:center; gap:1px; min-width:30px; padding:2px 3px; border-radius:6px; cursor:pointer; outline:none; }
-.pt:focus-visible { box-shadow:0 0 0 2px #2dd4bf; }
+.pt { display:flex; flex-direction:column; align-items:center; gap:1px; min-width:30px; padding:2px 3px; border-radius:6px; cursor:default; outline:none; }
 .pt:hover, .pt:focus-visible { background:rgba(127,127,127,.15); }
 .pt svg { width:22px; height:20px; }
 .pt .pt-body { fill:#9ca3af; } .pt .pt-hole { fill:#fff; } .pt .pt-led { fill:#6b7280; }
@@ -2631,36 +2630,14 @@ body.dark .pt .pt-hole { fill:#111827; }
       var st = p.up ? '\u0110\u00e3 c\u1eafm d\u00e2y' + (p.speed ? ' \u00b7 ' + fmtSpd(p.speed).replace('M', ' Mbps').replace('G', ' Gbps') : '') : 'Ch\u01b0a c\u1eafm d\u00e2y';
       var tip = p.name + ' \u00b7 ' + role + ' \u00b7 ' + st + (p.master ? ' \u00b7 ' + p.master : '') + (p.mac ? '\nMAC ' + p.mac : '');
       var cls = 'pt ' + (p.up ? 'up' : 'down') + (p.role === 'WAN' ? ' wan' : '');
-      tip += p.role === 'WAN' ? '\n(WAN ch\u00ednh)' : '\nB\u1ea5m \u0111\u1ec3 \u0111\u1eb7t l\u00e0m WAN ch\u00ednh';
+      tip += '\n(\u0110\u1ed5i WAN/LAN \u1edf C\u1ea5u h\u00ecnh k\u1ebft n\u1ed1i > C\u1ed5ng m\u1ea1ng)';
       return '<div class="' + cls + '" role="listitem" tabindex="0" data-port="' + escT(p.name) + '" title="' + escT(tip) + '" aria-label="' + escT(tip) + '">' + RJ45
         + '<span class="pt-n">' + escT(p.name.replace(/^eth/, 'Eth')) + '</span>'
         + '<span class="pt-s">' + escT((p.role ? p.role : '') + (p.up && p.speed ? ' ' + fmtSpd(p.speed) : '')) + '</span></div>';
     }).join('');
   }
-  // [Ver 2.115] Bam 1 cong => dat lam WAN chinh (xac nhan truoc). Server chan neu mat truy cap / chua cam day.
-  var wanBusy = false, lastWanMsg = '';
-  async function pickWan(port) {
-    if (wanBusy || !port) return;
-    var cur = (window.__wanPort || '');
-    if (port === cur) { setStatus(port + ' \u0111\u00e3 l\u00e0 WAN ch\u00ednh'); return; }
-    if (!confirm('\u0110\u1eb7t ' + port + ' l\u00e0m WAN ch\u00ednh?\n\n- ' + port + ' r\u1eddi kh\u1ecfi LAN, m\u00e1y \u0111ang c\u1eafm c\u1ed5ng n\u00e0y s\u1ebd m\u1ea5t m\u1ea1ng.\n- ' + (cur || 'WAN c\u0169') + ' tr\u1edf v\u1ec1 LAN (tr\u1eeb khi \u0111ang ch\u1ea1y PPPoE).\n- Internet ch\u1edbp v\u00e0i gi\u00e2y. Sau ' + 45 + ' gi\u00e2y ' + port + ' kh\u00f4ng nh\u1eadn IP th\u00ec router t\u1ef1 quay l\u1ea1i.')) return;
-    wanBusy = true;
-    try {
-      var r = await fetchJSON('/api/pm/wan-port', { method: 'POST', body: JSON.stringify({ port: port }) });
-      setStatus(r.ok ? (r.msg || 'OK') : ('Kh\u00f4ng \u0111\u1ed5i WAN: ' + (r.error || 'l\u1ed7i')));
-      if (!r.ok) alert(r.error || 'L\u1ed7i');
-      setTimeout(tick, 1500);
-    } catch (e) {
-      setStatus('\u0110\u1ed5i WAN l\u1ed7i: ' + e.message);
-    } finally { wanBusy = false; }
-  }
-  if (pb) {
-    pb.addEventListener('click', function (e) { var t = e.target.closest('[data-port]'); if (t) pickWan(t.dataset.port); });
-    pb.addEventListener('keydown', function (e) {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      var t = e.target.closest('[data-port]'); if (t) { e.preventDefault(); pickWan(t.dataset.port); }
-    });
-  }
+  // [Ver 2.116] Hang tieu de chi hien thi cong; doi WAN/LAN o Cau hinh ket noi > Cong mang.
+  var lastWanMsg = '';
   function paintWanSwitch(d) {
     window.__wanPort = d.wan_port || '';
     var s = d.wan_switch || {};
@@ -2755,6 +2732,11 @@ body.dark .pt .pt-hole { fill:#111827; }
 .cn-blk textarea::placeholder,.cn-fs textarea::placeholder{color:var(--text-dim);opacity:.85}
 .cn-blk textarea:focus,.cn-fs textarea:focus,.cn-fs select:focus,.cn-fs input:focus{outline:2px solid var(--accent);outline-offset:1px}
 .cn-blk .cn-sw{border:1px solid var(--line-2);border-radius:10px;padding:10px 12px;background:var(--surface-4)}
+.cn-ports-wrap{overflow-x:auto;max-width:100%}
+.cn-ports{width:100%;border-collapse:collapse;font-size:13px}
+.cn-ports th,.cn-ports td{padding:6px 8px;border-bottom:1px solid var(--line-2);text-align:left;white-space:nowrap}
+.cn-ports th{font-size:12px;color:var(--text-dim)}
+.cn-ports tr.is-wan td{color:#ea580c;font-weight:700}
 .cn-fs{border:1px solid var(--line-3);border-radius:10px;padding:6px 12px 10px;margin:0 0 12px;background:var(--surface-4)}
 .cn-fs legend{font-size:12.5px;color:var(--text-dim);padding:0 6px}
 .cn-fs select,.cn-fs input{box-sizing:border-box;border:1px solid var(--line-3);border-radius:8px;background:var(--surface);color:var(--text);padding:7px 9px;font-size:13px}
@@ -2781,6 +2763,7 @@ body.dark .pt .pt-hole { fill:#111827; }
     <button type="button" class="cn-tab" role="tab" data-t="route">Định tuyến cố định<span class="n" id="cnN-route">tắt</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="flow">Theo dõi luồng<span class="n" id="cnN-flow">-</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="traffic">Hiển thị traffic<span class="n" id="cnN-traffic">-</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="ports">Cổng mạng<span class="n" id="cnN-ports">-</span></button>
    </div>
    <div class="cn-pane">
     <section id="cnS-direct" role="tabpanel" aria-label="Internet trực tiếp">
@@ -2905,6 +2888,18 @@ body.dark .pt .pt-hole { fill:#111827; }
       <div id="connTrafficNow" class="sub" aria-live="polite" style="margin-top:8px;font-family:Consolas,monospace"></div>
      </div>
     </section>
+    <section id="cnS-ports" role="tabpanel" aria-label="Cổng mạng" hidden>
+     <h4>Cổng mạng WAN / LAN</h4>
+     <div class="cn-blk"><ul class="cn-notes">
+      <li>Chọn 1 cổng làm <b>WAN chính</b> (ra internet). Các cổng còn lại là <b>LAN</b>, trừ cổng đang chạy PPPoE.</li>
+      <li>WAN cũ tự về LAN. Áp dụng ngay khi bấm, không cần bấm Lưu.</li>
+      <li>Sau 45 giây cổng mới không nhận IP thì router tự quay lại WAN cũ.</li>
+      <li>Bị chặn: cổng chưa cắm dây, đang PPPoE, máy anh đang cắm, đang vào GUI qua WAN. Cổng có máy LAN phải gõ tên cổng để xác nhận.</li></ul>
+      <div class="cn-ports-wrap"><table class="cn-ports"><thead><tr><th scope="col">Cổng</th><th scope="col">Dây</th><th scope="col">Vai trò</th><th scope="col">Máy LAN</th><th scope="col">MAC</th><th scope="col">Thao tác</th></tr></thead>
+      <tbody id="connPortsRows"><tr><td colspan="6">Đang tải...</td></tr></tbody></table></div>
+      <div id="connPortsNow" class="sub" aria-live="polite" style="margin-top:8px"></div>
+     </div>
+    </section>
    </div>
   </div>
   <div class="cn-foot">
@@ -2929,6 +2924,8 @@ function connShowTab(t, focus) {
   if (typeof toggleFlowPanel === 'function') toggleFlowPanel(t === 'flow');
   clearInterval(trafficTimer); trafficTimer = null;
   if (t === 'traffic' && !$c('connPanel').hidden) { loadTraffic(); trafficTimer = setInterval(loadTraffic, 3000); }
+  clearInterval(portsTimer); portsTimer = null;
+  if (t === 'ports' && !$c('connPanel').hidden) { loadPorts(); portsTimer = setInterval(loadPorts, 4000); }
 }
 function connRefresh() {
   document.querySelectorAll('#connBox [data-cnt]').forEach(s => { s.textContent = connLines(s.dataset.cnt).length + ' mục'; });
@@ -2948,6 +2945,52 @@ function connRefresh() {
 // [Ver 2.112] Hien thi traffic: luu ngay khi doi, khong cho nut Luu & ap dung.
 const TRAFFIC_MODE_LABEL = { auto: 'tự động', wan: 'WAN', vpn: 'VPN', proxy: 'Proxy', off: 'tắt' };
 let trafficTimer = null;
+// [Ver 2.116] Tab Cong mang: doi WAN chinh / LAN. Hang tieu de chi hien thi.
+let portsTimer = null, portsBusy = false;
+function portsPaint(r) {
+  const tb = $c('connPortsRows'); if (!tb || !r) return;
+  const ps = r.ports || [], w = r.wan_port || '', sw = r.wan_switch || {};
+  $c('cnN-ports').textContent = w ? 'WAN ' + w : '-';
+  $c('connPortsNow').textContent = sw.state === 'pending' ? (sw.msg || '') : (sw.msg && sw.ts && Date.now() / 1000 - sw.ts < 600 ? sw.msg : '');
+  if (portsBusy) return;
+  tb.innerHTML = ps.map(p => {
+    const spd = p.up ? (p.speed ? (p.speed >= 1000 ? (p.speed / 1000) + ' Gbps' : p.speed + ' Mbps') : 'C\u00f3 d\u00e2y') : 'Ch\u01b0a c\u1eafm';
+    const role = p.is_wan ? 'WAN ch\u00ednh' : (p.pppoe ? 'WAN PPPoE' : (p.role === 'LAN' ? 'LAN' : (p.role || 'Kh\u00f4ng d\u00f9ng')));
+    let why = '';
+    if (p.is_wan) why = '\u0110ang l\u00e0 WAN ch\u00ednh';
+    else if (!p.up) why = 'Ch\u01b0a c\u1eafm d\u00e2y';
+    else if (p.pppoe) why = '\u0110ang ch\u1ea1y PPPoE';
+    const act = why ? '<span class="sub">' + esc(why) + '</span>'
+      : '<button type="button" class="btn small" data-wan="' + esc(p.name) + '" aria-label="\u0110\u1eb7t ' + esc(p.name) + ' l\u00e0m WAN ch\u00ednh">\u0110\u1eb7t l\u00e0m WAN ch\u00ednh</button>';
+    return '<tr class="' + (p.is_wan ? 'is-wan' : '') + '"><td><b>' + esc(p.name) + '</b></td><td>' + esc(spd) + '</td><td>' + esc(role)
+      + '</td><td>' + (p.is_wan ? '-' : String(p.clients || 0)) + '</td><td style="font-family:Consolas,monospace">' + esc(p.mac || '') + '</td><td>' + act + '</td></tr>';
+  }).join('') || '<tr><td colspan="6">Kh\u00f4ng \u0111\u1ecdc \u0111\u01b0\u1ee3c c\u1ed5ng</td></tr>';
+}
+async function loadPorts() {
+  try { portsPaint(await fetchJSON('/api/pm/ports')); }
+  catch (e) { $c('connPortsNow').textContent = 'Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c: ' + e.message; }
+}
+async function setWanPort(port) {
+  if (portsBusy || !port) return;
+  if (!confirm('\u0110\u1eb7t ' + port + ' l\u00e0m WAN ch\u00ednh?\n\n- ' + port + ' r\u1eddi kh\u1ecfi LAN, m\u00e1y \u0111ang c\u1eafm c\u1ed5ng n\u00e0y s\u1ebd m\u1ea5t m\u1ea1ng.\n- WAN c\u0169 tr\u1edf v\u1ec1 LAN (tr\u1eeb khi \u0111ang ch\u1ea1y PPPoE).\n- Internet ch\u1edbp v\u00e0i gi\u00e2y. Sau 45 gi\u00e2y ' + port + ' kh\u00f4ng nh\u1eadn IP th\u00ec router t\u1ef1 quay l\u1ea1i.')) return;
+  portsBusy = true; connMsg('\u0110ang \u0111\u1ed5i WAN ch\u00ednh sang ' + port + '...');
+  try {
+    let r = await fetchJSON('/api/pm/wan-port', { method: 'POST', body: JSON.stringify({ port }) });
+    if (r && r.need_confirm) {
+      const typed = (prompt((r.error || '') + '\nM\u00e1y c\u1eafm c\u1ed5ng n\u00e0y s\u1ebd m\u1ea5t m\u1ea1ng.\nG\u00f5 ' + port + ' \u0111\u1ec3 x\u00e1c nh\u1eadn:') || '').trim();
+      if (typed !== port) { connMsg('\u0110\u00e3 hu\u1ef7 \u0111\u1ed5i WAN'); return; }
+      r = await fetchJSON('/api/pm/wan-port', { method: 'POST', body: JSON.stringify({ port, confirm: typed }) });
+    }
+    connMsg(r && r.ok ? (r.msg || 'OK') : ('Kh\u00f4ng \u0111\u1ed5i WAN: ' + ((r && r.error) || 'l\u1ed7i')));
+  } catch (e) {
+    connMsg('\u0110\u1ed5i WAN l\u1ed7i: ' + e.message);
+  } finally { portsBusy = false; loadPorts(); }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('#connPortsRows [data-wan]');
+  if (b) setWanPort(b.dataset.wan);
+});
+
 let trafficTargets = { proxies: [], vpns: [] };
 function trafficTgFill(mode, target) {
   const row = $c('connTrafficTgRow'), sel = $c('connTrafficTarget');
@@ -3047,7 +3090,7 @@ async function openConnPanel() {
     connMsg((r.vpn_ips || []).length + ' máy đang gán VPN.');
   } catch (e) { connMsg('Không tải được: ' + e.message, 'err'); }
 }
-function closeConnPanel() { clearInterval(trafficTimer); trafficTimer = null; if (typeof toggleFlowPanel === 'function') toggleFlowPanel(false); $c('connPanel').hidden = true; if (connFocusBack && connFocusBack.focus) connFocusBack.focus(); }
+function closeConnPanel() { clearInterval(trafficTimer); trafficTimer = null; clearInterval(portsTimer); portsTimer = null; if (typeof toggleFlowPanel === 'function') toggleFlowPanel(false); $c('connPanel').hidden = true; if (connFocusBack && connFocusBack.focus) connFocusBack.focus(); }
 function connTarget() {
   const v = $c('connFixedTarget').value;
   if (v === 'pppoe') { const n = parseInt($c('connFixedPppoe').value, 10); return n >= 1 ? 'pppoe:' + n : ''; }

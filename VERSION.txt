@@ -1,1 +1,1 @@
-Ver 2.115 (Chon cong WAN chinh tu GUI: bam cong Eth tren hang tieu de, khong co dinh eth0; chan mat truy cap, tu quay lai neu cong moi khong nhan IP)
+Ver 2.116 (Doi WAN/LAN o Cau hinh ket noi > Cong mang; hang tieu de chi hien thi; cong co may LAN phai go ten cong de xac nhan)

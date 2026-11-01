@@ -1,3 +1,7 @@
+## Ver 2.116 - 2026-11-01
+- Doi WAN/LAN chuyen vao Cau hinh ket noi > tab Cong mang: bang cong (day, toc do, vai tro, so may LAN, MAC) + nut Dat lam WAN chinh. Hang tieu de chi hien thi, bam cong khong doi gi nua
+- Cong dang co may LAN: phai go dung ten cong (vd eth3) moi doi duoc. Kiem PPPoE khong con bao nham khi router khong dung PPPoE (doc uci + macvlan/vlan). API GET /api/pm/ports
+
 ## Ver 2.115 - 2026-11-01
 - Chon cong WAN chinh tu GUI: bam 1 cong Eth tren hang tieu de => dat lam WAN chinh (khong co dinh eth0, router hong eth0 van doi duoc). Sua uci network.wan/wan6.device, cong moi ra khoi br-lan, WAN cu ve LAN (tru khi con PPPoE), backup gen_backup/network_pre_wan_*
 - Chan: cong chua cam day, cong dang PPPoE, may admin dang cam vao cong do, dang vao GUI qua WAN cu, het cong LAN. 45s cong moi khong nhan IP => tu quay lai WAN cu
