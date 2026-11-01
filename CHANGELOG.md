@@ -1,3 +1,11 @@
+## Ver 2.123 - 2026-11-02
+- 2.123b: giam tai app 9001 khi nhieu may mo GUI: /api/pm/sysinfo cache 2s, /api/pppoe/list cache 4s (chi 1 request goi 9000), wan_port cache 10s, bo spawn grep dem CPU
+- Blacklist IP WAN (/pppoe): xoay ra IP trong danh sach thi tu xoay tiep, toi da 10 lan. Nut Block IP tren tung hang PPPoE (Xoay IP | Block IP | Gan): dua IP hien tai vao blacklist va xoay ngay. De xuat doi ten thanh Gan
+- PPPoE khong con hien trang/ve mac dinh khi server goc 9000 tra danh sach rong: app giu ban hop le gan nhat (khi uci van con phien) va ghi log PPPOE-LIST; GUI chinh giu danh sach cu va giu phien dang gan
+- /pppoe: Xuat toan bo proxy Socks5 / HTTPS (IP:port:user:pass), loc theo cong, copy + tai file .txt
+- Sua o chon PPPoE hien IP 2 mau (trang + cam chong nhau) o giao dien NOC
+- Dien thoai: o chon PPPoE rong het dong, cac nut xuong dong duoi
+
 ## Ver 2.122 - 2026-11-02
 - Gop VPN + PPPoE vao trang /net co 2 tab (nho tab vua mo, #vpn / #pppoe). GUI chinh con 1 nut VPN / PPPOE. /vpn va /pppoe van mo rieng duoc
 - Sua CHECK o tab CHUA CAU HINH: ket qua luon hien o hang 1 (moi hang tag rong, trung id). Nay moi hang co khoa rieng theo IP

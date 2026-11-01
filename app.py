@@ -94,6 +94,101 @@ _ROTATE_JOBS = {}
 _ROTATE_LOCK = threading.Lock()
 _IP_LOG_LOCK = threading.Lock()
 
+# [Ver 2.123] Blacklist IP WAN: xoay ra IP trong danh sach => tu xoay tiep (toi da ROTATE_BL_MAX lan).
+PPPOE_IP_BL = Path('/data/pppoe/ip_blacklist.json')
+ROTATE_BL_MAX = 10
+_BL_LOCK = threading.Lock()
+_IPV4_RE = re.compile(r'^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$')
+
+def pppoe_bl_list():
+    try:
+        d = json.loads(PPPOE_IP_BL.read_text(encoding='utf-8'))
+        return [str(x).strip() for x in (d if isinstance(d, list) else []) if _IPV4_RE.match(str(x).strip())]
+    except Exception:
+        return []
+
+def pppoe_bl_set():
+    return set(pppoe_bl_list())
+
+def pppoe_bl_write(ips):
+    clean = sorted({str(x).strip() for x in (ips or []) if _IPV4_RE.match(str(x).strip())},
+                   key=lambda s: tuple(int(p) for p in s.split('.')))
+    with _BL_LOCK:
+        PPPOE_IP_BL.parent.mkdir(parents=True, exist_ok=True)
+        tmp = PPPOE_IP_BL.with_suffix('.tmp')
+        tmp.write_text(json.dumps(clean, ensure_ascii=False, indent=1), encoding='utf-8')
+        os.replace(str(tmp), str(PPPOE_IP_BL))
+    return clean
+
+def pppoe_bl_add(ips):
+    return pppoe_bl_write(pppoe_bl_list() + list(ips or []))
+
+# [Ver 2.123] 9000 thinh thoang tra danh sach rong => GUI hien "Chua co phien" nhu bi reset.
+# Giu ban hop le gan nhat; chi tra ban luu khi uci van con phien PPPoE.
+_PPPOE_LIST_CACHE = {'ts': 0.0, 'res': None, 'log_ts': 0.0}
+
+def _pppoe_list_count(res):
+    try:
+        d = res.get('data') if isinstance(res, dict) else res
+        d = d.get('data') if isinstance(d, dict) else d
+        return len(d) if isinstance(d, list) else 0
+    except Exception:
+        return 0
+
+def _pppoe_uci_count():
+    try:
+        out = subprocess.run(['uci', '-q', 'show', 'network'], capture_output=True, text=True, timeout=5).stdout
+        return len(re.findall(r"^network\.if_\d+\.proto='pppoe'$", out, re.M))
+    except Exception:
+        return 0
+
+_PPPOE_LIST_TTL = {'ts': 0.0, 'val': None}
+_PPPOE_LIST_LOCK = threading.Lock()
+
+def pppoe_list_cached(ttl=4.0, force=False):
+    # [Ver 2.123b] /api/pppoe/list goi 9000 + enrich (nang); 27 GUI x 30s + trang /pppoe.
+    # Dung chung ket qua trong ttl giay; chi 1 request goi 9000 tai mot thoi diem.
+    now = time.time()
+    v = _PPPOE_LIST_TTL['val']
+    if not force and v is not None and now - _PPPOE_LIST_TTL['ts'] < ttl:
+        return v
+    with _PPPOE_LIST_LOCK:
+        if not force and _PPPOE_LIST_TTL['val'] is not None and time.time() - _PPPOE_LIST_TTL['ts'] < ttl:
+            return _PPPOE_LIST_TTL['val']
+        try:
+            pl = pppoe_runtime_enrich(call_old_gui('/api/router/pppoe'))
+        except Exception as ex:
+            pl = {'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []}
+        v = pppoe_list_guard(pl)
+        _PPPOE_LIST_TTL.update(ts=time.time(), val=v)
+        return v
+
+def pppoe_list_invalidate():
+    _PPPOE_LIST_TTL.update(ts=0.0, val=None)
+
+def pppoe_list_guard(res):
+    n = _pppoe_list_count(res)
+    if n > 0:
+        _PPPOE_LIST_CACHE.update(ts=time.time(), res=res)
+        return res
+    cached = _PPPOE_LIST_CACHE.get('res')
+    if not cached:
+        return res
+    uc = _pppoe_uci_count()
+    if uc <= 0:
+        return res
+    if time.time() - _PPPOE_LIST_CACHE.get('log_ts', 0) > 60:
+        _PPPOE_LIST_CACHE['log_ts'] = time.time()
+        try:
+            _pppoe_wd_log('PPPOE-LIST: 9000 tra %d phien (uci con %d) => tra ban luu %ds truoc. raw=%s'
+                          % (n, uc, int(time.time() - _PPPOE_LIST_CACHE['ts']), str(res)[:160]))
+        except Exception:
+            pass
+    out = dict(cached)
+    out['stale'] = True
+    out['stale_age'] = int(time.time() - _PPPOE_LIST_CACHE['ts'])
+    return out
+
 def _iface_ip(iface):
     try:
         st = json.loads(subprocess.check_output(['ifstatus', iface], text=True, timeout=5))
@@ -112,28 +207,45 @@ def _rotate_worker(sid, rd, call_rotate):
     iface = 'if_%03d' % sid
     t0 = time.time()
     try:
-        # 1) doi MAC macvlan qua server goc (giu nhu cu)
-        try:
-            res = call_rotate(rd)
-            _rotate_job_set(sid, rotate=dict(res or {}) if isinstance(res, dict) else {'raw': str(res)[:160]})
-        except Exception as e:
-            _rotate_job_set(sid, rotate_err=str(e)[:160])
-        # 2) quay lai dung phien nay (khong dung session khac)
-        subprocess.run(['ifdown', iface], timeout=20, capture_output=True)
-        time.sleep(1)
-        subprocess.run(['ifup', iface], timeout=20, capture_output=True)
-        _rotate_job_set(sid, state='waiting')
-        ip = ''
-        while time.time() - t0 < ROTATE_WAIT_MAX_S:
-            time.sleep(5)
-            ip = _iface_ip(iface)
-            if ip:
+        bl_hits = []
+        for attempt in range(1, ROTATE_BL_MAX + 2):
+            t1 = time.time()
+            # 1) doi MAC macvlan qua server goc (giu nhu cu)
+            try:
+                res = call_rotate(rd)
+                _rotate_job_set(sid, rotate=dict(res or {}) if isinstance(res, dict) else {'raw': str(res)[:160]})
+            except Exception as e:
+                _rotate_job_set(sid, rotate_err=str(e)[:160])
+            # 2) quay lai dung phien nay (khong dung session khac)
+            subprocess.run(['ifdown', iface], timeout=20, capture_output=True)
+            time.sleep(1)
+            subprocess.run(['ifup', iface], timeout=20, capture_output=True)
+            _rotate_job_set(sid, state='waiting')
+            ip = ''
+            while time.time() - t1 < ROTATE_WAIT_MAX_S:
+                time.sleep(5)
+                ip = _iface_ip(iface)
+                if ip:
+                    break
+                _rotate_job_set(sid, elapsed=int(time.time() - t0))
+            if not ip:
+                _rotate_job_set(sid, state='failed', elapsed=int(time.time() - t0),
+                                error='qua %ds chua co IP (BRAS chua tra PADO)' % ROTATE_WAIT_MAX_S)
+                return
+            # [Ver 2.123] IP moi nam trong blacklist => xoay tiep
+            if ip not in pppoe_bl_set():
                 break
-            _rotate_job_set(sid, elapsed=int(time.time() - t0))
-        if not ip:
-            _rotate_job_set(sid, state='failed', elapsed=int(time.time() - t0),
-                            error='qua %ds chua co IP (BRAS chua tra PADO)' % ROTATE_WAIT_MAX_S)
-            return
+            bl_hits.append(ip)
+            _rotate_job_set(sid, bl_hits=list(bl_hits), attempt=attempt, state='waiting')
+            try:
+                _pppoe_wd_log('ROTATE-BL phien %d: ra %s (blacklist), lan %d' % (sid, ip, attempt))
+            except Exception:
+                pass
+            if attempt > ROTATE_BL_MAX:
+                _rotate_job_set(sid, state='failed', wan_ip=ip, elapsed=int(time.time() - t0),
+                                error='xoay %d lan van trung blacklist (%s)' % (ROTATE_BL_MAX, ip))
+                return
+            time.sleep(3)
         # 3) ghi moc thoi gian doi IP
         try:
             with _IP_LOG_LOCK:
@@ -186,6 +298,22 @@ def rotate_status(ids=None):
 
 _SYSINFO_PREV = {'total': 0, 'idle': 0, 'ts': 0.0}
 
+_SYSINFO_CACHE = {'ts': 0.0, 'val': None}
+_SYSINFO_CLOCK = threading.Lock()
+
+def sysinfo_cached(ttl=2.0):
+    # [Ver 2.123b] Nhieu GUI cung poll => tinh 1 lan / ttl, request khac dung lai ket qua.
+    now = time.time()
+    v = _SYSINFO_CACHE['val']
+    if v is not None and now - _SYSINFO_CACHE['ts'] < ttl:
+        return v
+    with _SYSINFO_CLOCK:
+        if _SYSINFO_CACHE['val'] is not None and time.time() - _SYSINFO_CACHE['ts'] < ttl:
+            return _SYSINFO_CACHE['val']
+        v = sysinfo_json()
+        _SYSINFO_CACHE.update(ts=time.time(), val=v)
+        return v
+
 def sysinfo_json():
     # Thong so may thoi gian thuc: nhiet do CPU, %CPU, RAM, disk, uptime, load.
     # Doc truc tiep /proc + /sys (khong phu thuoc lenh ngoai, chay duoc BusyBox).
@@ -218,8 +346,7 @@ def sysinfo_json():
             out['cpu_pct'] = None
         _SYSINFO_PREV.update({'total': total, 'idle': idle, 'ts': time.time()})
         try:
-            out['cpu_count'] = int(subprocess.check_output(
-                "grep -c '^processor' /proc/cpuinfo", shell=True, text=True, timeout=3).strip() or 1)
+            out['cpu_count'] = os.cpu_count() or 1  # [Ver 2.123b] khong spawn grep
         except Exception:
             out['cpu_count'] = 1
     except Exception:
@@ -5467,7 +5594,7 @@ WAN_SWITCH = {'state': '', 'old': '', 'new': '', 'ts': 0, 'msg': ''}
 WAN_SWITCH_LOCK = threading.Lock()
 WAN_SWITCH_WAIT = 45
 
-def wan_port():
+def _wan_port_raw():
     """Cong WAN chinh = network.wan.device (uci). Loi doc => eth0."""
     for key in ('network.wan.device', 'network.wan.ifname'):
         try:
@@ -5478,6 +5605,20 @@ def wan_port():
         if re.match(r'^eth[0-9]+$', b):
             return b
     return PPPOE_WAN_FIXED
+
+_WAN_PORT_CACHE = {'ts': 0.0, 'val': None}
+
+def wan_port():
+    # [Ver 2.123b] cache 10s; doi WAN chinh goi wan_port_invalidate()
+    now = time.time()
+    if _WAN_PORT_CACHE['val'] and now - _WAN_PORT_CACHE['ts'] < 10:
+        return _WAN_PORT_CACHE['val']
+    v = _wan_port_raw()
+    _WAN_PORT_CACHE.update(ts=now, val=v)
+    return v
+
+def wan_port_invalidate():
+    _WAN_PORT_CACHE.update(ts=0.0, val=None)
 
 def _brforward_port(raw, mac, port_names):
     """Tim cong bridge cua 1 MAC trong /sys/class/net/<br>/brforward (struct __fdb_entry 16 byte:
@@ -5523,7 +5664,7 @@ def _wan_switch_watch(old, new, bak):
     while time.time() < dl:
         time.sleep(3)
         if _wan_iface_up(new):
-            WAN_SWITCH.update({'state': 'ok', 'msg': 'WAN chính đã chuyển sang %s' % new})
+            wan_port_invalidate(); WAN_SWITCH.update({'state': 'ok', 'msg': 'WAN chính đã chuyển sang %s' % new})
             _wd_log('[WAN] doi WAN chinh %s -> %s OK' % (old, new))
             try:
                 _TRAFFIC['wan_ts'] = 0
@@ -5539,7 +5680,7 @@ def _wan_switch_watch(old, new, bak):
         msg = '%s không nhận được IP sau %ss, đã tự quay lại WAN %s' % (new, WAN_SWITCH_WAIT, old)
     except Exception as e:
         msg = 'Quay lại WAN %s lỗi: %s (backup %s)' % (old, str(e)[:120], bak)
-    WAN_SWITCH.update({'state': 'rolled_back', 'msg': msg})
+    wan_port_invalidate(); WAN_SWITCH.update({'state': 'rolled_back', 'msg': msg})
     _wd_log('[WAN] ' + msg)
 
 def _pppoe_busy_ports():
@@ -5755,7 +5896,7 @@ def set_wan_port(port, client_ip='', confirm=''):
             subprocess.run(['ip', 'link', 'set', old, 'master', 'br-lan'], timeout=5, capture_output=True)
         subprocess.run(['ubus', 'call', 'network', 'reload'], timeout=20, capture_output=True)
         _manual_wan_discard(port)
-        WAN_SWITCH.update({'state': 'pending', 'old': old, 'new': port, 'ts': int(time.time()),
+        wan_port_invalidate(); WAN_SWITCH.update({'state': 'pending', 'old': old, 'new': port, 'ts': int(time.time()),
                            'msg': 'Đang chờ %s nhận IP (tối đa %ss)' % (port, WAN_SWITCH_WAIT)})
         _wd_log('[WAN] doi WAN chinh %s -> %s, LAN=%s, backup %s' % (old, port, ' '.join(new_lan), bak))
         threading.Thread(target=_wan_switch_watch, args=(old, port, bak), daemon=True).start()
@@ -8392,7 +8533,7 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
         if path == '/api/pm/sysinfo':
-            return self._send_json(sysinfo_json())
+            return self._send_json(sysinfo_cached())  # [Ver 2.123b]
         if path == '/api/pm/ports':
             return self._send_json(ports_public_state())
         if path == '/api/pm/whoami':
@@ -8413,10 +8554,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/pppoe':
             return self._send_file(STATIC_DIR / 'pppoe.html')
         if path == '/api/pppoe/list':
-            try:
-                return self._send_json(pppoe_runtime_enrich(call_old_gui('/api/router/pppoe')))
-            except Exception as ex:
-                return self._send_json({'ok': False, 'error': 'server goc 9000: ' + str(ex)[:200], 'data': []})
+            return self._send_json(pppoe_list_cached())  # [Ver 2.123b]
         if path == '/api/pppoe/ports':
             return self._send_json({'ok': True, 'ports': router_physical_ports()})
         if path == '/api/pppoe/status':
@@ -8666,6 +8804,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send_json(call_old_gui('/api/router/change_lan', method='POST', data={'ip_lan': ip_lan}))
             if path == '/api/pppoe/action':
                 action = str(payload.get('action', '')).strip()
+                if action not in ('rotate_status', 'bl_list', 'acc-list'):
+                    pppoe_list_invalidate()  # [Ver 2.123b]
                 if action == 'create':
                     data={k:payload.get(k,'') for k in ('device','number','username','password','proxy_username','proxy_password','duration')}
                     try:data['number']=max(1,min(64,int(data.get('number') or 1)))
@@ -8736,6 +8876,25 @@ class Handler(BaseHTTPRequestHandler):
                     if sid < 1 or sid > 999: return self._send_json({'ok':False,'error':'id khong hop le'})
                     # [Ver 2.69] tra ngay, chay nen; GUI poll action=rotate_status
                     return self._send_json(rotate_start(sid, rd, lambda d: call_old_gui('/api/router/pppoe/rotate',method='PUT',data=d)))
+                if action == 'bl_list':  # [Ver 2.123]
+                    return self._send_json({'ok': True, 'ips': pppoe_bl_list(), 'max_retry': ROTATE_BL_MAX})
+                if action == 'bl_set':
+                    raw_ips = payload.get('ips') or []
+                    if isinstance(raw_ips, str):
+                        raw_ips = re.split(r'[\s,;]+', raw_ips)
+                    return self._send_json({'ok': True, 'ips': pppoe_bl_write(raw_ips)})
+                if action == 'block_rotate':
+                    try: sid=int(str(payload.get('id')).strip())
+                    except Exception: return self._send_json({'ok':False,'error':'id khong hop le'})
+                    if sid < 1 or sid > 999: return self._send_json({'ok':False,'error':'id khong hop le'})
+                    bip = _iface_ip('if_%03d' % sid) or str(payload.get('ip') or '').strip()
+                    if not _IPV4_RE.match(bip):
+                        return self._send_json({'ok':False,'error':'phien #%d chua co IP WAN de block' % sid})
+                    pppoe_bl_add([bip])
+                    _pppoe_wd_log('BLOCK-IP phien %d: %s vao blacklist, xoay ngay' % (sid, bip))
+                    r = rotate_start(sid, {'id': sid}, lambda d: call_old_gui('/api/router/pppoe/rotate',method='PUT',data=d))
+                    r = dict(r); r['blocked'] = bip
+                    return self._send_json(r)
                 if action == 'rotate_status':
                     ids=[]
                     for x in (payload.get('ids') or []):
@@ -8761,7 +8920,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json(res)
                 if action == 'enable':
                     return self._send_json(call_old_gui('/api/router/enable_pppoe', method='POST', data=payload.get('data') or {}))
-                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|rotate_status|proxy|enable)'})
+                return self._send_json({'ok': False, 'error': 'action khong hop le (create|delete|reset|rotate|rotate_status|block_rotate|bl_list|bl_set|proxy|enable)'})
             if path == '/api/vpn/action':
                 action = str(payload.get('action', '')).strip()
                 name = str(payload.get('name', '')).strip()

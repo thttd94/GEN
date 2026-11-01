@@ -250,6 +250,18 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
 .view-tab.has-me{position:relative}
 .view-tab.has-me::after{content:'';position:absolute;top:3px;right:4px;width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 2px #0b1220}
 </style>
+<style>/* [Ver 2.123] o chon PPPoE: chi hien 1 lop chu (NOC tung to lai mau select => 2 mau chong nhau) */
+.pp-wrap select, body.noc .pp-wrap select{color:transparent !important}
+.pp-wrap select option, body.noc .pp-wrap select option{color:var(--text)}
+.pp-btns{display:inline-flex;align-items:center;gap:4px;vertical-align:middle;margin-left:4px}
+.pp-btns .pppoe-rot:empty{display:none}
+@media (max-width:760px){
+ .grid tbody td:nth-child(7) .pp-btns{flex:1 1 100%;margin-left:58px;flex-wrap:wrap;gap:6px;min-width:0}
+ .grid tbody td:nth-child(7) .pp-btns .btn{flex:1 1 0;min-width:0;padding:7px 4px;white-space:nowrap}
+ .grid tbody td:nth-child(7) .pp-btns .btn[onclick^="unassignRow"]{flex:0 0 auto;padding:7px 10px}
+ .grid tbody td:nth-child(7) .pp-btns .pppoe-rot{flex:1 1 100%}
+}
+</style>
 </head>
 <body>
   <script>
@@ -989,7 +1001,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
             ? `<td style="white-space:nowrap;"><span class="pp-wrap"><select data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" onchange="updateField(this)" style="width:270px;max-width:none;">
                  <option value="" ${(!String(row.proxy || '').startsWith('pppoe:')) ? 'selected' : ''}>— chọn PPPoE —</option>
                  ${pppoeOptionsHtml(row.proxy)}
-               </select><span class="pp-face">${pppoeFaceHtml(row.proxy)}</span></span> <button class="btn small" onclick="rotatePPPoE(this)" title="Xoay IP phien PPPoE may nay dang chon (mat mang ~5 phut)">🔄 Xoay IP</button><span class="pppoe-rot sub"></span> <button class="btn small" onclick="suggestPPPoE(this)" title="Tự động chọn phiên PPPoE chưa được gán">💡 Đề xuất</button>${unassignBtnHtml(row)}</td>`
+               </select><span class="pp-face">${pppoeFaceHtml(row.proxy)}</span></span><span class="pp-btns"><button class="btn small" onclick="rotatePPPoE(this)" title="Xoay IP phien PPPoE may nay dang chon (mat mang ~5 phut)">🔄 Xoay IP</button><button class="btn small" onclick="blockPPPoE(this)" title="Đưa IP hiện tại vào blacklist và xoay IP mới ngay">⛔ Block IP</button><button class="btn small" onclick="suggestPPPoE(this)" title="Tự động chọn phiên PPPoE chưa được gán">💡 Gán</button>${unassignBtnHtml(row)}<span class="pppoe-rot sub"></span></span></td>`
             : `<td style="white-space:nowrap;"><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass" style="width:calc(100% - 34px);">${unassignBtnHtml(row)}</td>`}
           <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(checkKey(row))}')">CHECK</button><div id="check-${esc(checkKey(row))}" class="sub"></div></td>
@@ -1035,7 +1047,9 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       try {
         const d = await (await fetch('/api/pppoe/list')).json();
         const raw = (d && d.data && (d.data.data || d.data));
-        PPPOE_SESSIONS = Array.isArray(raw) ? raw : (raw ? (raw.sessions || raw.list || []) : []);
+        const nl = Array.isArray(raw) ? raw : (raw ? (raw.sessions || raw.list || []) : []);
+        if (!nl.length && PPPOE_SESSIONS.length) return;  // [Ver 2.123] 9000 tra rong: giu danh sach cu
+        PPPOE_SESSIONS = nl;
         if (typeof currentRows !== 'undefined' && typeof render === 'function') render();
       } catch(e){}
     }
@@ -1114,6 +1128,9 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     const PPPOE_ROT = {};
     function pppoeRotText(sid) {
       const j = PPPOE_ROT[sid]; if (!j) return '';
+      const blN = (j.bl_hits || []).length;  // [Ver 2.123]
+      if (blN && (j.state === 'starting' || j.state === 'waiting')) return 'dang xoay lai (trung blacklist ' + blN + ')';
+      if (blN && j.state === 'failed') return 'xoay ' + blN + ' lan van trung blacklist';
       if (j.state === 'starting' || j.state === 'waiting') return '⏳ dang xoay ' + (j.elapsed || 0) + 's';
       if (j.state === 'done') return j.changed ? '✅ ' + (j.old_ip || '?') + ' → ' + (j.wan_ip || '') : '✅ ' + (j.wan_ip || 'co IP');
       if (j.state === 'failed') return '❌ xoay loi';
@@ -1145,6 +1162,30 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         PPPOE_ROT_TIMER = setTimeout(step, 5000);
       };
       PPPOE_ROT_TIMER = setTimeout(step, 3000);
+    }
+    // [Ver 2.123] Block IP: dua IP WAN hien tai cua phien vao blacklist + xoay ngay.
+    async function blockPPPoE(btn) {
+      const td0 = btn.closest('td');
+      const sel = td0 && td0.querySelector('select[data-field="proxy"]');
+      const v = String((sel && sel.value) || '');
+      if (!v.startsWith('pppoe:')) { setStatus('May nay chua chon phien PPPoE'); return; }
+      const sid = parseInt(v.slice(6), 10);
+      if (!Number.isInteger(sid) || sid < 1) { setStatus('ID phien PPPoE khong hop le'); return; }
+      const ip = pppoeIpOf(v);
+      if (!confirm('Block IP ' + (ip || '(hien tai)') + ' cua phien PPPoE #' + sid + ' va xoay IP moi ngay?\nMoi may dang dung phien nay se mat mang ~5 phut.')) return;
+      btn.disabled = true;
+      try {
+        const r = await pppoeAction('block_rotate', {id: sid, ip});
+        if (!r || !r.ok) { setStatus('Block IP PPPoE #' + sid + ' loi: ' + ((r && r.error) || JSON.stringify(r).slice(0, 200))); return; }
+        PPPOE_ROT[sid] = r;
+        setStatus('Da block ' + (r.blocked || ip) + ', dang xoay PPPoE #' + sid);
+        paintPppoeRot();
+        pppoeRotPoll();
+      } catch (e) {
+        setStatus('Loi block IP: ' + e.message);
+      } finally {
+        btn.disabled = false;
+      }
     }
     async function rotatePPPoE(btn) {
       const td0 = btn.closest('td');
@@ -1207,7 +1248,10 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     }
 
     function pppoeOptionsHtml(cur) {
-      return PPPOE_SESSIONS.map(s => {
+      // [Ver 2.123] phien dang gan ma danh sach chua co => van giu lua chon, khong ve mac dinh
+      const c = String(cur || '');
+      const miss = c.startsWith('pppoe:') && !PPPOE_SESSIONS.some(s => 'pppoe:' + (s.id ?? s.wan_id ?? '') === c);
+      return (miss ? `<option value="${esc(c)}" selected>PPPoE #${esc(c.slice(6))}</option>` : '') + PPPOE_SESSIONS.map(s => {
         const id = s.id ?? s.wan_id ?? '';
         const ip = s.ip || s.wan_ip || s.public_ip || '';
         const label = `PPPoE #${id}${ip ? ' (' + ip + ')' : ''}`;

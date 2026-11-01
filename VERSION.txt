@@ -1,1 +1,1 @@
-Ver 2.122 (gop VPN + PPPoE vao 1 trang 2 tab; may dang mo GUI dung dau danh sach)
+Ver 2.123b (giam tai 9001: cache sysinfo/pppoe list; blacklist IP WAN + Block IP; xuat toan bo proxy)

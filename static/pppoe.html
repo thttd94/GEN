@@ -163,6 +163,7 @@
   <div class="list-head">
     <button class="ok" id="reloadBtn" onclick="refresh(true)">🔄 Tải lại</button>
     <button onclick="rotateAll()">🔀 Xoay IP tất cả</button>
+    <span class="exp-box" style="display:inline-flex;gap:4px;align-items:center"><select id="exp-port" aria-label="Cổng xuất proxy" onfocus="fillExpPorts()" onmousedown="fillExpPorts()"><option value="">Tất cả cổng</option></select><button onclick="exportPx('socks')">⬇ Xuất Socks5</button><button onclick="exportPx('http')">⬇ Xuất HTTPS</button></span>
     <span id="enable-row"></span>
     <button class="bad" onclick="delAll()">🗑 Xóa tất cả phiên</button>
     <div class="eth-sum" id="eth-sum"></div>
@@ -213,6 +214,12 @@
   </div>
 </div>
 
+<div class="card" id="bl-card">
+  <h2><span class="h-ico h-ico-amber">⛔</span>Blacklist IP WAN</h2>
+  <textarea id="bl-ips" rows="5" style="width:100%;font-family:monospace" placeholder="Mỗi dòng 1 IP" aria-label="Danh sách IP WAN bị chặn"></textarea>
+  <div style="margin-top:6px;display:flex;gap:8px;align-items:center"><button class="ok" onclick="blSave()">Lưu blacklist</button><span class="muted" id="bl-count"></span></div>
+</div>
+
 <div class="card">
   <h2><span class="h-ico h-ico-amber">📜</span>Kết quả lệnh</h2>
   <div id="log">sẵn sàng.</div>
@@ -252,6 +259,52 @@ function fallbackCopy(t){
   let ok = false; try { ok = document.execCommand('copy'); } catch(_e) {}
   document.body.removeChild(ta); return ok;
 }
+// [Ver 2.123] Xuat toan bo proxy WAN (IP:port:user:pass) theo Socks5 / HTTPS: copy + tai file .txt.
+function fillExpPorts(){
+  const sel = document.getElementById('exp-port'); if (!sel) return;
+  const cur = sel.value;
+  const ports = [...new Set((SESSIONS || []).map(s => String(s.device || '').split('.')[0]).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+  sel.innerHTML = '<option value="">T\u1ea5t c\u1ea3 c\u1ed5ng</option>' + ports.map(x => `<option value="${esc(x)}"${x === cur ? ' selected' : ''}>${esc(x)}</option>`).join('');
+}
+function exportPx(kind){
+  const port = (document.getElementById('exp-port') || {}).value || '';
+  const rows = (SESSIONS || []).filter(s => !port || String(s.device || '').split('.')[0] === port)
+    .slice().sort((a, b) => (parseInt(a.id, 10) || 0) - (parseInt(b.id, 10) || 0));
+  const lines = rows.map(s => wanProxy(s, s.ip || s.wan_ip || s.public_ip || '', kind === 'http' ? 'http' : '')).filter(Boolean);
+  const name = kind === 'http' ? 'HTTPS' : 'Socks5';
+  if (!lines.length) { log('Kh\u00f4ng c\u00f3 proxy ' + name + ' n\u00e0o \u0111\u1ec3 xu\u1ea5t'); return; }
+  const text = lines.join('\n');
+  const copied = fallbackCopy(text);
+  try {
+    const blob = new Blob([text + '\n'], {type: 'text/plain'});
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+    a.href = URL.createObjectURL(blob); a.download = `proxy_${name.toLowerCase()}_${port || 'all'}_${ts}.txt`;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  } catch(_e) {}
+  log(`\u0110\u00e3 xu\u1ea5t ${lines.length} proxy ${name}${port ? ' (' + port + ')' : ''}` + (copied ? ' \u2013 \u0111\u00e3 copy' : ''));
+}
+// [Ver 2.123] Blacklist IP WAN
+async function blLoad(){
+  try {
+    const r = await api('bl_list');
+    const ips = (r && r.ips) || [];
+    document.getElementById('bl-ips').value = ips.join('\n');
+    document.getElementById('bl-count').textContent = ips.length + ' IP';
+  } catch(_e) {}
+}
+async function blSave(){
+  const ips = document.getElementById('bl-ips').value.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
+  try {
+    const r = await api('bl_set', {ips});
+    const ok = (r && r.ips) || [];
+    document.getElementById('bl-ips').value = ok.join('\n');
+    document.getElementById('bl-count').textContent = ok.length + ' IP';
+    log('\u0110\u00e3 l\u01b0u blacklist: ' + ok.length + ' IP' + (ok.length < ips.length ? ' (b\u1ecf ' + (ips.length - ok.length) + ' d\u00f2ng kh\u00f4ng h\u1ee3p l\u1ec7)' : ''));
+  } catch(e) { log('l\u1ed7i l\u01b0u blacklist: ' + e.message); }
+}
+setTimeout(blLoad, 300);
 async function api(action, extra={}) {
   const r = await fetch('/api/pppoe/action', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(Object.assign({action}, extra))});
   return r.json();
@@ -320,11 +373,13 @@ async function refreshInner() {
   let list = [];
   try {
     const r = await (await fetch('/api/pppoe/list', {cache:'no-store'})).json();
+    window.__ppStale = !!(r && r.stale);  // [Ver 2.123]
     const d = (r && r.data && (r.data.data || r.data));
     list = Array.isArray(d) ? d : (d ? (d.sessions || d.list || []) : []);
   } catch(e){ document.getElementById('upd').textContent = 'mất kết nối'; return; }
   SESSIONS = list;
   document.getElementById('upd').textContent = `cập nhật ${new Date().toLocaleTimeString()}`;
+  if (window.__ppStale) document.getElementById('upd').textContent = '9000 không trả danh sách – đang hiện bản lưu';
   const tb = document.getElementById('tb');
   if (!list.length) {
     tb.innerHTML = '<tr><td colspan="9" class="muted">Chưa có phiên nào — tạo bằng form bên dưới.</td></tr>';
