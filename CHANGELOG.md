@@ -1,3 +1,6 @@
+## Ver 2.113 - 2026-11-01
+- Giao dien NOC thanh MAC DINH cho moi router (truoc phai bam nut). Nut "Giao dien cu" canh nut Sang/Toi de quay lai, luu theo trinh duyet
+
 ## Ver 2.112 - 2026-11-01
 - Theo doi luong chuyen sang NHAT KY thoi gian thuc: moi dong = ket noi (may, ten mien, duong) mo cung 1 giay, co cot Thoi gian HH:MM:SS, moi nhat o tren, dong dang mo (dau cham xanh) tiep tuc cong byte. Giu 3000 dong moi nhat, hien 500
 - O Tim theo ky tu (ten mien / IP / proxy_N / gio), khong phan biet hoa thuong; nut Dung cuon; chon 1 may thi an cot May; bo khoi ghi chu dau tab

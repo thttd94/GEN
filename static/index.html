@@ -3334,9 +3334,9 @@ body.noc .cfg-menu-pop{background:#0c1622;border-color:var(--line)}
 // Ban thu "NOC": hang o so lieu (may online, traffic Proxy/VPN/WAN co bieu do nho, CPU/nhiet do).
 // Chi doc du lieu (GET /api/pm/sysinfo + danh sach may tren trang), khong ghi gi.
 (function () {
-  // Nut bat/tat giao dien NOC (luu localStorage pm_ui). Mac dinh = giao dien cu.
-  var on = false;
-  try { on = localStorage.getItem('pm_ui') === 'noc'; } catch (e) {}
+  // [Ver 2.113] Mac dinh = giao dien NOC; bam "Giao dien cu" => luu pm_ui=classic.
+  var on = true;
+  try { on = localStorage.getItem('pm_ui') !== 'classic'; } catch (e) {}
   var tb = document.getElementById('themeBtn');
   if (tb && !document.getElementById('nocBtn')) {
     var nb = document.createElement('button');

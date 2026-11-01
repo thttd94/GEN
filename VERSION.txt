@@ -1,1 +1,1 @@
-Ver 2.112 (Theo doi luong dang NHAT KY thoi gian thuc: moi ket noi 1 dong co gio:phut:giay, o tim kiem theo ky tu, chon 1 may thi an cot May, bo khoi ghi chu; them Hien thi traffic WAN / VPN / Proxy / tu dong cao nhat tren thanh trang thai)
+Ver 2.113 (Giao dien NOC thanh MAC DINH: nen toi xanh ngoc, 6 o so lieu may online / Proxy / VPN / WAN co bieu do / CPU / nhiet do; nut "Giao dien cu" de quay lai)
