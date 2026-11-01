@@ -1,3 +1,10 @@
+## Ver 2.112 - 2026-11-01
+- Theo doi luong chuyen sang NHAT KY thoi gian thuc: moi dong = ket noi (may, ten mien, duong) mo cung 1 giay, co cot Thoi gian HH:MM:SS, moi nhat o tren, dong dang mo (dau cham xanh) tiep tuc cong byte. Giu 3000 dong moi nhat, hien 500
+- O Tim theo ky tu (ten mien / IP / proxy_N / gio), khong phan biet hoa thuong; nut Dung cuon; chon 1 may thi an cot May; bo khoi ghi chu dau tab
+- Tab moi Cau hinh ket noi > Hien thi traffic: chon WAN / VPN / Proxy / Tu dong (luong cao nhat) / Tat; VPN/Proxy chon them dinh danh (1 tunnel hoac 1 proxy_N) de do rieng. Hien o rieng 2 dong canh thanh thong so (tren = ten luong, duoi = toc do Mbps). VPN = tun*/wg*, Proxy = Clash API (can bat Theo doi luong), WAN uoc tinh = cong WAN - VPN - Proxy. API GET/POST /api/pm/traffic
+- GUI 9001: icon SVG, cong mang RJ45 o hang tieu de, bo cuc dien thoai (moi may 1 the, popup Cau hinh ket noi toan man, khong tran ngang 360-1400px)
+- Giao dien NOC (tuy chon, nut "Giao dien NOC" canh nut Sang/Toi, luu theo trinh duyet): nen toi xanh ngoc, 6 o so lieu (may online, Proxy/VPN/WAN Mbps co bieu do nho + danh dau cao nhat, CPU, nhiet do). Mac dinh van la giao dien cu
+
 ## Ver 2.111 - 2026-11-01
 - Fix proxy dung TEN MIEN khac Lumi (vd us.arxlabs.io) gan xong may MAT MANG du proxy song: rule pha vong lap DNS (ten mien proxy -> dnsmasq) khong duoc tinh lai khi doi proxy, va 2.108 chen dns rule proxy_N len truoc no. Nay apply_rows / Apply / ensure_conn_rules deu chot breaker o vi tri 0 cho MOI ten mien server proxy_*; guard + watchdog kiem dns_loop_breaker_ok (dung vi tri + du ten mien), lech thi tu sua preset + runtime va restart gencore
 - Fix mat quoc ky o cot Check: 2.109 xoa nham country_codes_for_ips / country_code_for_ip => khoi phuc (ip-api batch + api.country.is, cache 24h)

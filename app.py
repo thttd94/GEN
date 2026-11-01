@@ -267,6 +267,109 @@ def sysinfo_json():
         out['load'] = [float(x) for x in Path('/proc/loadavg').read_text().split()[:3]]
     except Exception:
         out['load'] = []
+    # 6) [Ver 2.112] Traffic WAN / VPN / Proxy cho thanh trang thai.
+    try:
+        out['traffic'] = traffic_sample()
+    except Exception:
+        out['traffic'] = None
+    # 7) [Ver 2.112] Cong mang vat ly (eth0..ethN): cam day, toc do, vai tro WAN/LAN.
+    try:
+        out['ports'] = physical_ports()
+    except Exception:
+        out['ports'] = []
+    return out
+
+def _uci_net_roles(text):
+    """[Ver 2.112] Doc /etc/config/network -> {device: 'WAN'|'LAN'}.
+    interface ten wan* -> device la WAN; bridge co 'list ports' -> port la LAN cua bridge do;
+    interface lan* tro truc tiep vao ethX -> LAN."""
+    roles, bridges, ifaces = {}, {}, []
+    cur = None
+    for raw in text.splitlines():
+        ln = raw.strip()
+        if ln.startswith('config '):
+            p = ln.split()
+            cur = {'type': p[1] if len(p) > 1 else '', 'name': (p[2].strip("'\"") if len(p) > 2 else ''), 'opt': {}, 'ports': []}
+            if cur['type'] == 'device':
+                bridges.setdefault(id(cur), cur)
+            elif cur['type'] == 'interface':
+                ifaces.append(cur)
+            continue
+        if cur is None:
+            continue
+        p = ln.split(None, 2)
+        if len(p) == 3 and p[0] == 'option':
+            cur['opt'][p[1]] = p[2].strip("'\"")
+        elif len(p) == 3 and p[0] == 'list' and p[1] == 'ports':
+            cur['ports'].append(p[2].strip("'\""))
+    br_ports = {}
+    for b in bridges.values():
+        nm = b['opt'].get('name')
+        if nm:
+            br_ports[nm] = b['ports']
+    for it in ifaces:
+        dev = it['opt'].get('device') or it['opt'].get('ifname') or ''
+        nm = it['name'].lower()
+        role = 'WAN' if nm.startswith('wan') else ('LAN' if nm.startswith('lan') else '')
+        if not role or not dev:
+            continue
+        for d in (br_ports.get(dev) or [dev]):
+            base = d.split('.')[0]
+            if role == 'WAN' or base not in roles:
+                roles[base] = role
+    return roles
+
+def physical_ports():
+    """[Ver 2.112] Danh sach NIC vat ly cho GUI: name, up (carrier), speed Mbps, role, mac.
+    Vai tro: uci network; du phong theo default route / master bridge (macvlan/PPPoE tren ethX tinh la WAN)."""
+    base = Path('/sys/class/net')
+    try:
+        roles = _uci_net_roles(Path('/etc/config/network').read_text(errors='replace'))
+    except Exception:
+        roles = {}
+    defdev = set()
+    try:
+        for ln in Path('/proc/net/route').read_text().splitlines()[1:]:
+            f = ln.split()
+            if len(f) > 2 and f[1] == '00000000':
+                defdev.add(f[0])
+    except Exception:
+        pass
+    def rd(p, dflt=''):
+        try:
+            return p.read_text().strip()
+        except Exception:
+            return dflt
+    out = []
+    for d in base.iterdir():
+        n = d.name
+        if not (d / 'device').exists() or n.startswith(('wl', 'wlan', 'phy')):
+            continue
+        carrier = rd(d / 'carrier', '0') == '1'
+        try:
+            spd = int(rd(d / 'speed', '-1'))
+        except Exception:
+            spd = -1
+        uppers = [u.name[len('upper_'):] for u in d.glob('upper_*')]
+        master = ''
+        try:
+            m = d / 'master'
+            if m.exists():
+                master = os.path.basename(os.readlink(str(m)))
+        except Exception:
+            pass
+        role = roles.get(n, '')
+        if not role:
+            if n in defdev or any(u in defdev for u in uppers):
+                role = 'WAN'
+            elif master.startswith('br-'):
+                role = 'LAN'
+        out.append({'name': n, 'up': bool(carrier), 'speed': spd if carrier and spd > 0 else None,
+                    'role': role or '', 'master': master, 'mac': rd(d / 'address')})
+    def key(p):
+        m = re.match(r'([a-z]+)(\d+)$', p['name'])
+        return (m.group(1), int(m.group(2))) if m else (p['name'], 0)
+    out.sort(key=key)
     return out
 def _http_error_text(e):
     """[Ver 2.83] 'HTTP 400: <ly do cua server goc>' thay vi chi 'HTTP 400'."""
@@ -3284,7 +3387,8 @@ def conn_watch_loop():
 
 FLOW_API_ADDR = '127.0.0.1:19090'
 FLOW_MAX_KEYS = 30000
-FLOW = {'lock': threading.Lock(), 'agg': {}, 'last': {}, 'since': 0.0, 'last_req': 0.0, 'thread': None, 'err': '', 'polls': 0}
+FLOW = {'lock': threading.Lock(), 'agg': {}, 'last': {}, 'since': 0.0, 'last_req': 0.0, 'thread': None, 'err': '', 'polls': 0,
+        'log': {'rows': [], 'idx': {}, 'cid': {}, 'seq': 0}}
 
 def get_flow_config():
     try:
@@ -3351,9 +3455,52 @@ def _flow_fetch():
     with urllib.request.urlopen(req, timeout=4) as r:
         return json.loads(r.read().decode('utf-8', 'replace') or '{}')
 
-def flow_ingest(snapshot, agg, last):
+# [Ver 2.112] Nhat ky luong theo thoi gian thuc: moi dong = cac ket noi (ip, host, chain) MO cung 1 giay.
+# Byte cua dong tiep tuc tang den khi ket noi dong. Giu toi da FLOW_LOG_MAX dong moi nhat.
+FLOW_LOG_MAX = 3000
+_FLOW_START_RE = re.compile(r'^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?$')
+
+def _flow_start_ts(s, now):
+    """'2026-11-01T18:46:12.123456789+07:00' => epoch giay. Loi/lech > 1 ngay => now."""
+    try:
+        m = _FLOW_START_RE.match(str(s or '').strip())
+        if not m:
+            return int(now)
+        tz = m.group(2) or 'Z'
+        tz = '+00:00' if tz == 'Z' else (tz if ':' in tz else tz[:3] + ':' + tz[3:])
+        ts = datetime.fromisoformat(m.group(1) + tz).timestamp()
+        return int(ts) if abs(now - ts) < 86400 else int(now)
+    except Exception:
+        return int(now)
+
+def flow_log_new():
+    return {'rows': [], 'idx': {}, 'cid': {}, 'seq': 0}
+
+def _flow_log_open(log, cid, c, ip, host, chain, now):
+    ts = _flow_start_ts(c.get('start'), now)
+    key = (ts, ip, host, chain)
+    e = log['idx'].get(key)
+    if e is None:
+        log['seq'] += 1
+        e = {'seq': log['seq'], 'ts': ts, 'ip': ip, 'host': host, 'out': chain, 'kind': _flow_kind(chain),
+             'up': 0, 'down': 0, 'conns': 0, 'open': 0}
+        log['idx'][key] = e
+        log['rows'].append(e)
+        if len(log['rows']) > FLOW_LOG_MAX:
+            drop = log['rows'][:len(log['rows']) - FLOW_LOG_MAX + 500]
+            del log['rows'][:len(drop)]
+            for d in drop:
+                log['idx'].pop((d['ts'], d['ip'], d['host'], d['out']), None)
+    e['conns'] += 1
+    e['open'] += 1
+    log['cid'][cid] = e
+    return e
+
+def flow_ingest(snapshot, agg, last, log=None, now=None):
     """Cong DELTA byte cua tung ket noi (id) vao agg[(ip, host, chain)]. Ket noi da dong bi bo khoi last.
-    Ket noi dong giua 2 lan doc mat phan byte cuoi (< 2s) — sai so nho, ghi ro tren GUI."""
+    Ket noi dong giua 2 lan doc mat phan byte cuoi (< 2s) — sai so nho, ghi ro tren GUI.
+    [Ver 2.112] log != None => ghi them nhat ky theo thoi diem mo ket noi."""
+    now = time.time() if now is None else now
     seen = set()
     for c in (snapshot or {}).get('connections') or []:
         if not isinstance(c, dict):
@@ -3388,6 +3535,12 @@ def flow_ingest(snapshot, agg, last):
                 a = agg[key] = {'up': 0, 'down': 0, 'conns': 0, 'ids': set()}
         a['up'] += du
         a['down'] += dd
+        if log is not None:
+            e = log['cid'].get(cid)
+            if e is None:
+                e = _flow_log_open(log, cid, c, ip, host, chain, now)
+            e['up'] += du
+            e['down'] += dd
         if cid not in a['ids']:
             a['ids'].add(cid)
             a['conns'] += 1
@@ -3396,6 +3549,30 @@ def flow_ingest(snapshot, agg, last):
     for cid in list(last):
         if cid not in seen:
             last.pop(cid, None)
+    if log is not None:
+        for cid in list(log['cid']):
+            if cid not in seen:
+                e = log['cid'].pop(cid)
+                e['open'] = max(0, e['open'] - 1)
+
+def flow_log_query(log, ip='', q='', limit=500):
+    """Dong moi nhat truoc. q = tim theo ky tu (khong phan biet hoa thuong) trong ten mien / IP / duong / gio."""
+    ip = str(ip or '').strip()
+    q = str(q or '').strip().lower()
+    out, total = [], 0
+    # Xep theo GIO mo ket noi (moi nhat truoc); cung giay thi theo thu tu ghi.
+    for e in sorted(log['rows'], key=lambda x: (x['ts'], x['seq']), reverse=True):
+        if ip and e['ip'] != ip:
+            continue
+        if q:
+            hay = ' '.join((e['host'], e['ip'], e['out'], e['kind'],
+                            time.strftime('%H:%M:%S', time.localtime(e['ts'])))).lower()
+            if q not in hay:
+                continue
+        total += 1
+        if len(out) < limit:
+            out.append(dict(e))
+    return out, total
 
 def _flow_loop():
     while True:
@@ -3404,11 +3581,12 @@ def _flow_loop():
             if idle:
                 FLOW['thread'] = None
                 FLOW['last'] = {}
+                FLOW['log']['cid'] = {}
                 return
         try:
             snap = _flow_fetch()
             with FLOW['lock']:
-                flow_ingest(snap, FLOW['agg'], FLOW['last'])
+                flow_ingest(snap, FLOW['agg'], FLOW['last'], FLOW['log'])
                 FLOW['err'] = ''
                 FLOW['polls'] += 1
         except Exception as e:
@@ -3429,8 +3607,244 @@ def _flow_touch():
 def flow_reset():
     with FLOW['lock']:
         FLOW['agg'] = {}
+        FLOW['log'] = flow_log_new()
         FLOW['since'] = time.time()
         FLOW['polls'] = 0
+
+# ---------------------------------------------------------------------------
+# [Ver 2.112] Hien thi traffic tren thanh trang thai GUI 9001.
+# Nguoi dung chon luong: auto (cao nhat) / wan / vpn / proxy / off (Cau hinh ket noi).
+#   VPN   = tong cac interface tun* / wg* (/proc/net/dev).
+#   Proxy = byte cua ket noi gencore co chain proxy_* (Clash API, can bat Theo doi luong).
+#   WAN   = luong di thang mang chinh, UOC TINH = tong cong WAN - VPN - Proxy
+#           (proxy va VPN cung di ra cong WAN, khong tru thi WAN luon cao nhat).
+# Toc do = delta byte / thoi gian giua 2 lan doc (Mbps). Cache 2s de nhieu tab dung chung.
+# ---------------------------------------------------------------------------
+TRAFFIC_MODES = ('auto', 'wan', 'vpn', 'proxy', 'off')
+TRAFFIC_LABELS = {'wan': 'WAN', 'vpn': 'VPN', 'proxy': 'Proxy'}
+TRAFFIC_VPN_PREFIXES = ('tun', 'wg')
+_TRAFFIC = {'lock': threading.Lock(), 'ts': 0.0, 'dev': None, 'px': None, 'res': None,
+            'wan': [], 'wan_ts': 0.0, 'cfg': None, 'cfg_ts': 0.0, 'tg': None, 'tg_ts': 0.0}
+
+def _traffic_cfg():
+    """(mode, target, flow_cfg) - cache 10s, tranh doc session_state.json moi 5s.
+    [Ver 2.112] target = dinh danh can do: proxy_N (mode proxy) hoac ten tunnel VPN (mode vpn); '' = tat ca."""
+    now = time.time()
+    if _TRAFFIC['cfg'] is not None and now - _TRAFFIC['cfg_ts'] < 10:
+        return _TRAFFIC['cfg']
+    mode, target, fcfg = 'auto', '', {}
+    try:
+        meta = load_session_state().get('__meta__', {})
+        if isinstance(meta, dict):
+            t = meta.get('traffic') or {}
+            t = t if isinstance(t, dict) else {}
+            mode = str(t.get('mode') or 'auto').strip().lower()
+            target = str(t.get('target') or '').strip()
+            f = meta.get('flow') or {}
+            fcfg = f if isinstance(f, dict) else {}
+    except Exception:
+        pass
+    if mode not in TRAFFIC_MODES:
+        mode = 'auto'
+    if mode not in ('proxy', 'vpn'):
+        target = ''
+    _TRAFFIC['cfg'] = (mode, target, fcfg)
+    _TRAFFIC['cfg_ts'] = now
+    return _TRAFFIC['cfg']
+
+def set_traffic_mode(mode, target=''):
+    m = str(mode or '').strip().lower()
+    if m not in TRAFFIC_MODES:
+        raise ValueError('Che do traffic khong hop le: %s' % mode)
+    tg = str(target or '').strip()[:64] if m in ('proxy', 'vpn') else ''
+    if tg and not re.match(r'^[A-Za-z0-9_.\-]+$', tg):
+        raise ValueError('Dinh danh khong hop le: %s' % tg)
+    state = load_session_state()
+    meta = state.setdefault('__meta__', {})
+    if not isinstance(meta, dict):
+        meta = {}
+        state['__meta__'] = meta
+    meta['traffic'] = {'mode': m, 'target': tg}
+    save_session_state(state)
+    with _TRAFFIC['lock']:
+        _TRAFFIC['cfg_ts'] = 0.0
+        _TRAFFIC['res'] = None  # lan doc ke tiep tinh lai theo dinh danh moi (giu moc byte)
+    return m, tg
+
+def traffic_targets(force=False):
+    """Danh sach dinh danh de chon: proxy_* (gencore outbounds) + tunnel VPN (vpn_mgr). Cache 60s."""
+    now = time.time()
+    if not force and _TRAFFIC['tg'] is not None and now - _TRAFFIC['tg_ts'] < 60:
+        return _TRAFFIC['tg']
+    proxies, vpns = [], []
+    try:
+        doc = json.loads(Path(RUNTIME_FILE).read_text(encoding='utf-8'))
+        for ob in doc.get('outbounds') or []:
+            tag = str((ob or {}).get('tag') or '')
+            if tag.startswith('proxy_'):
+                proxies.append({'tag': tag, 'server': '%s:%s' % (ob.get('server') or '', ob.get('server_port') or '')})
+        proxies.sort(key=lambda p: (len(p['tag']), p['tag']))
+    except Exception:
+        pass
+    try:
+        for a in vpn_status_json() or []:
+            n, d = str(a.get('name') or ''), str(a.get('dev') or '')
+            if n and d:
+                vpns.append({'name': n, 'dev': d, 'running': bool(a.get('running')), 'host': str(a.get('host') or '')})
+    except Exception:
+        pass
+    _TRAFFIC['tg'] = {'proxies': proxies, 'vpns': vpns}
+    _TRAFFIC['tg_ts'] = now
+    return _TRAFFIC['tg']
+
+def _traffic_wan_ifaces():
+    """Interface cua default route trong bang main (bo tun/wg). Cache 60s."""
+    now = time.time()
+    if _TRAFFIC['wan'] and now - _TRAFFIC['wan_ts'] < 60:
+        return _TRAFFIC['wan']
+    devs = []
+    try:
+        for ln in Path('/proc/net/route').read_text().splitlines()[1:]:
+            p = ln.split()
+            if len(p) >= 8 and p[1] == '00000000' and p[7] == '00000000':
+                d = p[0]
+                if d != 'lo' and not d.startswith(TRAFFIC_VPN_PREFIXES) and d not in devs:
+                    devs.append(d)
+    except Exception:
+        pass
+    _TRAFFIC['wan'] = devs
+    _TRAFFIC['wan_ts'] = now
+    return devs
+
+def _traffic_netdev():
+    out = {}
+    for ln in Path('/proc/net/dev').read_text().splitlines()[2:]:
+        name, _, rest = ln.partition(':')
+        f = rest.split()
+        if len(f) >= 9:
+            try:
+                out[name.strip()] = (int(f[0]), int(f[8]))  # (rx = tai xuong, tx = tai len)
+            except ValueError:
+                continue
+    return out
+
+def _traffic_proxy_conns(fcfg):
+    """{conn_id: (download, upload, chain)} cua ket noi chain proxy_*. None neu Clash API tat."""
+    if not (fcfg.get('enabled') and fcfg.get('secret')):
+        return None
+    req = urllib.request.Request('http://%s/connections' % FLOW_API_ADDR,
+                                 headers={'Authorization': 'Bearer ' + str(fcfg.get('secret'))})
+    with urllib.request.urlopen(req, timeout=2) as r:
+        snap = json.loads(r.read().decode('utf-8', 'replace') or '{}')
+    out = {}
+    for c in (snap or {}).get('connections') or []:
+        if not isinstance(c, dict):
+            continue
+        chains = c.get('chains') or []
+        ch = str(chains[0]) if chains else ''
+        if not ch.startswith('proxy_'):
+            continue
+        cid = str(c.get('id') or '')
+        if cid:
+            out[cid] = (int(c.get('download') or 0), int(c.get('upload') or 0), ch)
+    return out
+
+def _traffic_pick(mode, items, sel=None):
+    if mode == 'off':
+        return None
+    if sel is not None:
+        return sel
+    live = [it for it in items if it.get('down') is not None]
+    if mode in TRAFFIC_LABELS:
+        return next((it for it in live if it.get('key') == mode), None)
+    if not live:
+        return None
+    return max(live, key=lambda it: (it.get('down') or 0) + (it.get('up') or 0))
+
+def traffic_sample():
+    with _TRAFFIC['lock']:
+        now = time.time()
+        if _TRAFFIC['res'] is not None and now - _TRAFFIC['ts'] < 2:
+            return _TRAFFIC['res']
+        mode, target, fcfg = _traffic_cfg()
+        try:
+            dev = _traffic_netdev()
+        except Exception:
+            dev = {}
+        px, px_err = None, ''
+        try:
+            px = _traffic_proxy_conns(fcfg)
+        except Exception as e:
+            px_err = str(e)[:120]
+        dt = now - _TRAFFIC['ts'] if _TRAFFIC['ts'] else 0.0
+        if dt > 30:
+            dt = 0.0  # lau khong ai xem => lay moc moi, khong tra so trung binh ca gio
+        pdev, ppx = _TRAFFIC['dev'], _TRAFFIC['px']
+        wan_devs = _traffic_wan_ifaces()
+        vpn_devs = sorted(d for d in dev if d.startswith(TRAFFIC_VPN_PREFIXES))
+
+        def _sum(devs):
+            if not pdev or dt <= 0:
+                return None, None
+            dn = up = 0
+            for d in devs:
+                if d in dev and d in pdev:
+                    dn += max(0, dev[d][0] - pdev[d][0])
+                    up += max(0, dev[d][1] - pdev[d][1])
+            return dn * 8 / dt / 1e6, up * 8 / dt / 1e6
+
+        wan_dn, wan_up = _sum(wan_devs)
+        vpn_dn, vpn_up = _sum(vpn_devs)
+        px_dn = px_up = None
+        px_chain = {}
+        if px is not None and ppx is not None and dt > 0:
+            dn = up = 0
+            for cid, (d, u, ch) in px.items():
+                pd, pu = ppx.get(cid, (0, 0, ch))[:2]
+                dd, du = max(0, d - pd), max(0, u - pu)
+                dn += dd
+                up += du
+                a = px_chain.setdefault(ch, [0, 0])
+                a[0] += dd
+                a[1] += du
+            px_dn, px_up = dn * 8 / dt / 1e6, up * 8 / dt / 1e6
+        wd = wu = None
+        if wan_dn is not None:
+            wd = max(0.0, wan_dn - (vpn_dn or 0) - (px_dn or 0))
+            wu = max(0.0, wan_up - (vpn_up or 0) - (px_up or 0))
+        r2 = lambda v: None if v is None else round(v, 2)
+        if px is None and not px_err:
+            px_note = 'c\u1ea7n b\u1eadt Theo d\u00f5i lu\u1ed3ng'
+        elif px_err:
+            px_note = 'l\u1ed7i: ' + px_err
+        else:
+            px_note = '\u0111ang l\u1ea5y m\u1eabu'
+        items = [
+            {'key': 'wan', 'label': 'WAN', 'name': '', 'down': r2(wd), 'up': r2(wu),
+             'note': '' if wan_devs else 'kh\u00f4ng th\u1ea5y c\u1ed5ng WAN'},
+            {'key': 'vpn', 'label': 'VPN', 'name': '', 'down': r2(vpn_dn), 'up': r2(vpn_up),
+             'note': '' if vpn_devs else 'kh\u00f4ng c\u00f3 tunnel'},
+            {'key': 'proxy', 'label': 'Proxy', 'name': '', 'down': r2(px_dn), 'up': r2(px_up), 'note': px_note},
+        ]
+        # [Ver 2.112] Dinh danh cu the: 1 proxy_N hoac 1 tunnel VPN.
+        sel = None
+        if target and mode == 'proxy':
+            sel = {'key': 'proxy', 'label': 'Proxy', 'name': target, 'down': None, 'up': None, 'note': px_note}
+            if px_dn is not None:
+                a = px_chain.get(target, [0, 0])
+                sel.update(down=r2(a[0] * 8 / dt / 1e6), up=r2(a[1] * 8 / dt / 1e6), note='')
+        elif target and mode == 'vpn':
+            vd = next((v['dev'] for v in traffic_targets()['vpns'] if v['name'] == target), '')
+            sel = {'key': 'vpn', 'label': 'VPN', 'name': target, 'down': None, 'up': None,
+                   'note': '' if vd in dev else 'tunnel ch\u01b0a b\u1eadt'}
+            if vd in dev:
+                d1, u1 = _sum([vd])
+                sel.update(down=r2(d1), up=r2(u1))
+        res = {'mode': mode, 'target': target, 'items': items, 'show': _traffic_pick(mode, items, sel),
+               'wan_total': {'down': r2(wan_dn), 'up': r2(wan_up), 'devs': wan_devs},
+               'vpn_devs': vpn_devs}
+        _TRAFFIC.update(ts=now, dev=dev, px=px, res=res)
+        return res
 
 def flow_summary(agg, ip=''):
     ip = str(ip or '').strip()
@@ -3445,10 +3859,11 @@ def flow_summary(agg, ip=''):
     rows.sort(key=lambda r: -r['bytes'])
     return rows[:5000], totals
 
-def flow_public_state(ip=''):
+def flow_public_state(ip='', q='', view=''):
     cfg = get_flow_config()
     enabled = bool(cfg.get('enabled'))
-    out = {'ok': True, 'enabled': enabled, 'available': False, 'since': 0, 'rows': [], 'totals': {}, 'ips': [], 'error': ''}
+    out = {'ok': True, 'enabled': enabled, 'available': False, 'since': 0, 'rows': [], 'totals': {}, 'ips': [], 'error': '',
+           'log': [], 'log_total': 0}
     if not enabled:
         return out
     _flow_touch()
@@ -3457,7 +3872,11 @@ def flow_public_state(ip=''):
         out['since'] = int(FLOW['since'])
         out['error'] = FLOW['err']
         out['available'] = FLOW['polls'] > 0 and not FLOW['err']
-    out['rows'], out['totals'] = flow_summary(agg, ip)
+        if view == 'log':
+            out['log'], out['log_total'] = flow_log_query(FLOW['log'], ip, q)
+    rows, out['totals'] = flow_summary(agg, ip)
+    # [Ver 2.112] GUI log khong can bang gop => khong gui (giam payload moi 3s).
+    out['rows'] = [] if view == 'log' else rows
     out['ips'] = sorted({k[0] for k in agg if k[0]}, key=lambda x: [int(p) if p.isdigit() else 0 for p in x.split('.')])
     return out
 
@@ -7570,7 +7989,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(conn_public_state())
         if path == '/api/pm/flow':
             q = parse_qs(urlparse(self.path).query or '')
-            return self._send_json(flow_public_state((q.get('ip') or [''])[0]))
+            return self._send_json(flow_public_state((q.get('ip') or [''])[0], (q.get('q') or [''])[0][:100],
+                                                     (q.get('view') or [''])[0]))
         if path == '/api/pm/sessions':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             # [Ver 2.72] tra kem cau hinh DANG APPLY: GUI mo len (F5/tat-mo) phai nhay dung
@@ -7614,6 +8034,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'app_title_prefix': get_app_title_prefix(), 'version': version_info, 'active_session': active_session})
         if path == '/api/pm/sysinfo':
             return self._send_json(sysinfo_json())
+        if path == '/api/pm/traffic':
+            cfg = _traffic_cfg()
+            return self._send_json({'ok': True, 'mode': cfg[0], 'target': cfg[1], 'sample': traffic_sample(),
+                                    'targets': traffic_targets()})
         if path == '/api/pm/version-check':
             # Endpoint rieng cho nut Kiem tra phien ban (chi goi khi nguoi dung bam).
             return self._send_json(get_repo_version_info())
@@ -7701,6 +8125,14 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b'{}'
         payload = json.loads(body.decode('utf-8') or '{}')
         try:
+            if path == '/api/pm/traffic':
+                try:
+                    pl = payload if isinstance(payload, dict) else {}
+                    m, tg = set_traffic_mode(pl.get('mode'), pl.get('target'))
+                except ValueError as te:
+                    return self._send_json({'ok': False, 'error': str(te)})
+                return self._send_json({'ok': True, 'mode': m, 'target': tg, 'sample': traffic_sample(),
+                                        'targets': traffic_targets()})
             if path == '/api/pm/flow':
                 try:
                     return self._send_json(flow_update(payload if isinstance(payload, dict) else {}))

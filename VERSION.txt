@@ -1,1 +1,1 @@
-Ver 2.111 (Fix proxy ten mien khac Lumi (us.arxlabs.io...) gan xong mat mang: rule pha vong lap DNS khong tinh lai khi doi proxy + bi 2.108 day xuong => nay chot breaker vi tri 0 cho moi ten mien proxy, watchdog tu chua; khoi phuc quoc ky cot Check (2.109 xoa nham country_codes_for_ips))
+Ver 2.112 (Theo doi luong dang NHAT KY thoi gian thuc: moi ket noi 1 dong co gio:phut:giay, o tim kiem theo ky tu, chon 1 may thi an cot May, bo khoi ghi chu; them Hien thi traffic WAN / VPN / Proxy / tu dong cao nhat tren thanh trang thai)

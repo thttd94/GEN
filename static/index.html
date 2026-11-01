@@ -56,7 +56,27 @@
     .toolbar-left,.toolbar-right { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     .toolbar-right { justify-content:flex-end; }
     .conn-badge { display:inline-flex; align-items:center; justify-content:center; min-width:110px; padding:9px 14px; border-radius:10px; font-weight:800; font-size:13px; border:1px solid transparent; }
-    .version-btn { position:relative; display:inline-flex; align-items:center; gap:8px; min-width:240px; justify-content:center; }
+    .version-btn { position:relative; display:inline-flex; align-items:center; gap:6px; justify-content:center; padding:5px 10px !important; font-size:12px !important; min-height:0; white-space:nowrap; }
+/* [Ver 2.112] Hang tieu de gon: icon nho SVG, badge Connected nho, cong mang o giua. */
+.titlebar { flex-wrap:nowrap; }
+.titlebar-left, .titlebar-right { flex-shrink:0; }
+.hb-ico { width:26px; height:26px; display:inline-flex; align-items:center; justify-content:center; padding:0; border-radius:7px; }
+.hb-ico svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.titlebar .conn-badge { min-width:0; padding:5px 10px; font-size:12px; border-radius:8px; }
+.titlebar-mid { flex:1 1 auto; min-width:0; display:flex; align-items:flex-end; justify-content:center; gap:4px; overflow-x:auto; scrollbar-width:none; }
+.titlebar-mid::-webkit-scrollbar { display:none; }
+.pt { display:flex; flex-direction:column; align-items:center; gap:1px; min-width:30px; padding:2px 3px; border-radius:6px; cursor:default; outline:none; }
+.pt:hover, .pt:focus-visible { background:rgba(127,127,127,.15); }
+.pt svg { width:22px; height:20px; }
+.pt .pt-body { fill:#9ca3af; } .pt .pt-hole { fill:#fff; } .pt .pt-led { fill:#6b7280; }
+.pt.up .pt-body { fill:#16a34a; } .pt.up .pt-led { fill:#4ade80; }
+.pt.up.wan .pt-body { fill:#ea580c; } .pt.up.wan .pt-led { fill:#fdba74; }
+.pt .pt-n { font-size:10px; font-weight:700; line-height:1; color:var(--text, #333); opacity:.85; }
+.pt .pt-s { font-size:8.5px; font-weight:800; line-height:1; opacity:.75; }
+.pt.down .pt-n { opacity:.5; }
+.pt.wan .pt-s { color:#ea580c; }
+body.dark .pt .pt-hole { fill:#111827; }
+@media (max-width:1300px){ .pt .pt-s { display:none; } .pt { min-width:24px; } .pt svg { width:18px; height:16px; } }
     .version-dot { width:10px; height:10px; border-radius:999px; background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.18), 0 0 12px rgba(34,197,94,.35); }
     .version-dot.has-update { background:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.18), 0 0 12px rgba(239,68,68,.55); }
     .conn-badge.connected { background:#dcfce7; color:#166534; border-color:#86efac; }
@@ -243,11 +263,13 @@
         <div class="project-tabs">
           <button class="btn tab active" id="projectTabProxy" onclick="switchProjectTab('proxy')">TIKTOK 03 PROXY MANAGER - HGTHAI</button>
         </div>
-        <button class="icon-btn" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề">✏️</button>
-        <button class="icon-btn" id="themeBtn" onclick="toggleTheme()">🌙</button>
+        <button class="icon-btn hb-ico" onclick="editAppTitlePrefix()" title="Sửa tên đầu tiêu đề" aria-label="Sửa tên đầu tiêu đề"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg></button>
+        <button class="icon-btn hb-ico" id="themeBtn" onclick="toggleTheme()" aria-label="Đổi giao diện Sáng / Tối"></button>
       </div>
+      <!-- [Ver 2.112] Cong mang vat ly: icon RJ45 xanh = cam day, xam = rut; di chuot xem WAN/LAN + toc do. -->
+      <div class="titlebar-mid" id="portsBar" role="list" aria-label="Cổng mạng trên router"></div>
       <div class="titlebar-right">
-        <button class="btn version-btn" id="versionBtn" onclick="handleVersionClick()"><span>Version: <span id="versionText">đang nạp...</span></span><span class="version-dot" id="versionDot"></span></button>
+        <button class="btn version-btn" id="versionBtn" onclick="handleVersionClick()" aria-label="Phiên bản"><span id="versionText">...</span><span class="version-dot" id="versionDot"></span></button>
         <div class="conn-badge disconnected" id="connBadge">Disconnected</div>
       </div>
     </div>
@@ -277,7 +299,7 @@
 
     <div class="panel" id="proxyPanel">
       <div class="meta">
-        <div class="meta-left session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn" onclick="editSessionName()" title="Sửa tên hiển thị cấu hình">✏️</button><button class="icon-btn" onclick="openSessionManager()" title="Quản lý cấu hình" id="manageSessionBtn">⚙️</button></div>
+        <div class="meta-left session-meta"><b id="sessionLabel">CẤU HÌNH 1</b><button class="icon-btn hb-ico" onclick="editSessionName()" title="Sửa tên hiển thị cấu hình" aria-label="Sửa tên hiển thị cấu hình"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg></button><button class="icon-btn hb-ico" onclick="openSessionManager()" title="Quản lý cấu hình" aria-label="Quản lý cấu hình" id="manageSessionBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button></div>
         <div class="meta-center" style="display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center;">
           <div id="proxyMachineNote" class="sub info-note">Máy trong router này: đang nạp...</div>
           <span class="status" id="status">Ready</span>
@@ -288,7 +310,7 @@
       <div class="bulkbar" id="bulkbar" hidden>
         <div class="top-work-grid">
           <div class="top-work-card">
-            <div class="bulk-card-title"><span class="t-ico t-ico-blue">🎯</span>Gán 1 proxy · mọi cấu hình</div>
+            <div class="bulk-card-title"><span class="t-ico t-ico-blue"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg></span>Gán 1 proxy · mọi cấu hình</div>
             <input id="bulkProxy" placeholder="server:port:user:pass">
             <div class="bulk-actions-inline" style="flex-direction:column; align-items:stretch; gap:7px;">
               <button class="btn apply" style="width:100%;" onclick="assignAllProxy()">GÁN 1 ALL</button>
@@ -299,13 +321,13 @@
             </div>
           </div>
           <div class="top-work-card">
-            <div class="bulk-card-title"><span class="t-ico t-ico-amber">⚡</span>Gán proxy hàng loạt theo số máy</div>
+            <div class="bulk-card-title"><span class="t-ico t-ico-amber"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></span>Gán proxy hàng loạt theo số máy</div>
             <textarea id="bulkMap" rows="3" placeholder="225|1.2.3.4:1080:user:pass&#10;225;1.2.3.4:1080:user:pass&#10;225 1.2.3.4:1080:user:pass"></textarea>
             <div class="card-hint">Tự map về proxy tag đúng số máy</div>
             <div class="bulk-actions"><button class="btn apply" style="width:100%;" onclick="applyBulkMap()">GÁN HÀNG LOẠT</button></div>
           </div>
           <div class="top-work-card">
-            <div class="bulk-card-title"><span class="t-ico t-ico-green">🔒</span>Gán VPN theo số máy</div>
+            <div class="bulk-card-title"><span class="t-ico t-ico-green"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>Gán VPN theo số máy</div>
             <div class="vpn-row">
               <input id="vpnMachines" placeholder="all | 1,2,3,5 | 1-9">
               <div class="vpn-multi" id="vpnMulti">
@@ -319,14 +341,14 @@
             <div id="vpnAssignedList" class="card-hint chip-box"></div>
           </div>
           <div class="top-work-card">
-            <div class="bulk-card-title"><span class="t-ico t-ico-violet">📝</span>Note tổng</div>
+            <div class="bulk-card-title"><span class="t-ico t-ico-violet"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg></span>Note tổng</div>
             <div class="notes-summary-box" id="notesSummary"></div>
           </div>
         </div>
       </div>
 
-      <div class="notes-wrap" style="padding-top:10px;padding-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <div class="notes-wrap" id="rowbar" style="padding-top:10px;padding-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:nowrap;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap; min-width:0;">
           <button type="button" class="btn small" id="bulkToggleBtn" onclick="toggleBulkbar()" aria-controls="bulkbar" aria-expanded="false">▸ Hiện khung Gán</button>
           <div class="view-tabs">
             <button class="view-tab active" id="viewConfiguredBtn" onclick="switchViewMode('configured')">ĐÃ CẤU HÌNH</button>
@@ -338,8 +360,7 @@
           </span>
                   </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap;">
-        <div class="sub" id="countLabel" style="font-weight:800;white-space:nowrap;">0 rows</div>
-        <input type="search" id="rowSearchInput" oninput="onRowSearch(this.value)" onkeydown="if(event.key==='Escape'){this.value='';onRowSearch('')}" placeholder="Tìm số máy / IP (.200)" title="Gõ số = tìm theo số máy (4 => 4, 14, 404...). Có dấu chấm = tìm theo IP (4.200, .200). Esc = xóa" aria-label="Tìm theo số máy hoặc IP" style="width:170px;margin-left:6px">
+        <input type="search" id="rowSearchInput" oninput="onRowSearch(this.value)" onkeydown="if(event.key==='Escape'){this.value='';onRowSearch('')}" placeholder="Máy / IP" title="Gõ số = tìm theo số máy (4 => 4, 14, 404...). Có dấu chấm = tìm theo IP (4.200, .200). Esc = xóa" aria-label="Tìm theo số máy hoặc IP" style="width:100px;margin-left:2px">
         <label class="sub" for="pageSizeSelect" style="margin-left:4px;font-weight:700;white-space:nowrap">Hiển thị</label>
         <select id="pageSizeSelect" onchange="setPageSize(this.value)" style="width:auto" title="Số máy hiển thị mỗi trang">
           <option value="50">50</option>
@@ -350,6 +371,7 @@
           <option value="0">Tất cả</option>
         </select>
         <div id="pager" style="display:flex;align-items:center;gap:2px;margin-left:6px"></div>
+        <div class="sub" id="countLabel" style="font-weight:800;white-space:nowrap;margin-left:4px;">0 thiết bị</div>
         </div>
       </div>
 
@@ -571,7 +593,8 @@
       const btnEl = document.getElementById('versionBtn');
       const rawLabel = String(versionState.current_label || versionState.current_short || 'unknown').trim();
       const match = rawLabel.match(/Ver\s*[\d.]+/i);
-      const label = match ? match[0].replace(/^ver/i, 'Ver').replace(/\.+$/, '') : rawLabel;
+      // [Ver 2.112] Gon: 'Ver:2.112' + dom xanh (moi nhat) / do (co ban moi).
+      const label = match ? 'Ver:' + match[0].replace(/^ver\s*/i, '').replace(/\.+$/, '') : rawLabel;
       if (textEl) textEl.textContent = label;
       const hasUpdate = !!versionState.has_update;
       if (dotEl) dotEl.className = 'version-dot' + (hasUpdate ? ' has-update' : '');
@@ -919,8 +942,8 @@
       const allVisible = getVisibleRows();
       const visibleRows = rowSearch ? getDisplayRows() : allVisible;
       document.getElementById('countLabel').textContent = rowSearch
-        ? `${visibleRows.length} / ${allVisible.length} rows`
-        : `${visibleRows.length} rows`;
+        ? `${visibleRows.length} / ${allVisible.length} thiết bị`
+        : `${visibleRows.length} thiết bị`;
       if (currentProjectTab !== 'proxy') return;
       renderPager(visibleRows.length);
       const ps = pageSizeOf(visibleRows.length);
@@ -2310,6 +2333,7 @@
       h += ' &nbsp;|&nbsp; <span style="color:#d97706" title="Tên miền/IP trong danh sách không qua Proxy/VPN (ra WAN chính)">WAN: ' + fmtMB(t.bypass) + '</span>';
       if (t.direct) h += ' · <span style="color:#2563eb">Trực tiếp: ' + fmtMB(t.direct) + '</span>';
       txt.innerHTML = h;
+      txt.title = txt.textContent;
       sum.hidden = false;
     }
     let flowSumTimer = null;
@@ -2351,16 +2375,30 @@
         `<span style="color:${FLOW_COLOR.bypass}">WAN: ${fmtMB(t.bypass)}</span>` +
         ((t.direct || t.other) ? ` · Khác: ${fmtMB((t.direct || 0) + (t.other || 0))}` : '');
       document.getElementById('flowSince').textContent = r.since ? ('đếm từ ' + new Date(r.since * 1000).toLocaleTimeString()) : '';
-      document.getElementById('flowRows').innerHTML = (r.rows || []).map(x =>
-        `<tr style="border-bottom:1px solid #eef2f7;"><td style="word-break:break-all;">${esc(x.host)}</td><td>${esc(x.ip)}</td>` +
+      // [Ver 2.112] Nhat ky theo thoi gian thuc. Da chon 1 may => an cot May.
+      const oneIp = !!sel.value;
+      document.getElementById('flowIpTh').hidden = oneIp;
+      const pad = n => String(n).padStart(2, '0');
+      const hms = s => { const d = new Date(s * 1000); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+      const log = r.log || [];
+      const q = (document.getElementById('flowQ') || {}).value || '';
+      document.getElementById('flowCount').textContent = (r.log_total || 0) + ' dòng' + (q ? ' khớp' : '') + ((r.log_total || 0) > log.length ? ' (hiện ' + log.length + ' mới nhất)' : '');
+      document.getElementById('flowRows').innerHTML = log.map(x =>
+        `<tr style="border-bottom:1px solid #eef2f7;"><td style="white-space:nowrap;font-family:Consolas,monospace;">${x.open ? '<span title="đang mở" style="color:#16a34a">●</span> ' : ''}${hms(x.ts)}</td>` +
+        `<td style="word-break:break-all;">${esc(x.host)}</td>` + (oneIp ? '' : `<td>${esc(x.ip)}</td>`) +
         `<td style="color:${FLOW_COLOR[x.kind] || '#111'};font-weight:700;">${esc(FLOW_KIND[x.kind] || x.kind)} <span class="sub">${esc(x.out)}</span></td>` +
         `<td style="text-align:right;">${fmtMB(x.down)}</td><td style="text-align:right;">${fmtMB(x.up)}</td><td style="text-align:right;">${x.conns}</td></tr>`
-      ).join('') || '<tr><td colspan="6" class="sub">Chưa có kết nối nào.</td></tr>';
+      ).join('') || `<tr><td colspan="${oneIp ? 6 : 7}" class="sub">${q ? 'Không có dòng khớp.' : 'Chưa có kết nối nào.'}</td></tr>`;
     }
-    async function loadFlow() {
+    let flowQTimer = null;
+    function flowSearch() { clearTimeout(flowQTimer); flowQTimer = setTimeout(() => loadFlow(true), 250); }
+    async function loadFlow(force) {
+      const pause = document.getElementById('flowPause');
+      if (pause && pause.checked && force !== true) return;
       const ip = (document.getElementById('flowIp') || {}).value || '';
+      const q = ((document.getElementById('flowQ') || {}).value || '').trim();
       try {
-        const r = await fetchJSON('/api/pm/flow' + (ip ? ('?ip=' + encodeURIComponent(ip)) : ''));
+        const r = await fetchJSON('/api/pm/flow?view=log' + (ip ? ('&ip=' + encodeURIComponent(ip)) : '') + (q ? ('&q=' + encodeURIComponent(q)) : ''));
         if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
         renderFlow(r);
       } catch (e) {
@@ -2374,6 +2412,7 @@
         const r = await fetchJSON('/api/pm/flow', { method:'POST', body: JSON.stringify({ action, ip }) });
         if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
         renderFlow(r);
+        if (r.enabled) loadFlow(true);
         setStatus(action === 'reset' ? 'Đã xoá số đếm theo dõi luồng' : (action === 'enable' ? 'Đã bật theo dõi luồng' : 'Đã tắt theo dõi luồng'));
       } catch (e) {
         setStatus('Theo dõi luồng lỗi: ' + e.message);
@@ -2475,7 +2514,10 @@
     if (!btn) return;
     const dark = document.body.classList.contains('dark');
     // Hien bieu tuong cua che do SE chuyen sang khi bam.
-    btn.textContent = dark ? '\u{1F4A1}' : '\u{1F319}';
+    // [Ver 2.112] Icon SVG nho: mat troi (sang) / mat trang (toi), theo mau chu.
+    btn.innerHTML = dark
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
     btn.title = dark ? 'Chuy\u1ec3n sang giao di\u1ec7n S\u00e1ng' : 'Chuy\u1ec3n sang giao di\u1ec7n T\u1ed1i';
   }
   function toggleTheme() {
@@ -2502,6 +2544,30 @@
 .sysbar .sep{opacity:.35}
 .sysbar.sysbar-inline{position:static;top:auto;right:auto;box-shadow:none;padding:6px 12px;font-size:12px}
 @media (max-width:640px){.sysbar{font-size:10px;padding:4px 9px;top:auto;bottom:10px}}
+/* [Ver 2.112] Traffic PROXY | VPN | WAN canh Reset tom tat luong: moi o 2 dong (tren ten, duoi toc do). */
+.tfbox{display:inline-flex;align-items:stretch;gap:0;background:rgba(8,19,31,.92);border:1px solid #1f4255;border-radius:10px;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;white-space:nowrap;line-height:1.2;vertical-align:middle}
+.tfbox[hidden]{display:none}
+.tfbox .tf-cell{display:flex;flex-direction:column;justify-content:center;padding:3px 8px;border-left:1px solid #1f4255}
+/* [Ver 2.112] Hang Gan / tab / tom tat / traffic / so thiet bi / tim / hien thi: 1 hang, khong be chu. */
+#rowbar > div > *{flex-shrink:0}
+#rowbar .btn, #rowbar .view-tab, #rowbar label{white-space:nowrap}
+/* Man hep: chi chu tom tat luong co lai (...), di chuot xem du; Reset + traffic + tim luon hien. */
+#rowbar > div:first-child{flex:1 1 auto}
+#rowbar > div:last-child{flex-shrink:0}
+#rowbar #flowSummary:not([hidden]){display:inline-flex;align-items:center;gap:6px;flex-shrink:1;min-width:60px}
+#rowbar #flowSummaryText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+@media (max-width:1400px){#rowbar .view-tab{padding-left:10px;padding-right:10px;font-size:12px}#rowbar #flowSummary{font-size:12px !important}.tfbox .tf-cell{padding:2px 6px}.tfbox .tf-val{font-size:12px}}
+.tfbox .tf-cell:first-child{border-left:0}
+.tfbox .tf-cell.tf-on{background:rgba(79,240,189,.10)}
+.tfbox .tf-name{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
+.tfbox .tf-name small{font-weight:600;opacity:.7;text-transform:none;margin-left:4px}
+.tfbox .tf-val{font-size:13px;font-weight:800;font-family:Consolas,monospace}
+.tfbox .tf-dn{color:#4ff0bd}
+.tfbox .tf-up{color:#ffc94d;margin-left:6px}
+.tfbox .tf-u{font-size:10px;color:#bde7fa;opacity:.7;margin-left:3px}
+.tfbox .tf-k-proxy .tf-name{color:#ff6b81}
+.tfbox .tf-k-vpn .tf-name{color:#b79bff}
+.tfbox .tf-k-wan .tf-name{color:#ffb347}
 </style>
 <script>// Widget thong so may: fetch /api/pm/sysinfo moi 5s, hien goc phai.
 (function () {
@@ -2512,10 +2578,68 @@
   var host = document.querySelector('.titlebar-right');
   if (host) { bar.classList.add('sysbar-inline'); host.insertBefore(bar, host.firstChild); }
   else document.body.appendChild(bar);
+  // [Ver 2.112] O traffic PROXY | VPN | WAN dat TRUOC tom tat luong (tom tat + Reset nam sau traffic).
+  var tf = document.createElement('span');
+  tf.id = 'tfbox'; tf.className = 'tfbox'; tf.hidden = true;
+  tf.setAttribute('role', 'group'); tf.setAttribute('aria-label', 'T\u1ed1c \u0111\u1ed9 traffic Proxy, VPN, WAN (Mbps)');
+  tf.title = 'T\u1ed1c \u0111\u1ed9 Mbps: \u2193 t\u1ea3i xu\u1ed1ng, \u2191 t\u1ea3i l\u00ean';
+  var fsum = document.getElementById('flowSummary');
+  if (fsum && fsum.parentNode) fsum.parentNode.insertBefore(tf, fsum);
+  else bar.parentNode.insertBefore(tf, bar);
   function fmtUp(s) {
     s = s | 0;
     var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
     return (d ? d + 'd' : '') + (h ? h + 'h' : '') + m + 'm';
+  }
+  // [Ver 2.112] Traffic WAN / VPN / Proxy theo che do chon trong Cau hinh ket noi > Hien thi traffic.
+  function fmtMbps(v) { return v == null ? '-' : (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)); }
+  function escT(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  function paintTraffic(t) {
+    if (!t || t.mode === 'off' || !t.items) { tf.hidden = true; return; }
+    var s = t.show, by = {};
+    t.items.forEach(function (it) { by[it.key] = it; });
+    // Da chon dinh danh (proxy_N / tunnel) => o cua nhom do do rieng dinh danh.
+    if (s && s.name) by[s.key] = s;
+    tf.innerHTML = ['proxy', 'vpn', 'wan'].map(function (k) {
+      var it = by[k] || {label: k.toUpperCase()};
+      var on = s && s.key === k;
+      var tip = it.down == null && it.note ? it.note : '';
+      return '<span class="tf-cell tf-k-' + k + (on ? ' tf-on' : '') + '"' + (tip ? ' title="' + escT(tip) + '"' : '') + '>'
+        + '<span class="tf-name">' + escT(it.label || k) + (it.name ? '<small>' + escT(it.name) + '</small>' : '')
+        + (on && t.mode === 'auto' ? '<small>cao nh\u1ea5t</small>' : '') + '</span>'
+        + '<span class="tf-val">' + (it.down != null
+          ? '<span class="tf-dn">\u2193' + fmtMbps(it.down) + '</span><span class="tf-up">\u2191' + fmtMbps(it.up) + '</span>'
+          : '<span class="tf-u">' + escT(tip ? '-' : '\u0111ang \u0111o') + '</span>') + '</span></span>';
+    }).join('');
+    tf.hidden = false;
+  }
+  // [Ver 2.112] Cong mang vat ly o giua hang tieu de.
+  var pb = document.getElementById('portsBar');
+  var RJ45 = '<svg viewBox="0 0 24 22" aria-hidden="true"><rect class="pt-body" x="1" y="1" width="22" height="20" rx="3"/>'
+    + '<path class="pt-hole" d="M5 6h14v8h-3v3h-8v-3H5z"/>'
+    + '<rect class="pt-led" x="3" y="2.5" width="4" height="2" rx=".6"/><rect class="pt-led" x="17" y="2.5" width="4" height="2" rx=".6"/></svg>';
+  function fmtSpd(s) { return s == null ? '' : (s >= 1000 ? (s % 1000 ? (s / 1000).toFixed(1) : s / 1000) + 'G' : s + 'M'); }
+  function paintPorts(ps) {
+    if (!pb) return;
+    if (!ps || !ps.length) { pb.innerHTML = ''; return; }
+    var sig = JSON.stringify(ps);
+    if (pb._sig === sig) return;
+    pb._sig = sig;
+    pb.innerHTML = ps.map(function (p) {
+      var role = p.role || 'Kh\u00f4ng d\u00f9ng';
+      var st = p.up ? '\u0110\u00e3 c\u1eafm d\u00e2y' + (p.speed ? ' \u00b7 ' + fmtSpd(p.speed).replace('M', ' Mbps').replace('G', ' Gbps') : '') : 'Ch\u01b0a c\u1eafm d\u00e2y';
+      var tip = p.name + ' \u00b7 ' + role + ' \u00b7 ' + st + (p.master ? ' \u00b7 ' + p.master : '') + (p.mac ? '\nMAC ' + p.mac : '');
+      var cls = 'pt ' + (p.up ? 'up' : 'down') + (p.role === 'WAN' ? ' wan' : '');
+      return '<div class="' + cls + '" role="listitem" tabindex="0" title="' + escT(tip) + '" aria-label="' + escT(tip) + '">' + RJ45
+        + '<span class="pt-n">' + escT(p.name.replace(/^eth/, 'Eth')) + '</span>'
+        + '<span class="pt-s">' + escT((p.role ? p.role : '') + (p.up && p.speed ? ' ' + fmtSpd(p.speed) : '')) + '</span></div>';
+    }).join('');
+  }
+  function trafficTitle(t) {
+    if (!t || !t.items) return '';
+    return ' | Traffic: ' + t.items.map(function (it) {
+      return it.label + ' \u2193' + fmtMbps(it.down) + ' \u2191' + fmtMbps(it.up) + (it.down == null && it.note ? ' (' + it.note + ')' : '');
+    }).join(', ') + ' Mbps';
   }
   async function tick() {
     try {
@@ -2535,7 +2659,9 @@
         + ' | RAM: ' + ((d.mem || {}).used_mb || '?') + '/' + ((d.mem || {}).total_mb || '?') + 'MB'
         + ' | Disk: ' + (dk.used_gb != null ? dk.used_gb + '/' + dk.total_gb + 'GB (' + dk.mount + ')' : '—')
         + ' | Load: ' + ((d.load || []).join(' ') || '—')
-        + ' | Uptime: ' + fmtUp(d.uptime_s || 0);
+        + ' | Uptime: ' + fmtUp(d.uptime_s || 0) + trafficTitle(d.traffic);
+      paintTraffic(d.traffic);
+      paintPorts(d.ports);
     } catch (e) { bar.textContent = 'máy: ?'; }
   }
   tick();
@@ -2620,6 +2746,7 @@
     <button type="button" class="cn-tab" role="tab" data-t="dom">Tên miền / IP<span class="n" id="cnN-dom">0</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="route">Định tuyến cố định<span class="n" id="cnN-route">tắt</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="flow">Theo dõi luồng<span class="n" id="cnN-flow">-</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="traffic">Hiển thị traffic<span class="n" id="cnN-traffic">-</span></button>
    </div>
    <div class="cn-pane">
     <section id="cnS-direct" role="tabpanel" aria-label="Internet trực tiếp">
@@ -2695,10 +2822,6 @@
     </section>
     <section id="cnS-flow" role="tabpanel" aria-label="Theo dõi luồng" hidden>
      <h4>Theo dõi luồng</h4>
-     <div class="cn-blk"><ul class="cn-notes"><li>Xem tên miền của từng máy đang đi đường nào: <b>Proxy</b> (proxy gán cho máy), <b>Luồng phụ</b> (đường tách riêng: WAN / PPPoE / VPN / Proxy nhập tay), <b>WAN</b> (tên miền/IP trong danh sách không qua Proxy/VPN) hay <b>Trực tiếp</b>, và bao nhiêu MB.</li>
-      <li>Phần trăm chỉ chia trong nhóm <b>Proxy</b> + <b>Luồng phụ</b>. <b>WAN</b> và <b>Trực tiếp</b> là số độc lập, không tính %.</li>
-      <li>Chỉ có số liệu của máy đi qua gencore (Proxy / PPPoE). Máy gán VPN ở trang /vpn đi thẳng tunnel, không hiện ở đây.</li>
-      <li>Lưu ý: bật / tắt theo dõi sẽ khởi động lại gencore, router chập mạng vài giây.</li></ul></div>
      <div class="cn-blk" id="flowPanel">
 <div id="flowOff" hidden style="margin-top:8px;">
               <div class="sub">Đang tắt. Bật sẽ khởi động lại gencore (router chập vài giây). Chỉ đọc số liệu trong router, không mở cổng ra ngoài.</div>
@@ -2707,19 +2830,45 @@
             <div id="flowOn" hidden>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
                 <label for="flowIp" style="font-weight:700;">Máy (IP)</label>
-                <select id="flowIp" onchange="loadFlow()"><option value="">Tất cả</option></select>
+                <select id="flowIp" onchange="loadFlow(true)"><option value="">Tất cả</option></select>
                 <button type="button" class="btn small" onclick="setFlow('reset')">Xoá số đếm</button>
                 <button type="button" class="btn small" onclick="setFlow('disable')">Tắt theo dõi</button>
                 <span id="flowSince" class="sub"></span>
               </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <label for="flowQ" style="font-weight:700;">Tìm</label>
+                <input id="flowQ" type="search" placeholder="tên miền, IP, proxy_144, 18:46..." autocomplete="off" oninput="flowSearch()" style="flex:1;min-width:200px;">
+                <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="flowPause" onchange="if(!this.checked) loadFlow()"> Dừng cuộn</label>
+                <span id="flowCount" class="sub" aria-live="polite"></span>
+              </div>
               <div id="flowTotals" style="margin-top:8px;font-weight:700;" aria-live="polite"></div>
               <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;">
-                <thead><tr style="text-align:left;border-bottom:1px solid var(--line-3);"><th scope="col">Tên miền</th><th scope="col">Máy</th><th scope="col">Đi đường</th><th scope="col" style="text-align:right;">Tải xuống</th><th scope="col" style="text-align:right;">Tải lên</th><th scope="col" style="text-align:right;">Kết nối</th></tr></thead>
+                <caption class="sub" style="text-align:left;caption-side:bottom;padding-top:6px;">Nhật ký kết nối, mới nhất ở trên. Dòng đang mở (●) tiếp tục cộng dồn byte.</caption>
+                <thead><tr style="text-align:left;border-bottom:1px solid var(--line-3);"><th scope="col">Thời gian</th><th scope="col">Tên miền</th><th scope="col" id="flowIpTh">Máy</th><th scope="col">Đi đường</th><th scope="col" style="text-align:right;">Tải xuống</th><th scope="col" style="text-align:right;">Tải lên</th><th scope="col" style="text-align:right;">Kết nối</th></tr></thead>
                 <tbody id="flowRows"></tbody>
               </table>
-              <div class="sub" style="margin-top:6px;">Đọc mỗi 2 giây. Kết nối đóng giữa 2 lần đọc có thể thiếu vài KB cuối. Số đếm reset khi gencore khởi động lại.</div>
             </div>
             <div id="flowErr" class="sub" style="color:#dc2626;margin-top:6px;"></div>
+     </div>
+    </section>
+    <section id="cnS-traffic" role="tabpanel" aria-label="Hiển thị traffic" hidden>
+     <h4>Hiển thị traffic trên thanh trạng thái</h4>
+     <div class="cn-blk"><h5>Chọn luồng hiển thị</h5><ul class="cn-notes">
+      <li><b>Tự động</b> (không cấu hình): hiện luồng đang có tốc độ cao nhất trong WAN / VPN / Proxy.</li>
+      <li><b>VPN</b> / <b>Proxy</b>: chọn thêm <b>định danh</b> (1 tunnel VPN hoặc 1 proxy_N) để đo riêng; để "Tất cả" thì cộng tổng. Proxy cần bật <b>Theo dõi luồng</b>.</li>
+      <li><b>WAN</b>: luồng đi thẳng mạng chính, ước tính = tổng cổng WAN − VPN − Proxy.</li>
+      <li>Đổi chế độ áp dụng ngay, không khởi động lại gencore, không chập mạng.</li></ul>
+      <fieldset class="cn-fs"><legend>Luồng</legend>
+       <div class="cn-row">
+        <select id="connTrafficMode" aria-label="Chọn luồng traffic hiển thị" onchange="saveTrafficMode()" style="flex:1;min-width:220px">
+         <option value="auto">Tự động (luồng cao nhất)</option><option value="wan">WAN</option><option value="vpn">VPN</option><option value="proxy">Proxy</option><option value="off">Không hiển thị</option></select>
+       </div>
+       <div class="cn-row" id="connTrafficTgRow" hidden style="margin-top:8px">
+        <label for="connTrafficTarget" style="font-weight:700;min-width:90px">Định danh</label>
+        <select id="connTrafficTarget" onchange="saveTrafficMode()" style="flex:1;min-width:220px"></select>
+       </div>
+      </fieldset>
+      <div id="connTrafficNow" class="sub" aria-live="polite" style="margin-top:8px;font-family:Consolas,monospace"></div>
      </div>
     </section>
    </div>
@@ -2744,6 +2893,8 @@ function connShowTab(t, focus) {
   document.querySelectorAll('#connBox .cn-tab').forEach(b => { const on = b.dataset.t === t; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; if (on && focus) b.focus(); });
   document.querySelectorAll('#connBox .cn-pane section').forEach(s => { s.hidden = s.id !== 'cnS-' + t; });
   if (typeof toggleFlowPanel === 'function') toggleFlowPanel(t === 'flow');
+  clearInterval(trafficTimer); trafficTimer = null;
+  if (t === 'traffic' && !$c('connPanel').hidden) { loadTraffic(); trafficTimer = setInterval(loadTraffic, 3000); }
 }
 function connRefresh() {
   document.querySelectorAll('#connBox [data-cnt]').forEach(s => { s.textContent = connLines(s.dataset.cnt).length + ' mục'; });
@@ -2759,6 +2910,49 @@ function connRefresh() {
     + chip('UDP ' + ($c('connUdp').checked ? 'chặn' : 'mở'), $c('connUdp').checked)
     + chip('WebRTC ' + ($c('connWebrtc').checked ? 'chặn' : 'mở'), $c('connWebrtc').checked)
     + chip('Định tuyến ' + ($c('connFixedOn').checked ? 'bật' : 'tắt'), $c('connFixedOn').checked);
+}
+// [Ver 2.112] Hien thi traffic: luu ngay khi doi, khong cho nut Luu & ap dung.
+const TRAFFIC_MODE_LABEL = { auto: 'tự động', wan: 'WAN', vpn: 'VPN', proxy: 'Proxy', off: 'tắt' };
+let trafficTimer = null;
+let trafficTargets = { proxies: [], vpns: [] };
+function trafficTgFill(mode, target) {
+  const row = $c('connTrafficTgRow'), sel = $c('connTrafficTarget');
+  const need = mode === 'proxy' || mode === 'vpn';
+  row.hidden = !need;
+  if (!need) return;
+  const list = mode === 'proxy'
+    ? (trafficTargets.proxies || []).map(p => ({ v: p.tag, t: p.tag + (p.server && p.server !== ':' ? '  (' + p.server + ')' : '') }))
+    : (trafficTargets.vpns || []).map(v => ({ v: v.name, t: v.name + '  (' + v.dev + (v.running ? '' : ', tắt') + ')' }));
+  if (target && !list.some(x => x.v === target)) list.push({ v: target, t: target + '  (không còn)' });
+  const sig = mode + '|' + list.map(x => x.v).join(',');
+  if (sel.dataset.sig !== sig) {
+    sel.innerHTML = '<option value="">Tất cả ' + (mode === 'proxy' ? 'proxy' : 'VPN') + '</option>' + list.map(x => `<option value="${esc(x.v)}">${esc(x.t)}</option>`).join('');
+    sel.dataset.sig = sig;
+  }
+  sel.value = target || '';
+}
+function trafficPaint(r) {
+  const mode = (r && r.mode) || 'auto', s = (r && r.sample) || {};
+  if (r && r.targets) trafficTargets = r.targets;
+  $c('connTrafficMode').value = mode;
+  trafficTgFill(mode, (r && r.target) || '');
+  $c('cnN-traffic').textContent = (TRAFFIC_MODE_LABEL[mode] || mode) + (r && r.target ? ' ' + r.target : '');
+  const f = v => v == null ? '-' : v.toFixed(2);
+  const sh = s.show;
+  $c('connTrafficNow').textContent = (sh && sh.name ? 'Đang đo ' + sh.label + ' ' + sh.name + ': ↓' + f(sh.down) + ' ↑' + f(sh.up) + ' Mbps' + (sh.down == null && sh.note ? ' (' + sh.note + ')' : '') + '  ·  ' : '') + (s.items || []).map(it => it.label + ': ↓' + f(it.down) + ' ↑' + f(it.up) + ' Mbps' + (it.down == null && it.note ? ' (' + it.note + ')' : '')).join('  ·  ');
+}
+async function loadTraffic() {
+  try { trafficPaint(await fetchJSON('/api/pm/traffic')); } catch (e) { $c('connTrafficNow').textContent = 'Không tải được: ' + e.message; }
+}
+async function saveTrafficMode() {
+  const mode = $c('connTrafficMode').value;
+  const keepTg = (mode === 'proxy' || mode === 'vpn') && $c('connTrafficTarget').dataset.sig && $c('connTrafficTarget').dataset.sig.split('|')[0] === mode;
+  const target = keepTg ? $c('connTrafficTarget').value : '';
+  try {
+    const r = await fetchJSON('/api/pm/traffic', { method: 'POST', body: JSON.stringify({ mode, target }) });
+    if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
+    trafficPaint(r); connMsg('Đã đổi hiển thị traffic: ' + (TRAFFIC_MODE_LABEL[mode] || mode) + (target ? ' ' + target : ''), 'ok');
+  } catch (e) { connMsg('Lỗi lưu traffic: ' + e.message, 'err'); }
 }
 function connTargetUi() {
   const v = $c('connFixedTarget').value;
@@ -2815,10 +3009,11 @@ async function openConnPanel() {
     const tl = t === 'block' ? 'chặn' : t === 'wan' ? 'mạng chính' : t === 'proxy' ? 'proxy' : vpn ? 'VPN ' + vpn : t.startsWith('pppoe:') ? 'PPPoE #' + t.slice(6) : 'chưa chọn đường';
     $c('connRouteState').textContent = (sp.enabled ? 'Đang bật: ' : 'Đang tắt. Đường: ') + tl + (sp.enabled ? ', ' + (sp.applied || 0) + ' máy' : '');
     connTargetUi(); connRefresh();
+    loadTraffic();
     connMsg((r.vpn_ips || []).length + ' máy đang gán VPN.');
   } catch (e) { connMsg('Không tải được: ' + e.message, 'err'); }
 }
-function closeConnPanel() { if (typeof toggleFlowPanel === 'function') toggleFlowPanel(false); $c('connPanel').hidden = true; if (connFocusBack && connFocusBack.focus) connFocusBack.focus(); }
+function closeConnPanel() { clearInterval(trafficTimer); trafficTimer = null; if (typeof toggleFlowPanel === 'function') toggleFlowPanel(false); $c('connPanel').hidden = true; if (connFocusBack && connFocusBack.focus) connFocusBack.focus(); }
 function connTarget() {
   const v = $c('connFixedTarget').value;
   if (v === 'pppoe') { const n = parseInt($c('connFixedPppoe').value, 10); return n >= 1 ? 'pppoe:' + n : ''; }
@@ -2860,5 +3055,377 @@ async function saveConn() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$c('connPanel').hidden) closeConnPanel(); });
 })();
 </script>
+<!-- [Ver 2.112] Lam moi giao dien: gon, hien dai, dung duoc tren dien thoai. Dat cuoi trang de de len style cu. -->
+<style id="uiRefresh">
+body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+.wrap{padding:12px 14px}
+/* Nut */
+.btn{padding:7px 12px;border-radius:9px;font-size:13px;line-height:1.2;transition:border-color .15s,box-shadow .15s,transform .05s,filter .15s;box-shadow:0 1px 2px var(--shadow-card)}
+.btn:hover{filter:brightness(1.04)}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible,.icon-btn:focus-visible,.view-tab:focus-visible,.pt:focus-visible{outline:2px solid var(--accent-hi);outline-offset:2px}
+.btn[disabled]{opacity:.5;cursor:not-allowed;filter:none}
+.btn.small{padding:5px 9px;font-size:12px;border-radius:8px}
+.btn.warn{background:linear-gradient(135deg,#fbbf24,#f59e0b 60%,#ea580c);border-color:#f59e0b}
+.btn.apply{box-shadow:0 4px 12px rgba(236,72,153,.25)}
+.btn.tab.active{box-shadow:0 3px 10px rgba(15,23,42,.18)}
+.icon-btn{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:border-color .15s,background .15s}
+.icon-btn:hover{border-color:var(--accent-hi);background:var(--surface-hi)}
+.t-ico svg{width:13px;height:13px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+/* O nhap */
+input,textarea,select{border-radius:8px;padding:7px 10px;font-size:13.5px;transition:border-color .15s,box-shadow .15s;font-family:inherit}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(219,39,119,.15)}
+body.dark input:focus,body.dark textarea:focus,body.dark select:focus{box-shadow:0 0 0 3px rgba(244,114,182,.2)}
+/* Khung chinh */
+.panel{border-radius:16px;box-shadow:0 8px 28px var(--shadow-card)}
+.meta{padding:10px 14px}
+#sessionLabel{font-size:13px;padding:5px 11px}
+.status{padding:6px 14px;font-size:13px;min-height:0;box-shadow:0 3px 10px rgba(219,39,119,.12)}
+.lic-line{font-size:11.5px}
+.top-work-grid{gap:12px;padding:12px}
+.top-work-card{border-radius:12px}
+/* Bang */
+th{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--text-head);padding:9px 8px}
+td{font-size:13.5px;padding:7px 8px}
+tbody tr{transition:background .12s}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;font-size:11.5px}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.grid{scrollbar-width:thin}
+.view-tab{padding:8px 14px;font-size:12.5px}
+/* Modal */
+.modal{backdrop-filter:blur(2px)}
+.modal-card{border-radius:16px;max-height:92vh;overflow:auto}
+.modal.show .modal-card{animation:uiPop .16s ease-out}
+@keyframes uiPop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.modal.show .modal-card{animation:none}.btn,.icon-btn{transition:none}}
+
+/* ---- May tinh bang / man hep ---- */
+@media (max-width:1200px){
+  .top-work-grid{grid-template-columns:1fr 1fr}
+  .proxy-cell{min-width:300px}
+  .note-cell{min-width:160px}
+}
+/* Widget thong so trong hang tieu de: khong de len popup */
+.sysbar.sysbar-inline{position:static !important;z-index:auto !important}
+/* O chon loai proxy khong bi cat thanh "SO" */
+#rows td:nth-child(6) select,#columnProxyType{min-width:96px}
+@media (max-width:1100px){
+  /* Hang tieu de: cong mang xuong dong rieng de khong tran ngang */
+  .titlebar{flex-wrap:wrap;row-gap:6px}
+  .titlebar-mid{order:5;flex:1 1 100%;justify-content:center}
+  .titlebar-right{flex-shrink:1;min-width:0;flex-wrap:wrap;justify-content:flex-end}
+  #rowbar{flex-wrap:wrap !important;row-gap:8px}
+  #rowbar > div{flex-wrap:wrap !important}
+  #rowbar > div:first-child{flex:1 1 100%}
+  #rowbar #flowSummary:not([hidden]){flex-shrink:1}
+}
+
+/* ---- Dien thoai ---- */
+@media (max-width:760px){
+  .wrap{padding:8px}
+  /* Hang tieu de: ten + icon | version + connected; cong mang xuong dong rieng */
+  .titlebar{flex-wrap:wrap;gap:6px}
+  .titlebar-left{flex:1 1 auto;min-width:0;flex-wrap:nowrap}
+  .titlebar-left .project-tabs{min-width:0}
+  #projectTabProxy{max-width:52vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;padding:6px 10px}
+  .titlebar-right{flex:1 1 100%;min-width:0;flex-wrap:wrap;justify-content:flex-end;flex-shrink:1}
+  .titlebar-right .sysbar{order:3;flex:1 1 100%;min-width:0;justify-content:space-around;flex-wrap:wrap;gap:2px 6px;font-size:10.5px;padding:4px 10px;white-space:normal}
+  .titlebar-right .sysbar .sep{display:none}
+  .titlebar-mid{order:5;flex:1 1 100%;justify-content:center;padding:2px 0}
+  .pt .pt-s{display:block}
+  /* Thanh cau hinh: nut nho, tu xuong dong */
+  .toolbar{gap:6px}
+  .toolbar-left,.toolbar-right{gap:6px;width:100%}
+  .toolbar-right{justify-content:flex-start}
+  .toolbar .btn{padding:7px 10px;font-size:12px}
+  .cfg-menu-pop{position:fixed;left:8px;right:8px;top:auto;min-width:0}
+  .cfg-menu-pop::before{display:none}
+  /* Khung phien */
+  .meta{grid-template-columns:1fr;justify-items:center;gap:6px;text-align:center}
+  .meta-left,.meta-right{justify-self:center}
+  .lic-line{max-width:100%;text-align:center}
+  .top-work-grid{grid-template-columns:1fr;padding:8px;gap:8px}
+  .vpn-row{grid-template-columns:1fr}
+  .notes-wrap{padding:8px 10px}
+  /* Hang loc + traffic + tim kiem */
+  #rowbar > div:first-child > *{flex-shrink:1}
+  #rowbar .view-tabs{flex:1 1 auto;margin-top:0}
+  #rowbar .view-tab{flex:1 1 50%;padding:8px 6px}
+  #rowbar .tfbox{flex:1 1 100%;justify-content:space-between}
+  #rowbar .tfbox .tf-cell{flex:1 1 33%}
+  #rowbar #flowSummary:not([hidden]){flex:1 1 100%;flex-wrap:wrap;white-space:normal}
+  #rowbar #flowSummaryText{white-space:normal}
+  #rowbar > div:last-child{flex:1 1 100%;justify-content:space-between;flex-wrap:wrap !important;gap:6px}
+  #pager:empty{display:none}
+  #countLabel{flex:1 1 100%;text-align:right}
+  #rowSearchInput{flex:1 1 90px;min-width:0;width:auto !important}
+  #rowbar label[for=pageSizeSelect]{margin-left:0 !important}
+  #pageSizeSelect{flex:none;padding-right:4px}
+  #pager{margin-left:0 !important}
+  #countLabel{margin-left:0 !important;font-size:11.5px}
+  #rowbar #flowSummary:not([hidden]) .btn{margin-left:auto}
+  /* Bang may: chuyen thanh the, khong phai keo ngang */
+  .grid{max-height:none;overflow:visible}
+  .grid table,.grid tbody{display:block}
+  .grid thead,.grid thead tr{display:block}
+  .grid thead tr{display:flex;gap:8px;align-items:flex-end;justify-content:space-between;padding:8px 10px;background:var(--th-bg)}
+  .grid thead th{display:none;position:static;padding:0;border:0;background:transparent}
+  .grid thead th:nth-child(6),.grid thead th:nth-child(9){display:block}
+  .grid thead th:nth-child(9) .th-check{gap:6px}
+  .grid tbody tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:8px;padding:10px;border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 3px var(--shadow-card)}
+  .grid tbody td{border:0;padding:0;font-size:13px}
+  .grid tbody td:nth-child(1){font-weight:800;color:var(--text-head)}
+  .grid tbody td:nth-child(1)::before{content:"#"}
+  .grid tbody td:nth-child(2){font-size:11.5px;opacity:.75}
+  .grid tbody td:nth-child(3){font-weight:700}
+  .grid tbody td:nth-child(5)::before{content:"M\00E1y ";font-family:inherit;opacity:.65}
+  .grid tbody td:nth-child(5){margin-left:auto;font-weight:800}
+  .grid tbody td:nth-child(n+6){flex:1 1 100%;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .grid tbody td:nth-child(n+6)::before{flex:0 0 52px;font-size:11px;font-weight:800;text-transform:uppercase;color:var(--text-soft)}
+  .grid tbody td:nth-child(6)::before{content:"Lo\1EA1i"}
+  .grid tbody td:nth-child(7)::before{content:"Proxy"}
+  .grid tbody td:nth-child(8)::before{content:"Note"}
+  .grid tbody td:nth-child(9)::before{content:"Ki\1EC3m tra"}
+  .grid tbody td:nth-child(n+6) > input,.grid tbody td:nth-child(n+6) > select,.grid tbody td:nth-child(7) .pp-wrap{flex:1 1 0;min-width:0;width:auto !important;max-width:none !important}
+  .grid tbody td:nth-child(7) .pp-wrap select{width:100% !important}
+  .grid tbody td:nth-child(7){white-space:normal !important}
+  .proxy-cell,.note-cell{min-width:0}
+  /* Modal toan man */
+  /* Cau hinh ket noi: toan man, tieu de 1 dong, chip xuong duoi */
+  #connPanel{padding:0;z-index:10000}
+  #connBox{width:100vw;height:100%;max-height:100%;border-radius:0;border:0}
+  .cn-head{flex-wrap:wrap;gap:6px 10px;padding:10px 12px}
+  .cn-head h3{flex:1 1 auto;min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cn-head .cn-chips{order:3;flex:1 1 100%}
+  .cn-pane{padding:12px}
+  .cn-foot{padding:10px 12px;flex-wrap:wrap}
+  .checkline{gap:8px 12px}
+  .checkline label{flex:1 1 140px;font-size:13px}
+  .checkline input[type=checkbox]{width:18px;height:18px;flex:none;margin:0}
+  .modal{align-items:flex-end}
+  .modal-card{width:100vw !important;max-width:100vw;max-height:94vh;border-radius:16px 16px 0 0}
+  .modal-head,.modal-body,.modal-foot{padding:12px}
+  .modal-foot .btn{flex:1 1 auto}
+  .group3-action-line{grid-template-columns:1fr 1fr}
+  input,textarea,select{font-size:16px}
+}
+@media (max-width:380px){
+  .toolbar .btn{padding:6px 8px;font-size:11.5px}
+  #projectTabProxy{max-width:44vw}
+}
+</style>
+<!-- [Ver 2.112] NOC-UI BEGIN: giao dien toi tuy chon (nut "Giao dien NOC"), mac dinh = giao dien cu -->
+<style id="nocCss">
+/* Ban thu giao dien "NOC" (huong 1): nen toi, nhan xanh ngoc, o so lieu lon. Chi ap khi body.noc. */
+body.noc, body.noc.dark {
+  color-scheme: only dark;
+  --bg1:#060b12; --bg2:#08111b; --bg3:#050a10;
+  --text:#d6e4ef; --text-dim:#7d91a4; --text-soft:#8fb2c6; --text-head:#5eead4;
+  --accent:#14b8a6; --accent-hi:#2dd4bf; --accent-ink:#5eead4;
+  --surface:#0c1622; --surface-2:#0f1b29; --surface-3:#13212f; --surface-4:#0d1824;
+  --surface-hi:#102030; --surface-alt:#0f1c2a; --th-bg:#0e1a27;
+  --line:#1c3044; --line-2:#17293a; --line-3:#22394f; --line-4:#22394f; --line-5:#17293a;
+  --line-dash:#1f3549; --line-lock:#22394f; --line-status:#1f4a52;
+  --grid1:#0c1622; --grid2:#0a131d; --grid-line:#17293a;
+  --bulk1:#0b1520; --bulk2:#0a121b;
+  --status1:#0f1e2b; --status2:#0c1823;
+  --tab-bg:#0f766e; --tab-ink:#ccfbf1;
+  --info:#38bdf8; --info-b:#38bdf8;
+  --chip-bg:#0f1b29; --chip-line:#1c3044;
+  --disabled-bg:#13212f; --disabled-ink:#7d91a4;
+  --shadow-card:rgba(0,0,0,.45); --shadow-drop:rgba(0,0,0,.65);
+  --neon:#2dd4bf; --neon-2:#4ade80; --amber:#fbbf24; --rose:#fb7185; --violet:#a78bfa;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  background:
+    radial-gradient(1200px 500px at 15% -10%, rgba(45,212,191,.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(56,189,248,.08), transparent 60%),
+    linear-gradient(rgba(45,212,191,.035) 1px, transparent 1px) 0 0/100% 32px,
+    linear-gradient(90deg, rgba(45,212,191,.035) 1px, transparent 1px) 0 0/32px 100%,
+    #060b12 fixed;
+  color:var(--text);
+}
+body.noc ::selection{background:rgba(45,212,191,.35)}
+
+/* Hang tieu de */
+body.noc .titlebar{background:rgba(12,22,34,.75);border:1px solid var(--line);border-radius:14px;padding:8px 12px;backdrop-filter:blur(6px)}
+body.noc #projectTabProxy{background:transparent;border:0;color:#e6fffb;font-weight:800;letter-spacing:.6px;box-shadow:none;padding-left:4px}
+body.noc #projectTabProxy::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--neon);box-shadow:0 0 10px var(--neon);margin-right:9px;vertical-align:middle;animation:nocPulse 2s ease-in-out infinite}
+@keyframes nocPulse{50%{opacity:.35}}
+body.noc .sysbar{background:#08121c;border-color:var(--line);box-shadow:none}
+body.noc .conn-badge.connected{background:rgba(74,222,128,.10);color:#86efac;border-color:rgba(74,222,128,.4)}
+body.noc .conn-badge.disconnected{background:rgba(251,113,133,.10);color:#fda4af;border-color:rgba(251,113,133,.4)}
+body.noc .version-btn{background:#0f1b29;color:var(--text);border-color:var(--line)}
+
+/* Nut */
+body.noc .btn{background:#0f1b29;color:var(--text);border:1px solid var(--line-3);box-shadow:none}
+body.noc .btn:hover{border-color:var(--neon);color:#e6fffb;background:#122334}
+body.noc .btn.apply{background:linear-gradient(135deg,#0d9488,#14b8a6 55%,#22c55e);border-color:#14b8a6;color:#03140f;font-weight:800;box-shadow:0 0 0 1px rgba(45,212,191,.25),0 6px 22px rgba(20,184,166,.28)}
+body.noc .btn.apply:hover{filter:brightness(1.1);color:#02110c}
+body.noc .btn.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.45);color:#fcd34d}
+body.noc .btn.warn:hover{background:rgba(251,191,36,.16);color:#fde68a}
+body.noc .btn.tab{background:#0f1b29;border-color:var(--line-3);color:var(--text-soft)}
+body.noc .btn.tab.active{background:rgba(45,212,191,.12);border-color:var(--neon);color:#99f6e4;box-shadow:inset 0 -2px 0 var(--neon)}
+body.noc .icon-btn{background:#0f1b29;border-color:var(--line-3);color:var(--text-soft)}
+
+/* Panel chinh */
+body.noc .panel{background:rgba(12,22,34,.82);border:1px solid var(--line);border-top:2px solid var(--neon);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+body.noc #proxyPanel{border-top:2px solid var(--neon)}
+body.noc .noc-toggle{border-color:var(--neon);color:#99f6e4}
+body.noc .meta{background:transparent;border-bottom:1px solid var(--line-2)}
+body.noc #sessionLabel{background:rgba(45,212,191,.12)!important;color:#99f6e4!important;border:1px solid rgba(45,212,191,.4)!important;box-shadow:none!important}
+body.noc .status{background:#0f1e2b;color:#99f6e4;border:1px solid var(--line-status);box-shadow:none}
+body.noc .info-note{color:#7dd3fc}
+body.noc .lic-line{background:rgba(74,222,128,.08)!important;color:#86efac!important;border-color:rgba(74,222,128,.3)!important}
+body.noc .view-tabs{background:#0a141f;border-color:var(--line)}
+body.noc .view-tab{color:var(--text-dim);background:transparent}
+body.noc .view-tab.active{background:rgba(45,212,191,.14);border-color:var(--neon);color:#99f6e4;box-shadow:inset 0 -2px 0 var(--neon)}
+body.noc .tfbox{background:#08121c;border-color:var(--line)}
+
+/* O nhap */
+body.noc input, body.noc select, body.noc textarea{background:#08121c;color:var(--text);border:1px solid var(--line-3)}
+body.noc input::placeholder, body.noc textarea::placeholder{color:#4b6274}
+body.noc input:focus, body.noc select:focus, body.noc textarea:focus{border-color:var(--neon);box-shadow:0 0 0 3px rgba(45,212,191,.18);outline:none}
+
+/* Bang may */
+body.noc table{border-collapse:separate;border-spacing:0}
+body.noc th{background:#0b1622;color:#6ee7d7;font-size:11px;letter-spacing:.8px;border-bottom:1px solid var(--line)}
+body.noc #rows tr td{border-bottom:1px solid var(--line-2)}
+body.noc #rows tr:hover td{background:rgba(45,212,191,.04)}
+body.noc #rows tr:has(.badge.online) td:first-child{box-shadow:inset 3px 0 0 var(--neon-2)}
+body.noc #rows tr:has(.badge.offline) td:first-child{box-shadow:inset 3px 0 0 #475569}
+body.noc #rows td.mono{color:#9fc4d8;font-family:Consolas,monospace}
+body.noc .badge.online{background:rgba(74,222,128,.12);color:#86efac;border:1px solid rgba(74,222,128,.35);box-shadow:0 0 12px rgba(74,222,128,.15)}
+body.noc .badge.offline{background:rgba(100,116,139,.15);color:#94a3b8;border:1px solid rgba(100,116,139,.35)}
+
+/* Popup */
+body.noc .modal{background:rgba(2,6,12,.7)}
+body.noc .modal-card, body.noc #connBox{background:#0c1622;border-color:var(--line);border-top:2px solid var(--neon)}
+body.noc .cfg-menu-pop{background:#0c1622;border-color:var(--line)}
+
+/* ===== O so lieu (KPI) ===== */
+.noc-kpi{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:10px 0 12px}
+.noc-card{position:relative;background:linear-gradient(180deg,rgba(16,30,45,.92),rgba(10,19,29,.92));border:1px solid var(--line);border-radius:12px;padding:10px 12px 8px;overflow:hidden;min-width:0}
+.noc-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--k,#2dd4bf);box-shadow:0 0 12px var(--k,#2dd4bf)}
+.noc-lbl{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);display:flex;justify-content:space-between;gap:6px}
+.noc-lbl i{font-style:normal;color:var(--k);opacity:.9}
+.noc-big{font-family:Consolas,'Cascadia Mono',monospace;font-size:26px;font-weight:700;color:#f0fdfa;line-height:1.15;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.noc-big small{font-size:12px;color:var(--text-dim);font-weight:600;margin-left:3px}
+.noc-sub{font-size:11.5px;color:var(--text-soft);font-family:Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.noc-sub .dn{color:#5eead4}.noc-sub .up{color:#fcd34d;margin-left:6px}
+.noc-spark{display:block;width:100%;height:30px;margin-top:4px}
+.noc-bar{height:5px;border-radius:9px;background:#13212f;margin-top:8px;overflow:hidden}
+.noc-bar b{display:block;height:100%;background:var(--k);box-shadow:0 0 10px var(--k);border-radius:9px;transition:width .4s}
+.noc-card.top{border-color:var(--k)}
+.noc-card.top .noc-lbl::after{content:"CAO NH\1EA4T";font-size:9px;color:#03140f;background:var(--k);border-radius:4px;padding:1px 5px;letter-spacing:.5px}
+
+@media (max-width:1100px){.noc-kpi{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:760px){
+  .noc-kpi{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .noc-big{font-size:21px}
+  body.noc #rows tr{background:linear-gradient(180deg,rgba(16,30,45,.9),rgba(10,19,29,.9))!important;border:1px solid var(--line)!important}
+  body.noc #rows tr:has(.badge.online){border-left:3px solid var(--neon-2)!important}
+  body.noc #rows tr:has(.badge.offline){border-left:3px solid #475569!important}
+  body.noc #rows tr td:first-child{box-shadow:none}
+}
+@media (prefers-reduced-motion:reduce){body.noc #projectTabProxy::before{animation:none}.noc-bar b{transition:none}}
+
+</style>
+<script id="nocJs">
+// Ban thu "NOC": hang o so lieu (may online, traffic Proxy/VPN/WAN co bieu do nho, CPU/nhiet do).
+// Chi doc du lieu (GET /api/pm/sysinfo + danh sach may tren trang), khong ghi gi.
+(function () {
+  // Nut bat/tat giao dien NOC (luu localStorage pm_ui). Mac dinh = giao dien cu.
+  var on = false;
+  try { on = localStorage.getItem('pm_ui') === 'noc'; } catch (e) {}
+  var tb = document.getElementById('themeBtn');
+  if (tb && !document.getElementById('nocBtn')) {
+    var nb = document.createElement('button');
+    nb.id = 'nocBtn'; nb.type = 'button'; nb.className = 'btn small noc-toggle';
+    nb.textContent = on ? 'Giao di\u1ec7n c\u0169' : 'Giao di\u1ec7n NOC';
+    nb.title = on ? 'Quay v\u1ec1 giao di\u1ec7n c\u0169' : 'B\u1eadt giao di\u1ec7n t\u1ed1i ki\u1ec3u b\u1ea3ng \u0111i\u1ec1u khi\u1ec3n m\u1ea1ng';
+    nb.setAttribute('aria-pressed', on ? 'true' : 'false');
+    nb.onclick = function () { try { localStorage.setItem('pm_ui', on ? 'classic' : 'noc'); } catch (e) {} location.reload(); };
+    tb.parentNode.insertBefore(nb, tb.nextSibling);
+  }
+  if (!on) return;
+  if (window.__nocOn) return; window.__nocOn = true;
+  document.body.classList.add('noc');
+  var panel = document.getElementById('proxyPanel');
+  if (!panel) return;
+  var kpi = document.createElement('section');
+  kpi.className = 'noc-kpi'; kpi.setAttribute('aria-label', 'Tong quan router');
+  panel.parentNode.insertBefore(kpi, panel);
+  var K = {proxy: '#fb7185', vpn: '#a78bfa', wan: '#fbbf24'};
+  var hist = {proxy: [], vpn: [], wan: []}, MAX = 40;
+  var last = null;
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  function f(v) { return v == null ? '-' : (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)); }
+  function spark(arr, col) {
+    if (arr.length < 2) return '<svg class="noc-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"></svg>';
+    var mx = Math.max.apply(null, arr.concat([0.05]));
+    var pts = arr.map(function (v, i) { return (i * 100 / (MAX - 1)).toFixed(1) + ',' + (28 - v / mx * 25).toFixed(1); });
+    var off = 100 - (arr.length - 1) * 100 / (MAX - 1);
+    var g = 'g' + col.slice(1);
+    return '<svg class="noc-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">'
+      + '<defs><linearGradient id="' + g + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + col + '" stop-opacity=".45"/><stop offset="1" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>'
+      + '<g transform="translate(' + off.toFixed(1) + ',0)"><polygon fill="url(#' + g + ')" points="0,30 ' + pts.join(' ') + ' ' + ((arr.length - 1) * 100 / (MAX - 1)).toFixed(1) + ',30"/>'
+      + '<polyline fill="none" stroke="' + col + '" stroke-width="1.6" vector-effect="non-scaling-stroke" points="' + pts.join(' ') + '"/></g></svg>';
+  }
+  function machines() {
+    var rows = [];
+    try { if (typeof getVisibleRows === 'function') rows = getVisibleRows() || []; } catch (e) {}
+    var on = rows.filter(function (r) { return r.status === 'online'; }).length;
+    return {total: rows.length, on: on};
+  }
+  function paint() {
+    var m = machines(), d = last || {}, t = d.traffic || {}, by = {};
+    (t.items || []).forEach(function (it) { by[it.key] = it; });
+    var topKey = null, topV = -1;
+    ['proxy', 'vpn', 'wan'].forEach(function (k) { var it = by[k]; if (it && it.down != null && it.down + (it.up || 0) > topV) { topV = it.down + (it.up || 0); topKey = k; } });
+    var pct = m.total ? Math.round(m.on * 100 / m.total) : 0;
+    var html = '<div class="noc-card" style="--k:#4ade80"><div class="noc-lbl">M\u00e1y online<i>\u25cf</i></div>'
+      + '<div class="noc-big">' + m.on + '<small>/ ' + m.total + '</small></div>'
+      + '<div class="noc-sub">' + (m.total - m.on) + ' offline \u00b7 ' + pct + '%</div><div class="noc-bar"><b style="width:' + pct + '%"></b></div></div>';
+    ['proxy', 'vpn', 'wan'].forEach(function (k) {
+      var it = by[k] || {}, tot = it.down == null ? null : it.down + (it.up || 0);
+      html += '<div class="noc-card' + (k === topKey && topV > 0 ? ' top' : '') + '" style="--k:' + K[k] + '">'
+        + '<div class="noc-lbl">' + esc(it.label || k.toUpperCase()) + '</div>'
+        + '<div class="noc-big">' + f(tot) + '<small>Mbps</small></div>'
+        + '<div class="noc-sub"><span class="dn">\u2193' + f(it.down) + '</span><span class="up">\u2191' + f(it.up) + '</span></div>'
+        + spark(hist[k], K[k]) + '</div>';
+    });
+    var c = d.cpu_pct, tc = d.temp_c, mem = (d.mem || {}).pct;
+    html += '<div class="noc-card" style="--k:#38bdf8"><div class="noc-lbl">CPU<i>' + (d.cpu_count ? d.cpu_count + ' nh\u00e2n' : '') + '</i></div>'
+      + '<div class="noc-big">' + (c == null ? '-' : c) + '<small>%</small></div>'
+      + '<div class="noc-sub">RAM ' + (mem == null ? '-' : mem + '%') + ' \u00b7 Load ' + esc((d.load || [])[0] == null ? '-' : d.load[0]) + '</div>'
+      + '<div class="noc-bar"><b style="width:' + (c || 0) + '%"></b></div></div>';
+    var tk = tc == null ? '#64748b' : tc >= 75 ? '#fb7185' : tc >= 60 ? '#fbbf24' : '#2dd4bf';
+    html += '<div class="noc-card" style="--k:' + tk + '"><div class="noc-lbl">Nhi\u1ec7t \u0111\u1ed9</div>'
+      + '<div class="noc-big">' + (tc == null ? '-' : tc) + '<small>\u00b0C</small></div>'
+      + '<div class="noc-sub">Uptime ' + up(d.uptime_s) + '</div>'
+      + '<div class="noc-bar"><b style="width:' + Math.min(100, tc || 0) + '%"></b></div></div>';
+    kpi.innerHTML = html;
+  }
+  function up(s) { s = s | 0; var dd = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), mm = Math.floor(s % 3600 / 60); return (dd ? dd + 'd ' : '') + h + 'h ' + mm + 'm'; }
+  async function tick() {
+    try {
+      var r = await fetch('/api/pm/sysinfo', {cache: 'no-store'});
+      var d = await r.json();
+      if (d && d.ok) {
+        last = d;
+        ((d.traffic || {}).items || []).forEach(function (it) {
+          if (!hist[it.key] || it.down == null) return;
+          hist[it.key].push(it.down + (it.up || 0));
+          if (hist[it.key].length > MAX) hist[it.key].shift();
+        });
+      }
+    } catch (e) {}
+    paint();
+  }
+  tick(); setInterval(tick, 3000);
+})();
+
+</script>
+<!-- NOC-UI END -->
 </body>
 </html>
