@@ -3251,6 +3251,9 @@ body.noc .titlebar{background:rgba(12,22,34,.75);border:1px solid var(--line);bo
 body.noc #projectTabProxy{background:transparent;border:0;color:#e6fffb;font-weight:800;letter-spacing:.6px;box-shadow:none;padding-left:4px}
 body.noc #projectTabProxy::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--neon);box-shadow:0 0 10px var(--neon);margin-right:9px;vertical-align:middle;animation:nocPulse 2s ease-in-out infinite}
 @keyframes nocPulse{50%{opacity:.35}}
+/* [Ver 2.114] Giu thanh thong so router (nhiet do/CPU/RAM/Disk/uptime). An o traffic PROXY|VPN|WAN va dong tom tat luong
+   canh tab vi da co trong 6 o so lieu. */
+body.noc #tfbox, body.noc #flowSummary{display:none!important}
 body.noc .sysbar{background:#08121c;border-color:var(--line);box-shadow:none}
 body.noc .conn-badge.connected{background:rgba(74,222,128,.10);color:#86efac;border-color:rgba(74,222,128,.4)}
 body.noc .conn-badge.disconnected{background:rgba(251,113,133,.10);color:#fda4af;border-color:rgba(251,113,133,.4)}
@@ -3292,10 +3295,10 @@ body.noc th{background:#0b1622;color:#6ee7d7;font-size:11px;letter-spacing:.8px;
 body.noc #rows tr td{border-bottom:1px solid var(--line-2)}
 body.noc #rows tr:hover td{background:rgba(45,212,191,.04)}
 body.noc #rows tr:has(.badge.online) td:first-child{box-shadow:inset 3px 0 0 var(--neon-2)}
-body.noc #rows tr:has(.badge.offline) td:first-child{box-shadow:inset 3px 0 0 #475569}
+body.noc #rows tr:has(.badge.offline) td:first-child{box-shadow:inset 3px 0 0 #ef4444}
 body.noc #rows td.mono{color:#9fc4d8;font-family:Consolas,monospace}
 body.noc .badge.online{background:rgba(74,222,128,.12);color:#86efac;border:1px solid rgba(74,222,128,.35);box-shadow:0 0 12px rgba(74,222,128,.15)}
-body.noc .badge.offline{background:rgba(100,116,139,.15);color:#94a3b8;border:1px solid rgba(100,116,139,.35)}
+body.noc .badge.offline{background:rgba(239,68,68,.14);color:#fca5a5;border:1px solid rgba(239,68,68,.5);box-shadow:0 0 12px rgba(239,68,68,.18)}
 
 /* Popup */
 body.noc .modal{background:rgba(2,6,12,.7)}
@@ -3307,7 +3310,7 @@ body.noc .cfg-menu-pop{background:#0c1622;border-color:var(--line)}
 .noc-card{position:relative;background:linear-gradient(180deg,rgba(16,30,45,.92),rgba(10,19,29,.92));border:1px solid var(--line);border-radius:12px;padding:10px 12px 8px;overflow:hidden;min-width:0}
 .noc-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--k,#2dd4bf);box-shadow:0 0 12px var(--k,#2dd4bf)}
 .noc-lbl{font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);display:flex;justify-content:space-between;gap:6px}
-.noc-lbl i{font-style:normal;color:var(--k);opacity:.9}
+.noc-lbl i{font-style:normal;color:var(--k);opacity:.9;white-space:nowrap}
 .noc-big{font-family:Consolas,'Cascadia Mono',monospace;font-size:26px;font-weight:700;color:#f0fdfa;line-height:1.15;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .noc-big small{font-size:12px;color:var(--text-dim);font-weight:600;margin-left:3px}
 .noc-sub{font-size:11.5px;color:var(--text-soft);font-family:Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -3316,23 +3319,40 @@ body.noc .cfg-menu-pop{background:#0c1622;border-color:var(--line)}
 .noc-bar{height:5px;border-radius:9px;background:#13212f;margin-top:8px;overflow:hidden}
 .noc-bar b{display:block;height:100%;background:var(--k);box-shadow:0 0 10px var(--k);border-radius:9px;transition:width .4s}
 .noc-card.top{border-color:var(--k)}
+/* [Ver 2.114] O CPU / Nhiet do: danh sach thong so day du */
+.noc-info .noc-bar{margin:6px 0 4px}
+.noc-row{display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:var(--text-dim);margin-top:4px;min-width:0}
+.noc-row span{white-space:nowrap}
+.noc-row b{font-family:Consolas,monospace;font-weight:600;color:#cfe3ee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.noc-line{margin-top:5px;padding-left:7px;border-left:2px solid var(--c)}
+.noc-line-h{display:flex;justify-content:space-between;gap:6px;font-size:11px;font-weight:700;color:var(--c);white-space:nowrap}
+.noc-line-h em{font-style:normal;font-family:Consolas,monospace;color:#cfe3ee}
+.noc-line-v{font-family:Consolas,monospace;font-size:17px;font-weight:700;color:#f0fdfa;line-height:1.2;white-space:nowrap}
+.noc-stack{display:flex;height:6px;border-radius:9px;background:#13212f;margin:6px 0 4px;overflow:hidden}
+.noc-stack b{display:block;height:100%;transition:width .4s}
+.noc-lbl i .noc-reset{font-size:10.5px;padding:2px 8px;line-height:1.3;text-transform:none;letter-spacing:0;font-style:normal}
+.noc-mini{height:3px;border-radius:9px;background:#13212f;margin-top:2px;overflow:hidden}
+.noc-mini b{display:block;height:100%;background:#2dd4bf;border-radius:9px}
+.noc-mini.warm b{background:#fbbf24}.noc-mini.hot b{background:#fb7185}
 .noc-card.top .noc-lbl::after{content:"CAO NH\1EA4T";font-size:9px;color:#03140f;background:var(--k);border-radius:4px;padding:1px 5px;letter-spacing:.5px}
 
 @media (max-width:1100px){.noc-kpi{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:760px){
   .noc-kpi{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .noc-big{font-size:21px}
+  .noc-info .noc-lbl{flex-wrap:wrap;row-gap:2px}
+  .noc-lbl span, .noc-lbl{white-space:nowrap}
   body.noc #rows tr{background:linear-gradient(180deg,rgba(16,30,45,.9),rgba(10,19,29,.9))!important;border:1px solid var(--line)!important}
   body.noc #rows tr:has(.badge.online){border-left:3px solid var(--neon-2)!important}
-  body.noc #rows tr:has(.badge.offline){border-left:3px solid #475569!important}
+  body.noc #rows tr:has(.badge.offline){border-left:3px solid #ef4444!important}
   body.noc #rows tr td:first-child{box-shadow:none}
 }
 @media (prefers-reduced-motion:reduce){body.noc #projectTabProxy::before{animation:none}.noc-bar b{transition:none}}
 
 </style>
 <script id="nocJs">
-// Ban thu "NOC": hang o so lieu (may online, traffic Proxy/VPN/WAN co bieu do nho, CPU/nhiet do).
-// Chi doc du lieu (GET /api/pm/sysinfo + danh sach may tren trang), khong ghi gi.
+// Giao dien "NOC": hang o so lieu (may online, traffic Proxy/VPN/WAN co bieu do nho, luu luong Proxy/Luong phu, WAN + Reset).
+// Chi doc du lieu (GET /api/pm/sysinfo, ket qua /api/pm/flow cua trang), nut Reset goi setFlow('reset') co san.
 (function () {
   // [Ver 2.113] Mac dinh = giao dien NOC; bam "Giao dien cu" => luu pm_ui=classic.
   var on = true;
@@ -3353,13 +3373,22 @@ body.noc .cfg-menu-pop{background:#0c1622;border-color:var(--line)}
   var panel = document.getElementById('proxyPanel');
   if (!panel) return;
   var kpi = document.createElement('section');
-  kpi.className = 'noc-kpi'; kpi.setAttribute('aria-label', 'Tong quan router');
+  kpi.className = 'noc-kpi'; kpi.setAttribute('aria-label', 'T\u1ed5ng quan router');
   panel.parentNode.insertBefore(kpi, panel);
   var K = {proxy: '#fb7185', vpn: '#a78bfa', wan: '#fbbf24'};
   var hist = {proxy: [], vpn: [], wan: []}, MAX = 40;
-  var last = null;
+  var last = null, flow = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
   function f(v) { return v == null ? '-' : (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)); }
+  function mb(b) {
+    var n = Number(b || 0);
+    if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1024).toFixed(0) + ' KB';
+  }
+  function row(k, v, col) {
+    return '<div class="noc-row"><span' + (col ? ' style="color:' + col + '"' : '') + '>' + esc(k) + '</span><b>' + v + '</b></div>';
+  }
   function spark(arr, col) {
     if (arr.length < 2) return '<svg class="noc-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"></svg>';
     var mx = Math.max.apply(null, arr.concat([0.05]));
@@ -3374,8 +3403,41 @@ body.noc .cfg-menu-pop{background:#0c1622;border-color:var(--line)}
   function machines() {
     var rows = [];
     try { if (typeof getVisibleRows === 'function') rows = getVisibleRows() || []; } catch (e) {}
-    var on = rows.filter(function (r) { return r.status === 'online'; }).length;
-    return {total: rows.length, on: on};
+    var n = rows.filter(function (r) { return r.status === 'online'; }).length;
+    return {total: rows.length, on: n};
+  }
+  // [Ver 2.114] 2 o luu luong (thay o CPU / Nhiet do; thong so router van o thanh tren cung).
+  function flowCards() {
+    var r = flow, ok = r && r.enabled === true && r.available === true;
+    var resetBtn = '<button type="button" class="btn small noc-reset" data-noc-reset="1" title="Xo\u00e1 s\u1ed1 \u0111\u1ebfm theo d\u00f5i lu\u1ed3ng">Reset</button>';
+    if (!ok) {
+      var why = r && r.enabled === true ? '\u0110ang \u0111\u1ecdc gencore...' : 'B\u1eadt \u1edf C\u1ea5u h\u00ecnh k\u1ebft n\u1ed1i > Theo d\u00f5i lu\u1ed3ng';
+      var offCard = function (lbl, col) {
+        return '<div class="noc-card noc-info" style="--k:' + col + '"><div class="noc-lbl">' + lbl + '</div>'
+          + '<div class="noc-big">T\u1eaft</div><div class="noc-sub">' + esc(why) + '</div></div>';
+      };
+      return offCard('Lu\u1ed3ng Proxy', '#fb7185') + offCard('Lu\u1ed3ng WAN', '#fbbf24');
+    }
+    var t = r.totals || {}, p = t.proxy || 0, s = t.split || 0, tot = p + s;
+    var pp = tot ? Math.round(100 * p / tot) : 0, sp = tot ? 100 - pp : 0;
+    var since = r.since ? new Date(r.since * 1000).toLocaleTimeString() : '';
+    // [Ver 2.114] Luong chinh (Proxy) va luong phu tach 2 dong rieng, moi dong so lieu + % + thanh rieng.
+    function line(lbl, val, pc, col) {
+      return '<div class="noc-line" style="--c:' + col + '"><div class="noc-line-h"><span>' + lbl + '</span><em>' + pc + '%</em></div>'
+        + '<div class="noc-line-v">' + esc(val) + '</div>'
+        + '<div class="noc-mini"><b style="width:' + pc + '%;background:' + col + '"></b></div></div>';
+    }
+    var a = '<div class="noc-card noc-info" style="--k:#fb7185"><div class="noc-lbl">Lu\u1ed3ng Proxy<i>T\u1ed5ng ' + esc(mb(tot)) + '</i></div>'
+      + line('Ch\u00ednh (Proxy)', mb(p), pp, '#fb7185')
+      + line('Lu\u1ed3ng ph\u1ee5', mb(s), sp, '#4ade80')
+      + '</div>';
+    var b = '<div class="noc-card noc-info" style="--k:#fbbf24"><div class="noc-lbl">Lu\u1ed3ng WAN<i>' + resetBtn + '</i></div>'
+      + '<div class="noc-big">' + esc(mb(t.bypass)) + '</div>'
+      + '<div class="noc-sub" title="T\u00ean mi\u1ec1n/IP trong danh s\u00e1ch kh\u00f4ng qua Proxy/VPN (ra WAN ch\u00ednh)">Ngo\u00e0i Proxy/VPN</div>'
+      + ((t.direct || t.other) ? row('Tr\u1ef1c ti\u1ebfp / kh\u00e1c', esc(mb((t.direct || 0) + (t.other || 0))), '#38bdf8') : '')
+      + (since ? row('\u0110\u1ebfm t\u1eeb', esc(since)) : '')
+      + '</div>';
+    return a + b;
   }
   function paint() {
     var m = machines(), d = last || {}, t = d.traffic || {}, by = {};
@@ -3394,19 +3456,25 @@ body.noc .cfg-menu-pop{background:#0c1622;border-color:var(--line)}
         + '<div class="noc-sub"><span class="dn">\u2193' + f(it.down) + '</span><span class="up">\u2191' + f(it.up) + '</span></div>'
         + spark(hist[k], K[k]) + '</div>';
     });
-    var c = d.cpu_pct, tc = d.temp_c, mem = (d.mem || {}).pct;
-    html += '<div class="noc-card" style="--k:#38bdf8"><div class="noc-lbl">CPU<i>' + (d.cpu_count ? d.cpu_count + ' nh\u00e2n' : '') + '</i></div>'
-      + '<div class="noc-big">' + (c == null ? '-' : c) + '<small>%</small></div>'
-      + '<div class="noc-sub">RAM ' + (mem == null ? '-' : mem + '%') + ' \u00b7 Load ' + esc((d.load || [])[0] == null ? '-' : d.load[0]) + '</div>'
-      + '<div class="noc-bar"><b style="width:' + (c || 0) + '%"></b></div></div>';
-    var tk = tc == null ? '#64748b' : tc >= 75 ? '#fb7185' : tc >= 60 ? '#fbbf24' : '#2dd4bf';
-    html += '<div class="noc-card" style="--k:' + tk + '"><div class="noc-lbl">Nhi\u1ec7t \u0111\u1ed9</div>'
-      + '<div class="noc-big">' + (tc == null ? '-' : tc) + '<small>\u00b0C</small></div>'
-      + '<div class="noc-sub">Uptime ' + up(d.uptime_s) + '</div>'
-      + '<div class="noc-bar"><b style="width:' + Math.min(100, tc || 0) + '%"></b></div></div>';
+    html += flowCards();
+    // Giu focus nut Reset khi ve lai.
+    var hadFocus = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.nocReset;
     kpi.innerHTML = html;
+    if (hadFocus) { var rb = kpi.querySelector('[data-noc-reset]'); if (rb) rb.focus(); }
   }
-  function up(s) { s = s | 0; var dd = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), mm = Math.floor(s % 3600 / 60); return (dd ? dd + 'd ' : '') + h + 'h ' + mm + 'm'; }
+  kpi.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-noc-reset]');
+    if (!b) return;
+    b.disabled = true;
+    Promise.resolve(typeof setFlow === 'function' ? setFlow('reset') : null).catch(function () {}).then(function () {
+      if (typeof pollFlowSummary === 'function') pollFlowSummary();
+    });
+  });
+  // Lay so lieu luong tu ham ve tom tat co san (khong goi them API).
+  if (typeof window.paintFlowSummary === 'function') {
+    var orig = window.paintFlowSummary;
+    window.paintFlowSummary = function (r) { try { orig(r); } finally { flow = r || null; paint(); } };
+  }
   async function tick() {
     try {
       var r = await fetch('/api/pm/sysinfo', {cache: 'no-store'});

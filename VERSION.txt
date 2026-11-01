@@ -1,1 +1,1 @@
-Ver 2.113 (Giao dien NOC thanh MAC DINH: nen toi xanh ngoc, 6 o so lieu may online / Proxy / VPN / WAN co bieu do / CPU / nhiet do; nut "Giao dien cu" de quay lai)
+Ver 2.114 (Giao dien NOC: giu thanh thong so router; 2 o cuoi = Luong Proxy (Chinh / Luong phu tach 2 dong) va Luong WAN kem nut Reset; may offline mau do; an o traffic + tom tat luong trung lap)

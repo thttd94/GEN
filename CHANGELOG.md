@@ -1,3 +1,8 @@
+## Ver 2.114 - 2026-11-01
+- Giao dien NOC: giu thanh thong so router o hang tieu de (nhiet do/CPU/RAM/Disk/uptime). Bo o CPU + Nhiet do trong hang so lieu, thay bang 2 o luu luong: Luong Proxy (tong, Proxy / Luong phu kem %, thanh ty le) va Luong WAN (WAN, Truc tiep/khac, dem tu) + nut Reset. An o traffic PROXY|VPN|WAN va dong tom tat luong canh tab vi trung lap. Giao dien cu giu nguyen
+- Giao dien NOC: may offline hien mau DO (nhan offline + vach trai dong/the)
+- O Luong Proxy tach 2 dong rieng: Chinh (Proxy) va Luong phu, moi dong co so lieu, % va thanh rieng; tong o goc
+
 ## Ver 2.113 - 2026-11-01
 - Giao dien NOC thanh MAC DINH cho moi router (truoc phai bam nut). Nut "Giao dien cu" canh nut Sang/Toi de quay lai, luu theo trinh duyet
 
