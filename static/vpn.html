@@ -59,16 +59,93 @@
   #accWrap thead th { position:sticky; top:0; background:#24102d; z-index:1; }
   #accTbl.compact .hst { display:none; }
 </style>
+<!-- [Ver 2.118] Giao dien NOC (giong GUI chinh). Tat bang nut "Giao dien cu" (localStorage pm_ui=classic). -->
+<script>try{if(localStorage.getItem('pm_ui')!=='classic')document.documentElement.classList.add('noc');}catch(e){document.documentElement.classList.add('noc');}</script>
+<style id="nocPageCss">
+  html.noc { --bg:#060b12; --card:#0c1622; --line:#1c3044; --txt:#d6e4ef; --dim:#7d91a4; --ok:#4ade80; --bad:#fb7185; --acc:#2dd4bf; --neon:#2dd4bf; }
+  html.noc body { background:
+    radial-gradient(1200px 500px at 15% -10%, rgba(45,212,191,.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(56,189,248,.08), transparent 60%),
+    linear-gradient(rgba(45,212,191,.035) 1px, transparent 1px) 0 0/100% 32px,
+    linear-gradient(90deg, rgba(45,212,191,.035) 1px, transparent 1px) 0 0/32px 100%,
+    #060b12 fixed; color:var(--txt); }
+  html.noc ::selection { background:rgba(45,212,191,.35); }
+  html.noc .hero { background:rgba(12,22,34,.78); border:1px solid var(--line); border-top:2px solid var(--neon); box-shadow:0 10px 40px rgba(0,0,0,.45); backdrop-filter:blur(6px); }
+  html.noc .hero h1 { color:#e6fffb; text-shadow:none; letter-spacing:.3px; }
+  html.noc .hero h1::before { content:""; width:9px; height:9px; border-radius:50%; background:var(--neon); box-shadow:0 0 10px var(--neon); animation:nocPulse 2s ease-in-out infinite; flex:0 0 auto; }
+  @keyframes nocPulse { 50% { opacity:.35; } }
+  html.noc .pill { background:#08121c; border-color:var(--line); color:var(--dim); }
+  html.noc .card { background:linear-gradient(180deg,rgba(16,30,45,.92),rgba(10,19,29,.92)); border:1px solid var(--line); box-shadow:0 6px 24px rgba(0,0,0,.4); }
+  html.noc .card h2 { color:#6ee7d7; border-bottom:1px solid #17293a; letter-spacing:.8px; }
+  html.noc .h-ico, html.noc .h-ico-green, html.noc .h-ico-amber, html.noc .h-ico-violet { background:rgba(45,212,191,.12); color:#5eead4; border:1px solid rgba(45,212,191,.35); box-shadow:none; }
+  html.noc .h-ico-green { background:rgba(74,222,128,.12); color:#86efac; border-color:rgba(74,222,128,.35); }
+  html.noc .h-ico-amber { background:rgba(251,191,36,.10); color:#fcd34d; border-color:rgba(251,191,36,.4); }
+  html.noc .h-ico-violet { background:rgba(167,139,250,.12); color:#c4b5fd; border-color:rgba(167,139,250,.4); }
+  html.noc th { color:#6ee7d7; background:#0b1622; border-bottom:1px solid var(--line); }
+  html.noc td { border-bottom-color:#17293a; }
+  html.noc tbody tr:hover td { background:rgba(45,212,191,.05); }
+  html.noc #accWrap thead th { background:#0b1622; }
+  html.noc button { background:#0f1b29; color:var(--txt); border:1px solid #22394f; }
+  html.noc button:hover { border-color:var(--neon); color:#e6fffb; background:#122334; }
+  html.noc button.ok { background:linear-gradient(135deg,#0d9488,#14b8a6 55%,#22c55e); border-color:#14b8a6; color:#03140f; font-weight:800; box-shadow:0 0 0 1px rgba(45,212,191,.25),0 6px 22px rgba(20,184,166,.28); }
+  html.noc button.ok:hover { color:#02110c; filter:brightness(1.1); }
+  html.noc button.bad { background:rgba(251,113,133,.08); border-color:rgba(251,113,133,.45); color:#fda4af; }
+  html.noc button.bad:hover { background:rgba(251,113,133,.16); color:#fecdd3; }
+  html.noc button:focus-visible, html.noc a:focus-visible { outline:2px solid var(--neon); outline-offset:2px; }
+  html.noc input, html.noc select, html.noc textarea { background:#08121c; color:var(--txt); border:1px solid #22394f; }
+  html.noc input::placeholder, html.noc textarea::placeholder { color:#4b6274; }
+  html.noc input:focus, html.noc select:focus, html.noc textarea:focus { border-color:var(--neon); box-shadow:0 0 0 3px rgba(45,212,191,.18); }
+  html.noc label { color:var(--dim); }
+  html.noc #log { background:#08121c; border-color:var(--line); color:#9fc4d8; }
+  html.noc .chip { background:#0f1b29; border-color:var(--line); }
+  html.noc .st-up { background:rgba(74,222,128,.12); color:#86efac; border-color:rgba(74,222,128,.4); }
+  html.noc .st-down { background:rgba(125,145,164,.08); color:var(--dim); border-color:var(--line); }
+  html.noc .wan-ok { color:#fcd34d; text-shadow:none; }
+  html.noc .muted { color:var(--dim); }
+  html.noc a { color:#5eead4; }
+  html.noc .sysbar { background:#08121c; border-color:var(--line); box-shadow:none; }
+  .noc-ui-btn { margin-left:0; }
+  html.noc .card { min-width:0; }
+  @media (max-width:760px) {
+    html.noc .wrap { padding:12px 10px 70px; }
+    html.noc .hero { padding:12px 14px; }
+    html.noc .card { padding:12px; overflow-x:auto; }
+  }
+  @media (prefers-reduced-motion:reduce) { html.noc .hero h1::before { animation:none; } }
+</style>
+<style id="pmPortsCss">/* [Ver 2.119] Trang thai cong: icon RJ45 gon giong hang tieu de GUI chinh */
+  .pmp-grid { display:flex; flex-wrap:wrap; gap:6px; align-items:flex-end; }
+  .pmp { display:flex; flex-direction:column; align-items:center; gap:2px; min-width:40px; padding:4px 5px; border-radius:7px; cursor:default; outline:none; }
+  .pmp:hover, .pmp:focus-visible { background:rgba(127,127,127,.15); }
+  .pmp:focus-visible { box-shadow:0 0 0 2px #2dd4bf; }
+  .pmp svg { width:26px; height:24px; }
+  .pmp .pt-body { fill:#4b5563; } .pmp .pt-hole { fill:#0b1622; } .pmp .pt-led { fill:#374151; }
+  .pmp.up .pt-body { fill:#16a34a; } .pmp.up .pt-led { fill:#4ade80; }
+  .pmp.up.wan .pt-body { fill:#ea580c; } .pmp.up.wan .pt-led { fill:#fdba74; }
+  .pmp.up.ppp .pt-body { fill:#d97706; } .pmp.up.ppp .pt-led { fill:#fcd34d; }
+  .pmp.up.ext .pt-body { fill:#7c3aed; } .pmp.up.ext .pt-led { fill:#c4b5fd; }
+  .pmp-n { font-size:11px; font-weight:700; line-height:1; color:#e6fffb; }
+  .pmp-s { font-size:9.5px; font-weight:800; line-height:1; color:#7d91a4; white-space:nowrap; }
+  .pmp.wan .pmp-s { color:#fb923c; } .pmp.ppp .pmp-s { color:#fbbf24; } .pmp.ext .pmp-s { color:#c4b5fd; }
+  .pmp.down .pmp-n, .pmp.down .pmp-s { opacity:.5; }
+  .pmp-note { margin-top:6px; font-size:12px; color:#7d91a4; }
+  .pmp-note a { color:#5eead4; }
+  .pmp-hero { flex:1 1 auto; justify-content:center; min-width:0; }
+  @media (max-width:760px) { .pmp-hero { order:3; flex-basis:100%; justify-content:flex-start; } }
+</style>
 </head>
 <body>
 <div class="wrap">
   <div class="hero">
   <div>
     <h1>🔐 VPN Manager</h1>
-    <div class="sub">Tunnel VPN chạy trực tiếp trên router — gán máy qua GUI chính hoặc khung “Gán VPN theo số máy”</div>
   </div>
-  <span class="pill" id="upd">đang tải…</span>
+  <div id="pmPorts" class="pmp-grid pmp-hero" role="list" aria-label="Cổng mạng trên router"></div>
+<button type="button" class="noc-ui-btn" id="nocUiBtn" onclick="try{localStorage.setItem('pm_ui',document.documentElement.classList.contains('noc')?'classic':'noc')}catch(e){}location.reload()"></button>
+<script>document.getElementById('nocUiBtn').textContent=document.documentElement.classList.contains('noc')?'Giao di\u1ec7n c\u0169':'Giao di\u1ec7n NOC';</script>
+<span class="pill" id="upd">đang tải…</span>
 </div>
+
 
 <div class="card">
     <h2><span class="h-ico">🛰</span>Tunnel VPN</h2>
@@ -83,13 +160,11 @@
       <thead><tr><th>Tên</th><th title="IP công cộng của tunnel — có IP tức là VPN online">WAN IP</th><th>Trạng thái</th><th>Clients gán</th><th>Hành động</th></tr></thead>
       <tbody id="tb"><tr><td colspan="5" class="muted">…</td></tr></tbody>
     </table></div>
-    <div class="muted" style="margin-top:8px">Gán máy qua GUI chính: chọn Proxy Type = VPN ở từng máy hoặc dùng khung "GÁN VPN THEO SỐ MÁY". Còn lại giữ nguyên đường cũ.</div>
   </div>
 
 
   <div class="card" id="autoCard"><!-- [Ver 2.94] tu gan VPN kieu MiniSocks -->
     <h2><span class="h-ico h-ico-green">&#8635;</span>Tự gán VPN cho máy mới</h2>
-    <div class="muted" style="margin-bottom:6px">Giống MiniSocks: máy mới bật trong dải IP, chưa gán VPN, sẽ được gán vào tunnel đang UP ít máy nhất trong danh sách. Không cho dùng chung thì mỗi máy một tunnel, tức mỗi máy một IP WAN. Máy gán tay, máy master <b>192.10.1.10</b>, máy Internet trực tiếp được giữ nguyên.</div>
     <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
       <label style="display:inline-flex;gap:6px;align-items:center;text-transform:none;margin:0"><input type="checkbox" id="au-on"> Bật tự gán</label>
       <label style="display:inline-flex;gap:6px;align-items:center;text-transform:none;margin:0"><input type="checkbox" id="au-dup"> Cho dùng chung tunnel</label>
@@ -122,7 +197,6 @@
         <label><input type="radio" name="xv-proto" value="udp" checked> UDP</label>
         <label><input type="radio" name="xv-proto" value="tcp"> TCP</label>
         <label for="xv-id">ID cấu hình</label><input id="xv-id" type="number" min="1" max="999" style="width:70px">
-        <label><input type="checkbox" id="xv-auto" checked> Tự khởi động</label>
         <label><input type="checkbox" id="xv-up" checked> Bật ngay</label>
       </div>
       <div style="margin-top:10px;display:flex;gap:8px"><button class="ok" type="button" onclick="addExpress()">Thêm</button>
@@ -136,7 +210,6 @@
       <div id="xv-srv-msg" class="muted" style="margin-top:4px"></div>
       <div style="margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px">
         <div style="font-weight:700;color:#eeb8ec;font-size:12px">Tạo N tunnel có IP ra KHÁC NHAU</div>
-        <div class="muted" style="margin:4px 0 8px">Tự lấy server ở nhiều thành phố, bật lên, đo IP thật, trùng thì đổi server (tối đa 3 lần). Không cần chọn location.</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
           <div><label for="xv-dn">Số tunnel</label><input id="xv-dn" type="number" min="1" max="20" value="5" style="width:70px"></div>
           <div><label for="xv-dlocs">Chỉ dùng nước/vùng (để trống = rải mọi nơi)</label><input id="xv-dlocs" style="width:240px" placeholder="vd japan, singapore, usa"></div>
@@ -146,7 +219,6 @@
         <div id="xv-dmsg" class="muted" role="status" aria-live="polite" style="margin-top:6px"></div>
         <div id="xv-dtbl" class="muted" style="font-family:Consolas,monospace;font-size:11.5px;white-space:pre-wrap;margin-top:4px"></div>
       </div>
-      <div class="muted" id="xv-info" role="status" aria-live="polite" style="margin-top:6px">User/pass lấy ở ExpressVPN &gt; Manual Configuration. Key chỉ lưu để đối chiếu.</div>
     </div>
 
     <div class="card">
@@ -157,7 +229,6 @@
       <div style="border-top:1px dashed var(--line); margin-top:12px; padding-top:4px;"></div>
       <label>📂 Nạp file từ máy PC (.ovpn / .conf — chọn được nhiều file cùng lúc)</label>
       <input type="file" id="ov-files" accept=".ovpn,.conf,.txt,text/plain" multiple style="width:100%; background:#0b1220; padding:6px; cursor:pointer;">
-      <div class="muted" id="ov-files-info" style="margin-top:6px;">Chọn 1 file → điền vào ô trên để xem trước · chọn nhiều file → tự thêm từng tài khoản</div>
       <label>User / Pass (nếu có — vd NordVPN, ExpressVPN)</label>
       <div class="row"><div><input id="ov-user" placeholder="username" style="width:100%"></div>
       <div><input id="ov-pass" type="password" placeholder="password" style="width:100%"></div></div>
@@ -472,7 +543,7 @@ async function addExpress() {
   const proto = (document.querySelector('input[name="xv-proto"]:checked') || {}).value || 'udp';
   const cred = cred_id ? { cred_id, username: 'saved' } : { username: a.user, password: a.pass, key: a.key };
   await act('add-express', Object.assign({ name: 'xv-' + id, host, proto }, cred, {
-    autostart: document.getElementById('xv-auto').checked ? '1' : '0', up: document.getElementById('xv-up').checked ? '1' : '0' }));
+    up: document.getElementById('xv-up').checked ? '1' : '0' }));
   document.getElementById('xv-id').value = '';
   if (!cred_id) document.getElementById('xv-cred').value = '';
   xvLoadSaved();
@@ -600,13 +671,10 @@ async function refresh() {
       const main = a.running
         ? `<button class="bad" onclick="act('down',{name:'${esc(a.name)}'})" aria-label="Tắt ${esc(a.name)}">▼ DOWN</button><button onclick="act('test-exitip',{name:'${esc(a.name)}'})" title="Dò lại exit-IP">🌐 IP</button>`
         : `<button class="ok" onclick="act('up',{name:'${esc(a.name)}'})" aria-label="Bật ${esc(a.name)}">▲ UP</button>`;
-      const auto = a.auto
-        ? `<button onclick="act('autostart_off',{name:'${esc(a.name)}'})" title="Đang tự khởi động - bấm để tắt">AUTO ✓</button>`
-        : `<button onclick="act('autostart_on',{name:'${esc(a.name)}'})" title="Không tự khởi động - bấm để bật">AUTO ✗</button>`;
       return `<tr>
         <td class="nm" title="${esc(a.host || '')}"><b>${esc(a.name)}</b><span class="typ">${esc(a.type)}</span>${a.host ? `<span class="hst">${esc(String(a.host).replace(/\.expressnetw\.com$/, ''))}</span>` : ''}</td>
         <td class="wanip" data-n="${esc(a.name)}" title="${esc(a.dev)}">${wanIpCell(a)}</td><td>${st}</td><td>${chips}</td>
-        <td style="white-space:nowrap">${main}${auto}<button class="bad" onclick="if(confirm('Xóa ${esc(a.name)}?'))act('del',{name:'${esc(a.name)}'})" aria-label="Xóa ${esc(a.name)}">✕</button></td>
+        <td style="white-space:nowrap">${main}<button class="bad" onclick="if(confirm('Xóa ${esc(a.name)}?'))act('del',{name:'${esc(a.name)}'})" aria-label="Xóa ${esc(a.name)}">✕</button></td>
       </tr>`;
     }).join('');
   }
@@ -792,6 +860,37 @@ async function unassignAll(name) {
     try { api = window.api; } catch (e) {}
   }
   setInterval(function () { if (p.classList.contains('show')) sched(); }, 3000);
+})();
+</script>
+<script>// [Ver 2.119] Trang thai cong chung cho /pppoe va /vpn: doc /api/pm/ports (cung nguon tab Cong mang).
+(function () {
+  var RJ45 = '<svg viewBox="0 0 24 22" aria-hidden="true"><rect class="pt-body" x="1" y="1" width="22" height="20" rx="3"/>'
+    + '<path class="pt-hole" d="M5 6h14v8h-3v3h-8v-3H5z"/>'
+    + '<rect class="pt-led" x="3" y="2.5" width="4" height="2" rx=".6"/><rect class="pt-led" x="17" y="2.5" width="4" height="2" rx=".6"/></svg>';
+  function e(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function spd(s) { return s ? (s >= 1000 ? (s % 1000 ? (s / 1000).toFixed(1) : s / 1000) + ' Gbps' : s + ' Mbps') : ''; }
+  var sig = '';
+  async function load() {
+    var el = document.getElementById('pmPorts'); if (!el) return;
+    try {
+      var r = await (await fetch('/api/pm/ports', {cache: 'no-store'})).json();
+      var ps = (r && r.ports) || [];
+      var s = JSON.stringify(ps.map(function (p) { return [p.name, p.up, p.speed, p.is_wan, p.pppoe, p.lan, p.clients]; }));
+      if (s === sig) return; sig = s;
+      el.innerHTML = ps.length ? ps.map(function (p) {
+        var k = p.is_wan ? ['wan', 'WAN ch\u00ednh', 'WAN'] : p.pppoe ? ['ppp', 'WAN PPPoE', 'PPP'] : p.lan === false ? ['ext', 'WAN ph\u1ee5', 'WAN2'] : ['lan', 'LAN', 'LAN'];
+        var st = p.up ? ('C\u00f3 d\u00e2y' + (p.speed ? ' \u00b7 ' + spd(p.speed) : '')) : 'Ch\u01b0a c\u1eafm d\u00e2y';
+        if (k[0] === 'lan' && p.up) st += ' \u00b7 ' + (p.clients || 0) + ' m\u00e1y';
+        var lbl = p.name + ': ' + k[1] + ', ' + st;
+        var cls = 'pmp ' + (p.up ? 'up' : 'down') + (k[0] === 'lan' ? '' : ' ' + k[0]);
+        var sh = k[2] + (p.up && p.speed ? ' ' + spd(p.speed).replace(' Gbps', 'G').replace(' Mbps', 'M') : '');
+        return '<div class="' + cls + '" role="listitem" tabindex="0" aria-label="' + e(lbl) + '" title="' + e(lbl + (p.mac ? '\nMAC ' + p.mac : '')) + '">' + RJ45
+          + '<span class="pmp-n">' + e(p.name.replace(/^eth/, 'Eth')) + '</span><span class="pmp-s">' + e(sh) + '</span></div>';
+      }).join('') : '<span class="muted">Kh\u00f4ng \u0111\u1ecdc \u0111\u01b0\u1ee3c danh s\u00e1ch c\u1ed5ng.</span>';
+    } catch (err) { if (!sig) el.textContent = 'M\u1ea5t k\u1ebft n\u1ed1i'; }
+  }
+  window.pmPortsLoad = load;
+  load(); setInterval(load, 5000);
 })();
 </script>
 </body>

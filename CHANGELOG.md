@@ -1,3 +1,13 @@
+## Ver 2.120 - 2026-11-02
+- VPN nho trang thai UP/DOWN qua reboot: bam UP/DOWN (ca UP ALL/DOWN ALL) tu ghi co auto; app khoi dong lai thi bat lai dung cac tunnel dang UP truoc do (thu 6 lan, cach 45s). Lan dau chay ban nay chup trang thai dang chay hien tai. Bo nut AUTO va o Tu khoi dong tren /vpn
+- Cum cong RJ45 gon dua len thanh tieu de /pppoe va /vpn, bo the Trang thai cong rieng; nut Bat PPPoE vao hang nut Danh sach phien. Bo cac dong chu thich thua tren /pppoe, /vpn, tab Cong mang
+
+## Ver 2.119 - 2026-11-01
+- The Trang thai cong dong bo /pppoe va /vpn: cum RJ45 giong GUI chinh (WAN chinh / WAN PPPoE / WAN phu / LAN, toc do, so may), cung nguon /api/pm/ports, tu lam moi 5s. Bo kieu port-chip cu tren /pppoe. Link sang Cau hinh ket noi > Cong mang de doi WAN/LAN
+
+## Ver 2.118 - 2026-11-01
+- Trang /pppoe va /vpn dung giao dien NOC giong GUI chinh (nen toi, nhan xanh ngoc, nut/o nhap/bang dong bo). Nut Giao dien cu / Giao dien NOC tren hero, chung khoa pm_ui voi GUI chinh. Khong doi logic, API
+
 ## Ver 2.117 - 2026-11-01
 - Tab Cong mang: moi cong LAN co nut Chuyen sang WAN (roi br-lan, cho tao PPPoE, WAN chinh khong doi); cong WAN phu co nut Tra ve LAN (chan neu dang PPPoE). Cong dat tay la WAN ghi nho trong port_roles.json, het PPPoE khong tu tra ve LAN. Chan cong may admin dang cam, het cong LAN; cong co may LAN phai go ten cong. Moi lan doi backup gen_backup/network_pre_role_*. API POST /api/pm/port-role
 

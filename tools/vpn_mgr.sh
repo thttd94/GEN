@@ -31,7 +31,7 @@
 #     off|one-way|hide: mo het (local thay nhau)
 #     guard   : ep trang thai that theo /data/vpn/isolate.mode
 #   vpn_mgr.sh test <ten>                  : xem exit-IP qua tunnel
-#   vpn_mgr.sh autostart <ten> on|off      : up khi goi startall
+#   vpn_mgr.sh autostart <ten> on|off      : up khi goi startall (Ver 2.120: up/down tu ghi co nay)
 #   vpn_mgr.sh startall|stopall            : loat theo flag auto
 #   vpn_mgr.sh del <ten>                   : xoa tai khoan
 # ============================================================
@@ -409,12 +409,14 @@ do_up() {
   guard_run
   ok "'$name' UP ($dev):"
   ip -4 addr show "$dev" | grep inet
+  meta_set "$name" auto 1  # [Ver 2.120] nho UP qua reboot
   restore_clients "$name"
 }
 
 do_down() {
   name="$2"; [ -n "$name" ] || die_use
   exists "$name" || err "khong co tai khoan '$name'"
+  meta_set "$name" auto 0  # [Ver 2.120] nho DOWN qua reboot
   dev=$(meta_get "$name" dev); tbl=$(meta_get "$name" table); pri=$(meta_get "$name" prio)
   [ -f "/tmp/vpn_$name.pid" ] && { kill "$(cat /tmp/vpn_$name.pid)" 2>/dev/null; rm -f "/tmp/vpn_$name.pid"; }
   ip link del "$dev" 2>/dev/null
@@ -535,7 +537,7 @@ case "$1" in
       [ -f "$d" ] || continue
       n=$(dirname "$d" | xargs basename)
       [ "$(meta_get "$n" auto)" = "1" ] || continue
-      running "$n" || { echo "== start $n"; do_up x "$n"; }
+      running "$n" || { echo "== start $n"; ( do_up x "$n" ) || echo "[ERR] start $n loi"; }  # [Ver 2.120] 1 tunnel loi khong dung ca vong
     done ;;
   stopall)
     for d in "$ACCT"/*/meta; do

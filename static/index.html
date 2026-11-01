@@ -2630,7 +2630,6 @@ body.dark .pt .pt-hole { fill:#111827; }
       var st = p.up ? '\u0110\u00e3 c\u1eafm d\u00e2y' + (p.speed ? ' \u00b7 ' + fmtSpd(p.speed).replace('M', ' Mbps').replace('G', ' Gbps') : '') : 'Ch\u01b0a c\u1eafm d\u00e2y';
       var tip = p.name + ' \u00b7 ' + role + ' \u00b7 ' + st + (p.master ? ' \u00b7 ' + p.master : '') + (p.mac ? '\nMAC ' + p.mac : '');
       var cls = 'pt ' + (p.up ? 'up' : 'down') + (p.role === 'WAN' ? ' wan' : '');
-      tip += '\n(\u0110\u1ed5i WAN/LAN \u1edf C\u1ea5u h\u00ecnh k\u1ebft n\u1ed1i > C\u1ed5ng m\u1ea1ng)';
       return '<div class="' + cls + '" role="listitem" tabindex="0" data-port="' + escT(p.name) + '" title="' + escT(tip) + '" aria-label="' + escT(tip) + '">' + RJ45
         + '<span class="pt-n">' + escT(p.name.replace(/^eth/, 'Eth')) + '</span>'
         + '<span class="pt-s">' + escT((p.role ? p.role : '') + (p.up && p.speed ? ' ' + fmtSpd(p.speed) : '')) + '</span></div>';
@@ -2891,11 +2890,7 @@ body.dark .pt .pt-hole { fill:#111827; }
     </section>
     <section id="cnS-ports" role="tabpanel" aria-label="Cổng mạng" hidden>
      <h4>Cổng mạng WAN / LAN</h4>
-     <div class="cn-blk"><ul class="cn-notes">
-      <li>Chọn 1 cổng làm <b>WAN chính</b> (ra internet). Các cổng còn lại là <b>LAN</b>, trừ cổng đang chạy PPPoE.</li>
-      <li>WAN cũ tự về LAN. Áp dụng ngay khi bấm, không cần bấm Lưu.</li>
-      <li>Sau 45 giây cổng mới không nhận IP thì router tự quay lại WAN cũ.</li>
-      <li>Bị chặn: cổng chưa cắm dây, đang PPPoE, máy anh đang cắm, đang vào GUI qua WAN. Cổng có máy LAN phải gõ tên cổng để xác nhận.</li></ul>
+     <div class="cn-blk">
       <div class="cn-ports-wrap"><table class="cn-ports"><thead><tr><th scope="col">Cổng</th><th scope="col">Dây</th><th scope="col">Vai trò</th><th scope="col">Máy LAN</th><th scope="col">MAC</th><th scope="col">Thao tác</th></tr></thead>
       <tbody id="connPortsRows"><tr><td colspan="6">Đang tải...</td></tr></tbody></table></div>
       <div id="connPortsNow" class="sub" aria-live="polite" style="margin-top:8px"></div>

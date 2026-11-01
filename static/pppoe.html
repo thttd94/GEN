@@ -57,16 +57,7 @@
   tr.eth-row td:first-child { box-shadow:inset 4px 0 0 var(--eth-c); }
   tr.eth-row td.eth-port { color:var(--eth-c); font-weight:800; }
   tr.eth-first td { border-top:2px solid var(--eth-b); }
-  /* [Ver 2.81] Trang thai cong vat ly + thu gon tung cum cong */
-  .port-list { display:flex; flex-wrap:wrap; gap:8px; }
-  .port-chip { display:inline-flex; align-items:center; gap:7px; background:#0a1826; border:1px solid var(--line); border-radius:10px; padding:5px 11px; font-size:12.5px; }
-  .port-chip .dot { width:10px; height:10px; border-radius:50%; flex:0 0 auto; }
-  .port-chip .dot.on { background:#22c55e; box-shadow:0 0 7px rgba(34,197,94,.8); }
-  .port-chip .dot.off { background:#ef4444; box-shadow:0 0 7px rgba(239,68,68,.7); }
-  .port-chip .role { font-size:10.5px; font-weight:800; letter-spacing:.5px; border-radius:6px; padding:1px 6px; }
-  .port-chip .role.wan { background:rgba(251,146,60,.16); color:#fdba74; border:1px solid rgba(251,146,60,.5); }
-  .port-chip .role.lan { background:rgba(56,189,248,.14); color:#7dd3fc; border:1px solid rgba(56,189,248,.45); }
-  .port-chip .spd { color:var(--dim); font-size:11px; }
+  /* [Ver 2.81] thu gon tung cum cong */
   tr.eth-head td { background:var(--eth-bg); border-top:2px solid var(--eth-b); cursor:pointer; user-select:none; padding:7px 9px; }
   tr.eth-head td:hover { filter:brightness(1.25); }
   tr.eth-head .car { display:inline-block; width:14px; color:var(--eth-c); font-weight:800; }
@@ -78,21 +69,91 @@
   #reloadBtn[disabled] { opacity:.6; cursor:wait; }
   @media (max-width:640px){ .grid2{grid-template-columns:1fr} }
 </style>
+<!-- [Ver 2.118] Giao dien NOC (giong GUI chinh). Tat bang nut "Giao dien cu" (localStorage pm_ui=classic). -->
+<script>try{if(localStorage.getItem('pm_ui')!=='classic')document.documentElement.classList.add('noc');}catch(e){document.documentElement.classList.add('noc');}</script>
+<style id="nocPageCss">
+  html.noc { --bg:#060b12; --card:#0c1622; --line:#1c3044; --txt:#d6e4ef; --dim:#7d91a4; --ok:#4ade80; --bad:#fb7185; --acc:#2dd4bf; --neon:#2dd4bf; }
+  html.noc body { background:
+    radial-gradient(1200px 500px at 15% -10%, rgba(45,212,191,.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(56,189,248,.08), transparent 60%),
+    linear-gradient(rgba(45,212,191,.035) 1px, transparent 1px) 0 0/100% 32px,
+    linear-gradient(90deg, rgba(45,212,191,.035) 1px, transparent 1px) 0 0/32px 100%,
+    #060b12 fixed; color:var(--txt); }
+  html.noc ::selection { background:rgba(45,212,191,.35); }
+  html.noc .hero { background:rgba(12,22,34,.78); border:1px solid var(--line); border-top:2px solid var(--neon); box-shadow:0 10px 40px rgba(0,0,0,.45); backdrop-filter:blur(6px); }
+  html.noc .hero h1 { color:#e6fffb; text-shadow:none; letter-spacing:.3px; }
+  html.noc .hero h1::before { content:""; width:9px; height:9px; border-radius:50%; background:var(--neon); box-shadow:0 0 10px var(--neon); animation:nocPulse 2s ease-in-out infinite; flex:0 0 auto; }
+  @keyframes nocPulse { 50% { opacity:.35; } }
+  html.noc .pill { background:#08121c; border-color:var(--line); color:var(--dim); }
+  html.noc .card { background:linear-gradient(180deg,rgba(16,30,45,.92),rgba(10,19,29,.92)); border:1px solid var(--line); box-shadow:0 6px 24px rgba(0,0,0,.4); }
+  html.noc .card h2 { color:#6ee7d7; border-bottom:1px solid #17293a; letter-spacing:.8px; }
+  html.noc .h-ico, html.noc .h-ico-green, html.noc .h-ico-amber, html.noc .h-ico-violet { background:rgba(45,212,191,.12); color:#5eead4; border:1px solid rgba(45,212,191,.35); box-shadow:none; }
+  html.noc .h-ico-green { background:rgba(74,222,128,.12); color:#86efac; border-color:rgba(74,222,128,.35); }
+  html.noc .h-ico-amber { background:rgba(251,191,36,.10); color:#fcd34d; border-color:rgba(251,191,36,.4); }
+  html.noc .h-ico-violet { background:rgba(167,139,250,.12); color:#c4b5fd; border-color:rgba(167,139,250,.4); }
+  html.noc th { color:#6ee7d7; background:#0b1622; border-bottom:1px solid var(--line); }
+  html.noc td { border-bottom-color:#17293a; }
+  html.noc tbody tr:hover td { background:rgba(45,212,191,.05); }
+  html.noc #accWrap thead th { background:#0b1622; }
+  html.noc button { background:#0f1b29; color:var(--txt); border:1px solid #22394f; }
+  html.noc button:hover { border-color:var(--neon); color:#e6fffb; background:#122334; }
+  html.noc button.ok { background:linear-gradient(135deg,#0d9488,#14b8a6 55%,#22c55e); border-color:#14b8a6; color:#03140f; font-weight:800; box-shadow:0 0 0 1px rgba(45,212,191,.25),0 6px 22px rgba(20,184,166,.28); }
+  html.noc button.ok:hover { color:#02110c; filter:brightness(1.1); }
+  html.noc button.bad { background:rgba(251,113,133,.08); border-color:rgba(251,113,133,.45); color:#fda4af; }
+  html.noc button.bad:hover { background:rgba(251,113,133,.16); color:#fecdd3; }
+  html.noc button:focus-visible, html.noc a:focus-visible { outline:2px solid var(--neon); outline-offset:2px; }
+  html.noc input, html.noc select, html.noc textarea { background:#08121c; color:var(--txt); border:1px solid #22394f; }
+  html.noc input::placeholder, html.noc textarea::placeholder { color:#4b6274; }
+  html.noc input:focus, html.noc select:focus, html.noc textarea:focus { border-color:var(--neon); box-shadow:0 0 0 3px rgba(45,212,191,.18); }
+  html.noc label { color:var(--dim); }
+  html.noc #log { background:#08121c; border-color:var(--line); color:#9fc4d8; }
+  html.noc .chip { background:#0f1b29; border-color:var(--line); }
+  html.noc .st-up { background:rgba(74,222,128,.12); color:#86efac; border-color:rgba(74,222,128,.4); }
+  html.noc .st-down { background:rgba(125,145,164,.08); color:var(--dim); border-color:var(--line); }
+  html.noc .wan-ok { color:#fcd34d; text-shadow:none; }
+  html.noc .muted { color:var(--dim); }
+  html.noc a { color:#5eead4; }
+  html.noc .sysbar { background:#08121c; border-color:var(--line); box-shadow:none; }
+  .noc-ui-btn { margin-left:0; }
+  html.noc .card { min-width:0; }
+  @media (max-width:760px) {
+    html.noc .wrap { padding:12px 10px 70px; }
+    html.noc .hero { padding:12px 14px; }
+    html.noc .card { padding:12px; overflow-x:auto; }
+  }
+  @media (prefers-reduced-motion:reduce) { html.noc .hero h1::before { animation:none; } }
+</style>
+<style id="pmPortsCss">/* [Ver 2.119] Trang thai cong: icon RJ45 gon giong hang tieu de GUI chinh */
+  .pmp-grid { display:flex; flex-wrap:wrap; gap:6px; align-items:flex-end; }
+  .pmp { display:flex; flex-direction:column; align-items:center; gap:2px; min-width:40px; padding:4px 5px; border-radius:7px; cursor:default; outline:none; }
+  .pmp:hover, .pmp:focus-visible { background:rgba(127,127,127,.15); }
+  .pmp:focus-visible { box-shadow:0 0 0 2px #2dd4bf; }
+  .pmp svg { width:26px; height:24px; }
+  .pmp .pt-body { fill:#4b5563; } .pmp .pt-hole { fill:#0b1622; } .pmp .pt-led { fill:#374151; }
+  .pmp.up .pt-body { fill:#16a34a; } .pmp.up .pt-led { fill:#4ade80; }
+  .pmp.up.wan .pt-body { fill:#ea580c; } .pmp.up.wan .pt-led { fill:#fdba74; }
+  .pmp.up.ppp .pt-body { fill:#d97706; } .pmp.up.ppp .pt-led { fill:#fcd34d; }
+  .pmp.up.ext .pt-body { fill:#7c3aed; } .pmp.up.ext .pt-led { fill:#c4b5fd; }
+  .pmp-n { font-size:11px; font-weight:700; line-height:1; color:#e6fffb; }
+  .pmp-s { font-size:9.5px; font-weight:800; line-height:1; color:#7d91a4; white-space:nowrap; }
+  .pmp.wan .pmp-s { color:#fb923c; } .pmp.ppp .pmp-s { color:#fbbf24; } .pmp.ext .pmp-s { color:#c4b5fd; }
+  .pmp.down .pmp-n, .pmp.down .pmp-s { opacity:.5; }
+  .pmp-note { margin-top:6px; font-size:12px; color:#7d91a4; }
+  .pmp-note a { color:#5eead4; }
+  .pmp-hero { flex:1 1 auto; justify-content:center; min-width:0; }
+  @media (max-width:760px) { .pmp-hero { order:3; flex-basis:100%; justify-content:flex-start; } }
+</style>
 </head>
 <body>
 <div class="wrap">
   <div class="hero">
   <div>
     <h1>🌐 PPPoE Đa Phiên</h1>
-    <div class="sub">Mỗi phiên quay số riêng qua macvlan — mỗi phiên 1 IP WAN + proxy SOCKS5/HTTP riêng</div>
   </div>
-  <span class="pill" id="upd">đang tải…</span>
-</div>
-
-<div class="card">
-  <h2><span class="h-ico">📡</span>Trạng thái cổng</h2>
-  <div id="pppoe-status" class="port-list muted">đang tải…</div>
-  <div style="margin-top:10px" id="enable-row"></div>
+  <div id="pmPorts" class="pmp-grid pmp-hero" role="list" aria-label="Cổng mạng trên router"></div>
+<button type="button" class="noc-ui-btn" id="nocUiBtn" onclick="try{localStorage.setItem('pm_ui',document.documentElement.classList.contains('noc')?'classic':'noc')}catch(e){}location.reload()"></button>
+<script>document.getElementById('nocUiBtn').textContent=document.documentElement.classList.contains('noc')?'Giao di\u1ec7n c\u0169':'Giao di\u1ec7n NOC';</script>
+<span class="pill" id="upd">đang tải…</span>
 </div>
 
 <div class="card">
@@ -100,6 +161,7 @@
   <div class="list-head">
     <button class="ok" id="reloadBtn" onclick="refresh(true)">🔄 Tải lại</button>
     <button onclick="rotateAll()">🔀 Xoay IP tất cả</button>
+    <span id="enable-row"></span>
     <button class="bad" onclick="delAll()">🗑 Xóa tất cả phiên</button>
     <div class="eth-sum" id="eth-sum"></div>
   </div>
@@ -146,7 +208,6 @@
       <button onclick="rotateOne()">🔀 Xoay IP</button>
       <button class="bad" onclick="delOne()">🗑 Xóa</button>
     </div>
-    <div class="muted" style="margin-top:8px">Hoặc bấm trực tiếp nút trên từng dòng bảng.</div>
   </div>
 </div>
 
@@ -196,18 +257,8 @@ async function api(action, extra={}) {
 
 async function loadStatus() {
   // [Ver 2.81] Hien trang thai TAT CA cong vat ly: WAN/LAN + cham xanh (co day) / do (mat day).
-  const el = document.getElementById('pppoe-status');
-  try {
-    const r = await (await fetch('/api/pppoe/ports', {cache:'no-store'})).json();
-    const ports = (r && r.ports) || [];
-    el.classList.remove('muted');
-    el.innerHTML = ports.length ? ports.map(p =>
-      `<span class="port-chip" title="${esc(p.name)}: ${p.up ? 'đang cắm dây' : 'mất dây / tắt'}">`
-      + `<span class="dot ${p.up ? 'on' : 'off'}" role="img" aria-label="${p.up ? 'on' : 'off'}"></span>`
-      + `<b>${esc(p.name)}</b><span class="role ${p.role === 'wan' ? 'wan' : 'lan'}">${p.role === 'wan' ? 'WAN' : 'LAN'}</span>`
-      + (p.speed ? `<span class="spd">${esc(p.speed)}</span>` : '') + `</span>`).join('')
-      : '<span class="muted">Không đọc được danh sách cổng.</span>';
-  } catch(e){ el.textContent = 'mất kết nối'; }
+  // [Ver 2.119] Cum cong dung chung (pmPortsLoad, /api/pm/ports).
+  if (window.pmPortsLoad) window.pmPortsLoad();
   // Thong tin PPPoE goc van can cho nut Bat/Tat PPPoE (user/pass) - chay nen, khong chan.
   fetch('/api/pppoe/status').then(x => x.json()).then(r => {
     const d = (r && r.data && (r.data.data || r.data)) || {};
@@ -215,7 +266,7 @@ async function loadStatus() {
     document.getElementById('enable-row').innerHTML =
       (en ? `<button class="bad" onclick="setEnable(false)">Tắt PPPoE (về DHCP)</button>`
           : `<button class="ok" onclick="setEnable(true)">Bật PPPoE</button>`)
-      + ` <span class="muted">Bật/tắt cần user+pass (lấy từ form tạo phiên hoặc nhập khi bấm).</span>`;
+      ;
     window._pppoe_info = d;
   }).catch(() => {});
 }
@@ -313,7 +364,7 @@ async function refreshInner() {
       const on = g.filter(isUp).length;
       head = `<tr class="eth-head" style="${ethVars[pk]}" data-eth-toggle="${esc(pk)}" tabindex="0" aria-expanded="${col ? 'false' : 'true'}" onclick="toggleEth(this.dataset.ethToggle)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleEth(this.dataset.ethToggle)}">`
         + `<td colspan="9"><span class="car">${col ? '▸' : '▾'}</span><b>${esc(pk)}</b>`
-        + `<span class="on">● ${on} online</span><span class="off">○ ${g.length - on} off</span><span class="muted">Σ ${g.length} phiên — bấm để thu gọn / mở</span></td></tr>`;
+        + `<span class="on">● ${on} online</span><span class="off">○ ${g.length - on} off</span><span class="muted">Σ ${g.length} phiên</span></td></tr>`;
     }
     const iface = s.interface || s.iface || (id !== '' ? `if_${String(id).padStart(3,'0')}` : '—');
     const up = isUp(s);
@@ -655,6 +706,37 @@ setInterval(refresh, 30000);
     try { api = window.api; } catch (e) {}
   }
   setInterval(function () { if (p.classList.contains('show')) sched(); }, 3000);
+})();
+</script>
+<script>// [Ver 2.119] Trang thai cong chung cho /pppoe va /vpn: doc /api/pm/ports (cung nguon tab Cong mang).
+(function () {
+  var RJ45 = '<svg viewBox="0 0 24 22" aria-hidden="true"><rect class="pt-body" x="1" y="1" width="22" height="20" rx="3"/>'
+    + '<path class="pt-hole" d="M5 6h14v8h-3v3h-8v-3H5z"/>'
+    + '<rect class="pt-led" x="3" y="2.5" width="4" height="2" rx=".6"/><rect class="pt-led" x="17" y="2.5" width="4" height="2" rx=".6"/></svg>';
+  function e(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function spd(s) { return s ? (s >= 1000 ? (s % 1000 ? (s / 1000).toFixed(1) : s / 1000) + ' Gbps' : s + ' Mbps') : ''; }
+  var sig = '';
+  async function load() {
+    var el = document.getElementById('pmPorts'); if (!el) return;
+    try {
+      var r = await (await fetch('/api/pm/ports', {cache: 'no-store'})).json();
+      var ps = (r && r.ports) || [];
+      var s = JSON.stringify(ps.map(function (p) { return [p.name, p.up, p.speed, p.is_wan, p.pppoe, p.lan, p.clients]; }));
+      if (s === sig) return; sig = s;
+      el.innerHTML = ps.length ? ps.map(function (p) {
+        var k = p.is_wan ? ['wan', 'WAN ch\u00ednh', 'WAN'] : p.pppoe ? ['ppp', 'WAN PPPoE', 'PPP'] : p.lan === false ? ['ext', 'WAN ph\u1ee5', 'WAN2'] : ['lan', 'LAN', 'LAN'];
+        var st = p.up ? ('C\u00f3 d\u00e2y' + (p.speed ? ' \u00b7 ' + spd(p.speed) : '')) : 'Ch\u01b0a c\u1eafm d\u00e2y';
+        if (k[0] === 'lan' && p.up) st += ' \u00b7 ' + (p.clients || 0) + ' m\u00e1y';
+        var lbl = p.name + ': ' + k[1] + ', ' + st;
+        var cls = 'pmp ' + (p.up ? 'up' : 'down') + (k[0] === 'lan' ? '' : ' ' + k[0]);
+        var sh = k[2] + (p.up && p.speed ? ' ' + spd(p.speed).replace(' Gbps', 'G').replace(' Mbps', 'M') : '');
+        return '<div class="' + cls + '" role="listitem" tabindex="0" aria-label="' + e(lbl) + '" title="' + e(lbl + (p.mac ? '\nMAC ' + p.mac : '')) + '">' + RJ45
+          + '<span class="pmp-n">' + e(p.name.replace(/^eth/, 'Eth')) + '</span><span class="pmp-s">' + e(sh) + '</span></div>';
+      }).join('') : '<span class="muted">Kh\u00f4ng \u0111\u1ecdc \u0111\u01b0\u1ee3c danh s\u00e1ch c\u1ed5ng.</span>';
+    } catch (err) { if (!sig) el.textContent = 'M\u1ea5t k\u1ebft n\u1ed1i'; }
+  }
+  window.pmPortsLoad = load;
+  load(); setInterval(load, 5000);
 })();
 </script>
 </body>

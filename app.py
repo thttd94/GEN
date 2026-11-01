@@ -3365,6 +3365,53 @@ def conn_update(payload):
     out['results'] = results
     return out
 
+VPN_ACCT_DIR = '/data/vpn/accounts'
+VPN_WANT_MARK = '/data/vpn/.want_state_v2120'
+
+def _vpn_accounts_state():
+    """[Ver 2.120] Moi tunnel: want (meta auto=1, do lan UP/DOWN cuoi cua anh) + running (dev ton tai)."""
+    out = []
+    try:
+        for d in sorted(Path(VPN_ACCT_DIR).iterdir()):
+            mf = d / 'meta'
+            if not mf.is_file():
+                continue
+            meta = {}
+            for ln in mf.read_text(encoding='utf-8', errors='ignore').splitlines():
+                if '=' in ln:
+                    k, v = ln.split('=', 1)
+                    meta.setdefault(k.strip(), v.strip())
+            dev = meta.get('dev', '')
+            out.append({'name': d.name, 'dev': dev, 'want': meta.get('auto') == '1',
+                        'running': bool(dev) and Path('/sys/class/net/' + dev).exists()})
+    except Exception:
+        pass
+    return out
+
+def vpn_boot_restore(wait=20, tries=6, gap=45):
+    """[Ver 2.120] Sau reboot / app khoi dong lai: bat lai dung cac tunnel anh de UP truoc do.
+    Lan dau chay ban nay: chup trang thai dang chay hien tai lam trang thai mong muon."""
+    try:
+        if not os.path.exists(VPN_WANT_MARK):
+            acc = _vpn_accounts_state()
+            for x in acc:
+                vpn_run(['autostart', x['name'], 'on' if x['running'] else 'off'], timeout=20)
+            Path(VPN_WANT_MARK).write_text(time.strftime('%Y-%m-%d %H:%M:%S'), encoding='utf-8')
+            _ss_log('VPN-RESTORE: chup trang thai lan dau, UP=%s' % ' '.join(x['name'] for x in acc if x['running']))
+    except Exception as e:
+        _ss_log('VPN-RESTORE loi chup trang thai: %s' % e)
+    time.sleep(wait)
+    for i in range(tries):
+        try:
+            miss = [x['name'] for x in _vpn_accounts_state() if x['want'] and not x['running']]
+            if not miss:
+                return
+            r = vpn_run(['startall'], timeout=900)
+            _ss_log('VPN-RESTORE lan %d: bat lai %s -> %s' % (i + 1, ' '.join(miss), (r.get('output') or '').replace('\n', ' | ')[-300:]))
+        except Exception as e:
+            _ss_log('VPN-RESTORE loi: %s' % e)
+        time.sleep(gap)
+
 def conn_watch_loop():
     """[Ver 2.94] Sau boot + khi map.txt doi (gan/bo VPN): chay lai gen_conn_vpn.sh de set vpn_clients dung.
     Chi chay khi da tung luu cau hinh (co /data/vpn/gen_conn.env). Kiem moi 20s."""
@@ -9042,6 +9089,7 @@ if __name__ == '__main__':
     threading.Thread(target=conn_watch_loop, daemon=True, name='conn-watch').start()
     threading.Thread(target=exitip_watch_loop, daemon=True, name='exitip-watch').start()
     threading.Thread(target=vpn_auto_loop, daemon=True, name='vpn-auto').start()
+    threading.Thread(target=vpn_boot_restore, daemon=True, name='vpn-restore').start()
     threading.Thread(target=vpn_map_sweep_loop, daemon=True, name='vpn-sweep').start()
     threading.Thread(target=pppoe_glider_stale_loop, daemon=True, name='glider-stale').start()
     class _GUIServer(ThreadingHTTPServer):

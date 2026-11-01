@@ -1,1 +1,1 @@
-Ver 2.117 (Tab Cong mang: moi cong co nut Chuyen sang WAN / Tra ve LAN rieng, WAN chinh khong doi; cong dat tay la WAN duoc ghi nho)
+Ver 2.120 (VPN giu dung trang thai UP/DOWN sau reboot, bo nut AUTO; cum cong len thanh tieu de /pppoe /vpn; bo chu thich thua)
