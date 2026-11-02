@@ -777,6 +777,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         proxy: String(r.proxy || ''),
         proxyType: String(r.proxyType || 'socks5'),
         note: String(r.note || ''),
+        note_dirty: !!r.note_dirty,
       }));
     }
     function persistDraft(session) {
@@ -811,7 +812,9 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         const key = String(row.tag || row.ip || '');
         const saved = byKey.get(key);
         if (!saved) return row;
-        return { ...row, proxy: saved.proxy || '', proxyType: saved.proxyType || row.proxyType || 'socks5', note: saved.note || '' };
+        // [Ver 2.124] note: ban nhap chi thang khi chinh may nay vua sua o note; con lai lay note tren router
+        return { ...row, proxy: saved.proxy || '', proxyType: saved.proxyType || row.proxyType || 'socks5',
+                 note: saved.note_dirty ? (saved.note || '') : (row.note || saved.note || ''), note_dirty: !!saved.note_dirty };
       });
     }
 
@@ -1557,6 +1560,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       });
       const prevAcc = row ? effVpnAccount(row) : '';
       if (row) row[el.dataset.field] = el.value;
+      if (row && el.dataset.field === 'note') row.note_dirty = true;  // [Ver 2.124]
       if (row && el.dataset.field === 'proxyType' && String(el.value).toLowerCase() === 'vpn' && !String(row.proxy || '').startsWith('vpn:')) {
         row.proxy = '';
       }
@@ -1622,7 +1626,23 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       const t = String((row && row.tag) || '').trim();
       return t || ('ip-' + String((row && row.ip) || '').trim().replace(/[^0-9A-Za-z]/g, '_'));
     }
+    // [Ver 2.124] Luu ghi chu 1 hang len router de may khac / master cung thay.
+    async function saveRowNote(row) {
+      if (!row) return null;
+      const r = await fetchJSON('/api/pm/note', { method:'POST', body: JSON.stringify({ session: currentSession, tag: row.tag || '', ip: row.ip || '', note: String(row.note || '') }) });
+      if (r && r.ok) {
+        row.note = r.note; row.note_dirty = false;
+        try { persistDraft(currentSession); } catch (e) {}
+        try { updateSessionCache(currentSession, currentRows); } catch (e) {}
+      }
+      return r;
+    }
     async function checkProxy(key) {
+      { const r0 = currentRows.find(r => checkKey(r) === key);
+        if (r0 && (r0.note_dirty || String(r0.note || '').trim())) {
+          try { const nr = await saveRowNote(r0); if (!nr || !nr.ok) setStatus('Lưu ghi chú lỗi: ' + ((nr && nr.error) || '?')); else setStatus('Đã lưu ghi chú ' + (r0.tag || r0.ip)); }
+          catch (e) { setStatus('Lưu ghi chú lỗi: ' + e.message); }
+        } }
       const row = currentRows.find(r => checkKey(r) === key);
       const box = document.getElementById(`check-${key}`);
       if (!row || !box) return;

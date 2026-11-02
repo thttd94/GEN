@@ -1,3 +1,7 @@
+## Ver 2.124 - 2026-11-02
+- Ghi chu luu len router (truoc chi luu tam o trinh duyet may do): bam CHECK tren hang thi luu ghi chu hang do roi moi check; may khac/master tai lai la thay. Hang chua tag luu theo IP
+- Luu cau hinh tu may khac khong con xoa ghi chu da luu (chi xoa khi chinh o ghi chu bi sua)
+
 ## Ver 2.123 - 2026-11-02
 - 2.123b: giam tai app 9001 khi nhieu may mo GUI: /api/pm/sysinfo cache 2s, /api/pppoe/list cache 4s (chi 1 request goi 9000), wan_port cache 10s, bo spawn grep dem CPU
 - Blacklist IP WAN (/pppoe): xoay ra IP trong danh sach thi tu xoay tiep, toi da 10 lan. Nut Block IP tren tung hang PPPoE (Xoay IP | Block IP | Gan): dua IP hien tai vao blacklist va xoay ngay. De xuat doi ten thanh Gan

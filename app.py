@@ -2178,6 +2178,59 @@ def sess_item(sess, tag):
     item = sess.setdefault(want, {})
     return item if isinstance(item, dict) else {}
 
+_NOTE_LOCK = threading.Lock()
+
+def _set_note_all(sess, tag, note):
+    """[Ver 2.124b] Ghi note vao moi key trung tag (khong phan biet hoa/thuong)."""
+    want = str(tag or '').strip().lower()
+    hit = False
+    for k, v in list(sess.items()):
+        if str(k).strip().lower() == want and isinstance(v, dict):
+            v['note'] = note; hit = True
+    if not hit:
+        sess_item(sess, tag)['note'] = note
+
+def get_ip_notes(session_id, state=None):
+    state = state if isinstance(state, dict) else load_session_state()
+    meta = state.get('__meta__') if isinstance(state.get('__meta__'), dict) else {}
+    allm = meta.get('ip_notes') if isinstance(meta.get('ip_notes'), dict) else {}
+    d = allm.get(str(session_id))
+    return d if isinstance(d, dict) else {}
+
+def save_row_note(session_id, tag, ip, note):
+    """[Ver 2.124] Luu ghi chu 1 hang len router. Tra ve dict ket qua."""
+    session_id = str(session_id or '1').strip()
+    if session_id not in SESSION_FILES:
+        return {'ok': False, 'error': 'session khong hop le'}
+    note = str(note or '').replace('\r', ' ').replace('\n', ' ').strip()[:500]
+    tag = normalize_tag(tag or '')
+    ip = str(ip or '').strip()
+    if not tag and not re.match(r'^\d{1,3}(\.\d{1,3}){3}$', ip):
+        return {'ok': False, 'error': 'thieu tag/IP'}
+    with _NOTE_LOCK:
+        state = load_session_state()
+        if tag:
+            sess = state.setdefault(session_id, {})
+            if not isinstance(sess, dict):
+                sess = {}; state[session_id] = sess
+            _set_note_all(sess, tag, note)
+        if ip:
+            meta = state.setdefault('__meta__', {})
+            if not isinstance(meta, dict):
+                meta = {}; state['__meta__'] = meta
+            allm = meta.setdefault('ip_notes', {})
+            if not isinstance(allm, dict):
+                allm = {}; meta['ip_notes'] = allm
+            d = allm.setdefault(session_id, {})
+            if not isinstance(d, dict):
+                d = {}; allm[session_id] = d
+            if note:
+                d[ip] = note
+            else:
+                d.pop(ip, None)
+        save_session_state(state)
+    return {'ok': True, 'session': session_id, 'tag': tag, 'ip': ip, 'note': note}
+
 def update_session_rows_meta(session_id, rows):
     session_id = str(session_id)
     state = load_session_state()
@@ -2188,7 +2241,11 @@ def update_session_rows_meta(session_id, rows):
             continue
         item = sess_item(sess, tag)
         if 'note' in row:
-            item['note'] = str(row.get('note', '')).strip()
+            nv = str(row.get('note', '')).strip()
+            # [Ver 2.124] may khac luu ca bang voi note rong (chua tai note moi) => giu note cu,
+            # chi xoa khi chinh o note bi sua (note_dirty).
+            if nv or row.get('note_dirty') or not item.get('note'):
+                _set_note_all(sess, tag, nv)
         if 'vpn_account' in row:
             acc = str(row.get('vpn_account') or '').strip()
             if acc:
@@ -2391,6 +2448,7 @@ def extract_rows(data, session='1'):
     route_by_ip = {str(ip).strip(): normalize_tag(tag) for ip, tag in build_route_ip_to_tag(data).items() if str(ip).strip()}
     vpn_map = load_vpn_map()
     session_meta = get_session_meta(session)
+    ip_notes = get_ip_notes(session)  # [Ver 2.124]
     saved_text = get_saved_ip_identity_text(session)
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     saved_ip_to_tag = {str(item.get('ip', '')).strip(): normalize_tag(item.get('tag', '')) for item in configured_rows if str(item.get('ip', '')).strip()}
@@ -2418,7 +2476,7 @@ def extract_rows(data, session='1'):
             proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
         else:
             proxy_val, ptype = (format_proxy(outbound), format_proxy_type(outbound))
-        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': True})
+        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': (str(meta.get('note', '')).strip() or str(ip_notes.get(ip, '')).strip()), 'configured': True})
     auto_tags = effective_auto_ip_tags(configured_rows)
     for ip in sorted(set(str(k).strip() for k in devices) | set(auto_tags)):
         if not ip or ip in configured_ips:
@@ -2438,7 +2496,7 @@ def extract_rows(data, session='1'):
             proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
         else:
             proxy_val, ptype = (format_proxy(outbound), format_proxy_type(outbound) if outbound else 'socks5')
-        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': str(meta.get('note', '')).strip(), 'configured': False})
+        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': (str(meta.get('note', '')).strip() or str(ip_notes.get(ip, '')).strip()), 'configured': False})
     return rows
 
 def migrate_proxy_dns_servers(data):
@@ -2514,7 +2572,7 @@ def apply_rows_to_data(data, rows_by_tag, session='1'):
             vpn_acc_row = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
         if ptype_norm == 'pppoe' or str(proxy).startswith('pppoe:'):
             pppoe_acc_row = str(proxy).split(':', 1)[1].strip() if ':' in str(proxy) else ''
-        touched_rows.append({'tag': tag, 'mac': row.get('mac', ''), 'note': row.get('note', ''), 'vpn_account': vpn_acc_row, 'pppoe_account': pppoe_acc_row})
+        touched_rows.append({'tag': tag, 'mac': row.get('mac', ''), 'note': row.get('note', ''), 'note_dirty': bool(row.get('note_dirty')), 'vpn_account': vpn_acc_row, 'pppoe_account': pppoe_acc_row})
     update_session_rows_meta(session, touched_rows)
     # [Ver 2.111] Doi proxy = doi server outbound (vd as.lumiproxy.io -> us.arxlabs.io).
     # Rule pha vong lap DNS phai tinh lai theo DANH SACH TEN MIEN MOI, neu khong proxy
@@ -8782,6 +8840,8 @@ class Handler(BaseHTTPRequestHandler):
                     if payload.get('reboot_router'):
                         call_old_gui('/api/system/reboot', method='GET')
                     return self._send_json({'ok': True, 'session': session_id, 'shared': True, 'count': len(rows), 'text': normalized_text, 'apply_results': apply_results})
+            if path == '/api/pm/note':  # [Ver 2.124]
+                return self._send_json(save_row_note(payload.get('session', '1'), payload.get('tag', ''), payload.get('ip', ''), payload.get('note', '')))
             if path == '/api/pm/check-proxy':
                 return self._send_json(check_proxy(str(payload.get('proxy', '')), session=str(payload.get('session', '1'))))
             if path == '/api/pm/check-proxy-batch':
