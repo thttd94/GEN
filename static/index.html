@@ -756,12 +756,17 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
 
     function renderNotesSummary() {
       const box = document.getElementById('notesSummary');
-      const lines = getVisibleRows().filter(r => String(r.note || '').trim()).map(r => `Máy ${String(r.machine || '').trim() || '?'} : ${String(r.note || '').trim()}`);
-      if (!lines.length) {
+      const rows = getVisibleRows().filter(r => String(r.note || '').trim());
+      if (!rows.length) {
         box.innerHTML = '<span class="notes-summary-empty">Chưa có note</span>';
         return;
       }
-      box.textContent = lines.join('\n');
+      box.innerHTML = rows.map(r => {
+        const machine = String(r.machine || '').trim() || '?';
+        const note = esc(String(r.note || '').trim());
+        const tip = r.note_at ? 'Ghi chú lưu lúc: ' + fmtNoteAt(r.note_at) : '';
+        return `<span${tip ? ' title="' + esc(tip) + '"' : ''} style="display:block;white-space:pre-wrap;cursor:${tip ? 'help' : 'default'}">Máy ${esc(machine)} : ${note}</span>`;
+      }).join('');
     }
 
     function sessionTabLabel(session) {
