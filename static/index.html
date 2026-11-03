@@ -812,6 +812,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         proxyType: String(r.proxyType || 'socks5'),
         note: String(r.note || ''),
         note_dirty: !!r.note_dirty,
+        note_at: String(r.note_at || ''),
       }));
     }
     function persistDraft(session) {
@@ -848,7 +849,8 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         if (!saved) return row;
         // [Ver 2.124] note: ban nhap chi thang khi chinh may nay vua sua o note; con lai lay note tren router
         return { ...row, proxy: saved.proxy || '', proxyType: saved.proxyType || row.proxyType || 'socks5',
-                 note: saved.note_dirty ? (saved.note || '') : (row.note || saved.note || ''), note_dirty: !!saved.note_dirty };
+                 note: saved.note_dirty ? (saved.note || '') : (row.note || saved.note || ''), note_dirty: !!saved.note_dirty,
+                 note_at: (saved.note_dirty ? saved.note_at : (row.note_at || saved.note_at)) || '' };
       });
     }
 

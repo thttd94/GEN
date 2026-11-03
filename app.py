@@ -2513,7 +2513,7 @@ def extract_rows(data, session='1'):
             proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
         else:
             proxy_val, ptype = (format_proxy(outbound), format_proxy_type(outbound))
-        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': (str(meta.get('note', '')).strip() or str(ip_notes.get(ip, '')).strip()), 'configured': True})
+        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': (str(meta.get('note', '')).strip() or str(ip_notes.get(ip, '')).strip()), 'note_at': (str(meta.get('note_at', '')).strip() or str(ip_note_at.get(ip, '')).strip()), 'configured': True})
     auto_tags = effective_auto_ip_tags(configured_rows)
     for ip in sorted(set(str(k).strip() for k in devices) | set(auto_tags)):
         if not ip or ip in configured_ips:
@@ -2533,7 +2533,7 @@ def extract_rows(data, session='1'):
             proxy_val, ptype = ('vpn:' + vpn_acc if vpn_acc else 'vpn:', 'vpn')
         else:
             proxy_val, ptype = (format_proxy(outbound), format_proxy_type(outbound) if outbound else 'socks5')
-        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': (str(meta.get('note', '')).strip() or str(ip_notes.get(ip, '')).strip()), 'configured': False})
+        rows.append({'machine': machine, 'ip': ip, 'tag': tag, 'proxy': proxy_val, 'proxyType': ptype, 'mac': normalize_mac(static_mac_by_ip.get(ip, '') or dev.get('mac', '')), 'status': str(dev.get('status', 'offline')).strip() or 'offline', 'note': (str(meta.get('note', '')).strip() or str(ip_notes.get(ip, '')).strip()), 'note_at': (str(meta.get('note_at', '')).strip() or str(ip_note_at.get(ip, '')).strip()), 'configured': False})
     return rows
 
 def migrate_proxy_dns_servers(data):
