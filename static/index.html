@@ -460,6 +460,35 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     </div>
   </div>
 
+<div class="modal" id="macAssignModal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <b>GÁN MAC</b>
+        <span class="sub" id="macAssignCount">0 dòng</span>
+        <button class="btn small" onclick="closeMacAssign()">Đóng</button>
+      </div>
+      <div class="modal-body">
+        <div class="sub">Mỗi dòng: <span class="mono">IP MAC</span> (cách bằng dấu cách, | hoặc ;)</div>
+        <textarea id="macAssignText" class="cfg-text" spellcheck="false" placeholder="192.15.4.1 22:BE:61:3E:26:CF" oninput="macAssignCount()"></textarea>
+        <div id="macConnBox" style="display:none;margin-top:10px;">
+          <div class="sub" id="macConnInfo"></div>
+          <textarea id="macConnText" class="cfg-text" spellcheck="false" readonly style="min-height:140px;"></textarea>
+          <div class="checkline" style="margin-top:6px;">
+            <button class="btn small" onclick="macConnCopy(false)">Copy full</button>
+            <button class="btn small" onclick="macConnCopy(true)">Copy MAC</button>
+            <button class="btn small apply" onclick="macConnUse()">Dùng danh sách này</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="openMacAssignPage()">Reload</button>
+        <button class="btn" onclick="macConnLoad()">Lấy MAC</button>
+        <button class="btn" onclick="closeMacAssign()">Hủy</button>
+        <button class="btn apply" onclick="macAssignApply()">Apply</button>
+      </div>
+    </div>
+  </div>
+
 <div class="modal" id="ipMacModal">
     <div class="modal-card">
       <div class="modal-head">
@@ -1576,11 +1605,62 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       if (el.dataset.field === 'note') renderNotesSummary();
     }
 
-    function openMacAssignPage() {
-      const host = window.location.hostname || '192.168.1.1';
-      const url = `http://${host}:19123`;
-      window.open(url, '_blank');
-      setStatus('Đã mở GÁN MAC');
+    // [Ver 2.125] GAN MAC trong GUI (truoc mo tab moi :19123)
+    function closeMacAssign() { document.getElementById('macAssignModal').classList.remove('show'); }
+    function macAssignCount() {
+      const n = document.getElementById('macAssignText').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean).length;
+      document.getElementById('macAssignCount').textContent = n + ' dòng';
+    }
+    async function openMacAssignPage() {
+      document.getElementById('macConnBox').style.display = 'none';
+      document.getElementById('macAssignModal').classList.add('show');
+      try {
+        setStatus('Đang nạp GÁN MAC...');
+        const d = await fetchJSON('/api/pm/mac-map');
+        if (d.ok === false) throw new Error(d.error || '?');
+        document.getElementById('macAssignText').value = d.text || '';
+        macAssignCount();
+        setStatus('Đã nạp ' + (d.count || 0) + ' dòng GÁN MAC');
+      } catch (e) { setStatus('Lỗi: ' + e.message); }
+    }
+    async function macConnLoad() {
+      try {
+        setStatus('Đang lấy MAC đang kết nối...');
+        const d = await fetchJSON('/api/pm/mac-connected');
+        if (d.ok === false) throw new Error(d.error || '?');
+        document.getElementById('macConnText').value = d.text || '';
+        document.getElementById('macConnInfo').textContent = (d.count || 0) + ' máy đang kết nối';
+        document.getElementById('macConnBox').style.display = '';
+        setStatus('Đã lấy ' + (d.count || 0) + ' MAC đang kết nối');
+      } catch (e) { setStatus('Lỗi: ' + e.message); }
+    }
+    async function macConnCopy(macOnly) {
+      let t = document.getElementById('macConnText').value || '';
+      if (macOnly) t = t.split(/\r?\n/).map(l => (l.trim().split(/\s*[|;]\s*|\s+/)[1] || '')).filter(Boolean).join('\n');
+      try { await navigator.clipboard.writeText(t); setStatus('Đã copy'); }
+      catch (e) {
+        const ta = document.getElementById('macConnText'); const keep = ta.value;
+        ta.value = t; ta.select(); try { document.execCommand('copy'); setStatus('Đã copy'); } catch (e2) { setStatus('Copy lỗi, copy tay giúp em'); }
+        ta.value = keep;
+      }
+    }
+    function macConnUse() {
+      document.getElementById('macAssignText').value = document.getElementById('macConnText').value || '';
+      document.getElementById('macConnBox').style.display = 'none';
+      macAssignCount();
+      setStatus('Đã đưa danh sách MAC vào ô nhập, bấm Apply để lưu');
+    }
+    async function macAssignApply() {
+      const text = document.getElementById('macAssignText').value;
+      if (!text.trim() && !confirm('Danh sách trống sẽ XÓA toàn bộ GÁN MAC. Tiếp tục?')) return;
+      try {
+        setStatus('Đang apply GÁN MAC...');
+        const d = await fetchJSON('/api/pm/mac-apply', { method:'POST', body: JSON.stringify({ text }) });
+        if (d.ok === false) throw new Error(d.error || '?');
+        const dh = d.dhcp || {};
+        setStatus('Đã apply ' + (d.count || 0) + ' dòng GÁN MAC' + (dh.ok ? ' | có hiệu lực ngay, máy client cần xin lại IP (khởi động lại / rút cắm dây)' : ' | Lỗi nạp DHCP: ' + (dh.msg || '?')));
+        closeMacAssign();
+      } catch (e) { setStatus('Lỗi: ' + e.message); }
     }
 
     function showDuplicates(items) {
@@ -2041,7 +2121,9 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         closeIpMacModal();
         sessionCache[String(currentSession)] = null;
         await loadSession(currentSession, true);
-        setStatus(`Đã lưu GÁN IP dùng chung cho tất cả cấu hình (${data.count || 0} dòng)`);
+        const dh = data.dhcp;
+        setStatus(`Đã lưu GÁN IP dùng chung cho tất cả cấu hình (${data.count || 0} dòng)`
+          + (dh ? (dh.ok ? ' | MAC có hiệu lực ngay, máy client cần xin lại IP (khởi động lại / rút cắm dây)' : ' | Lỗi nạp DHCP: ' + (dh.msg || '?')) : ''));
       } catch (e) {
         setStatus('Lỗi: ' + e.message);
       }

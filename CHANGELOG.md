@@ -1,3 +1,11 @@
+## Ver 2.125 - 2026-11-03
+- Gan MAC co hieu luc ngay, khong can reboot router: sinh lai dhcp-host trong config dnsmasq dang chay tu uci dhcp, kiem cu phap, tat dnsmasq de procd bat lai (~5s mat DHCP, DNS khong anh huong), bo lease xung dot, tu start neu dnsmasq khong len. Khong dung init reload (loi Argument list too long) va SIGHUP (dnsmasq 2.90 segfault). Log logs/dhcp_live.log
+- Tu don file tam dnsmasq ket lai (/var/etc/dnsmasq.conf.*.N, /tmp/hosts/dhcp.*.N): ngay sau moi lan Gan MAC + moi 1 gio
+- GAN MAC mo popup ngay trong GUI (nhu GAN IP), khong mo tab moi :19123. Co Reload / Lay MAC / Copy / Apply
+- May client can xin lai IP (khoi dong lai / rut cam day) de nhan IP moi
+- Log vendor trong RAM (gr_server.log, gencore_log.txt) tu cat khi >20MB, giu 2MB cuoi o .tail. Truoc do log phinh 800MB+ lam het RAM, kernel giet 9000 (mat danh sach phien)
+- Watchdog server goc 9000: chet (vd bi OOM giet) qua 60s thi tu bat lai, toi da 1 lan/5 phut, ghi logs/vendor_server_watch.log kem dong OOM tu dmesg
+
 ## Ver 2.124 - 2026-11-02
 - Ghi chu luu len router (truoc chi luu tam o trinh duyet may do): bam CHECK tren hang thi luu ghi chu hang do roi moi check; may khac/master tai lai la thay. Hang chua tag luu theo IP
 - Luu cau hinh tu may khac khong con xoa ghi chu da luu (chi xoa khi chinh o ghi chu bi sua)

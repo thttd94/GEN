@@ -6187,6 +6187,351 @@ def sync_static_to_router(rows, clear_first=False):
         except Exception:
             pass
         call_static_api('/add_static', method='GET', data={'ip': ip, 'mac': mac})
+DHCP_LIVE_LOCK = threading.Lock()
+DHCP_LIVE_LOG = BASE_DIR / 'logs' / 'dhcp_live.log'
+
+def _dhcp_live_log(msg):
+    try:
+        DHCP_LIVE_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(DHCP_LIVE_LOG, 'a', encoding='utf-8') as f:
+            f.write(time.strftime('%Y-%m-%d %H:%M:%S ') + msg + '\n')
+    except Exception:
+        pass
+
+def dhcp_lease_conflicts(lease_lines, rows):
+    """[Ver 2.125] Tach lease xung dot voi bang gan: MAC da gan nhung dang giu IP khac,
+    hoac IP da gan dang bi MAC khac giu. Tra (giu_lai, bo_di)."""
+    want_ip = {}
+    want_mac = {}
+    for r in rows or []:
+        ip = str(r.get('ip', '')).strip()
+        mac = normalize_mac(r.get('mac', '')).lower()
+        if ip and mac:
+            want_ip[mac] = ip
+            want_mac[ip] = mac
+    keep, drop = [], []
+    for line in lease_lines:
+        p = line.split()
+        if len(p) < 3:
+            keep.append(line); continue
+        mac, ip = p[1].lower(), p[2]
+        bad = (mac in want_ip and want_ip[mac] != ip) or (ip in want_mac and want_mac[ip] != mac)
+        (drop if bad else keep).append(line)
+    return keep, drop
+
+DNSMASQ_CONF = Path('/var/etc/dnsmasq.conf.cfg01411c')
+
+def _dnsmasq_pids():
+    try:
+        out = subprocess.run(['pidof', 'dnsmasq'], capture_output=True, text=True, timeout=5).stdout
+        return sorted(out.split())
+    except Exception:
+        return []
+
+def _dnsmasq_active_conf():
+    """Config ma dnsmasq dang chay doc (-C ...)."""
+    for p in _dnsmasq_pids():
+        try:
+            args = Path('/proc/%s/cmdline' % p).read_bytes().split(b'\0')
+            for i, x in enumerate(args):
+                if x == b'-C' and i + 1 < len(args):
+                    return Path(args[i + 1].decode())
+        except Exception:
+            pass
+    return DNSMASQ_CONF
+
+def uci_dhcp_hosts(text):
+    """Doc 'uci show dhcp' -> [(mac, ip, name)] cac section host co mac + ip."""
+    sec = {}
+    order = []
+    for line in text.splitlines():
+        m = re.match(r"^dhcp\.([^.=]+)(?:\.([^=]+))?=(.*)$", line.strip())
+        if not m:
+            continue
+        name, opt, val = m.group(1), m.group(2), m.group(3).strip().strip("'")
+        if opt is None:
+            if val == 'host':
+                sec[name] = {}; order.append(name)
+            continue
+        if name in sec:
+            sec[name][opt] = val
+    out = []
+    for n in order:
+        d = sec[n]
+        mac = str(d.get('mac', '')).strip(); ip = str(d.get('ip', '')).strip()
+        if mac and ip:
+            out.append((mac, ip, str(d.get('name', '')).strip()))
+    return out
+
+def rebuild_dhcp_host_lines(conf_text, hosts):
+    """Thay toan bo dong dhcp-host= bang danh sach moi, dat dung cho dong dhcp-host dau tien."""
+    lines = conf_text.splitlines()
+    new = ['dhcp-host=%s,%s%s' % (m, ip, (',' + n) if n else '') for m, ip, n in hosts]
+    out = []
+    placed = False
+    for l in lines:
+        if l.startswith('dhcp-host='):
+            if not placed:
+                out.extend(new); placed = True
+            continue
+        out.append(l)
+    if not placed:
+        out.extend(new)
+    return '\n'.join(out) + '\n'
+
+DNSMASQ_TMP_RULES = ((Path('/var/etc'), r'^dnsmasq\.conf\.[A-Za-z0-9_]+\.\d+$'),
+                     (Path('/tmp/hosts'), r'^dhcp\.[A-Za-z0-9_]+\.\d+$'))
+
+def dnsmasq_tmp_cleanup(min_age=60, rules=None):
+    """[Ver 2.125] Xoa file tam init dnsmasq bo lai. Tra so file da xoa."""
+    active = str(_dnsmasq_active_conf())
+    now = time.time()
+    n = 0
+    for d, pat in (rules or DNSMASQ_TMP_RULES):
+        try:
+            files = list(d.iterdir()) if d.is_dir() else []
+        except Exception:
+            files = []
+        for f in files:
+            try:
+                if not re.match(pat, f.name) or str(f) == active or not f.is_file():
+                    continue
+                if now - f.stat().st_mtime < min_age:
+                    continue
+                f.unlink(); n += 1
+            except Exception:
+                pass
+    if n:
+        _dhcp_live_log('CLEAN tmp=%d' % n)
+    return n
+
+VENDOR_RAM_LOGS = ['/tmp/log/gr_server.log', '/tmp/genrouter/gencore_log.txt']
+VENDOR_LOG_MAX = 20 * 1024 * 1024
+VENDOR_LOG_KEEP = 2 * 1024 * 1024
+
+def vendor_log_cap(paths=None, max_bytes=VENDOR_LOG_MAX, keep_bytes=VENDOR_LOG_KEEP):
+    """[Ver 2.125] Log vendor nam tren tmpfs = RAM, khong ai cat -> het RAM, kernel giet 9000.
+    File > max_bytes: chep keep_bytes cuoi sang <file>.tail, cat file ve 0 (giu inode, writer
+    dang mo file van ghi tiep). Tra ve list (path, size_truoc)."""
+    done = []
+    for p in (paths or VENDOR_RAM_LOGS):
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        if st.st_size <= max_bytes:
+            continue
+        try:
+            with open(p, 'rb') as f:
+                f.seek(max(0, st.st_size - keep_bytes))
+                tail = f.read(keep_bytes)
+            with open(p + '.tail', 'wb') as f:
+                f.write(tail)
+            with open(p, 'r+b') as f:
+                f.truncate(0)
+            done.append((p, st.st_size))
+        except Exception as e:
+            done.append((p, 'ERR %s' % e))
+    if done:
+        try:
+            with open(os.path.join(str(BASE_DIR), 'logs', 'vendor_log_cap.log'), 'a', encoding='utf-8') as f:
+                for p, s in done:
+                    f.write('%s CAP %s size=%s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), p, s))
+        except Exception:
+            pass
+    return done
+
+VENDOR_SERVER_BIN = '/etc/genrouter/server'
+VENDOR_SERVER_INIT = '/etc/init.d/genrouter_server'
+VENDOR_SERVER_STATE = {'down_since': 0.0, 'miss': 0, 'last_start': 0.0, 'restarts': 0, 'last_reason': ''}
+
+def _vendor_log(msg):
+    try:
+        with open(os.path.join(str(BASE_DIR), 'logs', 'vendor_server_watch.log'), 'a', encoding='utf-8') as f:
+            f.write('%s %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), msg))
+    except Exception:
+        pass
+
+def vendor_server_alive(port=9000, timeout=2.0):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    try:
+        return s.connect_ex(('127.0.0.1', port)) == 0
+    except Exception:
+        return False
+    finally:
+        s.close()
+
+def _vendor_kill_reason():
+    """Lay dong OOM gan nhat giet 'server' trong dmesg (de log ro nguyen nhan)."""
+    try:
+        out = subprocess.run(['dmesg'], capture_output=True, text=True, timeout=10).stdout
+        hits = [l for l in out.splitlines() if 'Killed process' in l and '(server)' in l]
+        return hits[-1].strip()[:200] if hits else ''
+    except Exception:
+        return ''
+
+def vendor_server_check(now=None, alive=None, start_fn=None, min_miss=2, cooldown=300):
+    """Mot nhip kiem tra. Tra ve 'ok' | 'miss' | 'cooldown' | 'started' | 'nobin'."""
+    st = VENDOR_SERVER_STATE
+    now = time.time() if now is None else now
+    alive = vendor_server_alive() if alive is None else alive
+    if alive:
+        if st['miss']:
+            _vendor_log('UP lai sau %ds' % int(now - st['down_since']))
+        st['miss'] = 0
+        st['down_since'] = 0.0
+        return 'ok'
+    if not os.path.exists(VENDOR_SERVER_BIN) and start_fn is None:
+        return 'nobin'
+    if not st['miss']:
+        st['down_since'] = now
+    st['miss'] += 1
+    if st['miss'] < min_miss:
+        return 'miss'
+    if now - st['last_start'] < cooldown:
+        return 'cooldown'
+    st['last_start'] = now
+    st['restarts'] += 1
+    reason = _vendor_kill_reason() if start_fn is None else ''
+    st['last_reason'] = reason
+    _vendor_log('DOWN %ds -> START lan %d%s' % (int(now - st['down_since']), st['restarts'],
+                                               (' | ' + reason) if reason else ''))
+    (start_fn or vendor_server_start)()
+    return 'started'
+
+def vendor_server_start():
+    # pidfile cu tro PID da chet thi init.d van start duoc (kill -0 that bai); xoa cho chac.
+    try:
+        pid = open('/var/run/gr_server.pid').read().strip()
+        if pid and not os.path.exists('/proc/%s' % pid):
+            os.remove('/var/run/gr_server.pid')
+    except Exception:
+        pass
+    try:
+        subprocess.Popen([VENDOR_SERVER_INIT, 'start'], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, close_fds=True)
+    except Exception as e:
+        _vendor_log('START loi: %s' % e)
+
+def vendor_server_watch_loop():
+    time.sleep(40)
+    while True:
+        try:
+            vendor_server_check()
+        except Exception as e:
+            _vendor_log('check loi: %s' % e)
+        time.sleep(30)
+
+def vendor_log_cap_loop():
+    while True:
+        try:
+            vendor_log_cap()
+        except Exception:
+            pass
+        time.sleep(300)
+
+def dnsmasq_tmp_cleanup_loop():
+    time.sleep(120)
+    while True:
+        try:
+            dnsmasq_tmp_cleanup()
+        except Exception:
+            pass
+        time.sleep(3600)
+
+MAC_TOOL_BASE = 'http://127.0.0.1:19123'
+
+def mac_tool_call(path, payload=None, timeout=120):
+    """[Ver 2.125] Goi tool GAN MAC (port 19123) tu backend 9001."""
+    data = json.dumps(payload).encode('utf-8') if payload is not None else None
+    req = urllib.request.Request(MAC_TOOL_BASE + path, data=data, method='POST' if data is not None else 'GET',
+                                 headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode('utf-8', errors='replace') or '{}')
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode('utf-8', errors='replace') or '{}')
+        except Exception:
+            return {'ok': False, 'error': 'tool GAN MAC loi HTTP %s' % e.code}
+    except Exception as e:
+        return {'ok': False, 'error': 'khong goi duoc tool GAN MAC (19123): %s' % e}
+
+def dhcp_live_apply(rows):
+    """[Ver 2.125] Gan MAC co hieu luc ngay (khong reboot router)."""
+    res = {'ok': False}
+    with DHCP_LIVE_LOCK:
+        try:
+            ushow = subprocess.run(['uci', 'show', 'dhcp'], capture_output=True, text=True, timeout=20).stdout
+        except Exception as e:
+            res['msg'] = 'doc uci dhcp loi: %s' % e; return res
+        hosts = uci_dhcp_hosts(ushow)
+        res['rows'] = len(hosts)
+        conf = _dnsmasq_active_conf()
+        try:
+            old = conf.read_text(encoding='utf-8', errors='replace')
+        except Exception as e:
+            res['msg'] = 'doc config dnsmasq loi: %s' % e; return res
+        text = rebuild_dhcp_host_lines(old, hosts)
+        if text == old:
+            res['cleaned'] = dnsmasq_tmp_cleanup(min_age=0)
+            res.update(ok=True, changed=False, msg='DHCP da co du %d MAC' % len(hosts))
+            return res
+        tmp = conf.with_name(conf.name + '.gen')
+        tmp.write_text(text, encoding='utf-8')
+        t = subprocess.run(['dnsmasq', '--test', '-C', str(tmp)], capture_output=True, text=True, timeout=20)
+        if t.returncode != 0:
+            tmp.unlink()
+            res['msg'] = 'config moi sai cu phap: %s' % (t.stderr or t.stdout).strip()[:200]
+            _dhcp_live_log('TEST_FAIL ' + res['msg']); return res
+        try:
+            shutil.copy(str(conf), str(BASE_DIR / 'gen_backup' / 'dnsmasq.conf.last'))
+        except Exception:
+            pass
+        os.replace(str(tmp), str(conf))
+        before = _dnsmasq_pids()
+        for p in before:
+            try:
+                os.kill(int(p), 15)
+            except Exception:
+                pass
+        for _ in range(20):
+            time.sleep(0.2)
+            if not _dnsmasq_pids():
+                break
+        # dnsmasq dang tat: bo lease xung dot de may xin lai nhan dung IP da gan
+        dropped = []
+        try:
+            if LEASES_FILE.exists():
+                lines = LEASES_FILE.read_text(encoding='utf-8', errors='ignore').splitlines()
+                keep, dropped = dhcp_lease_conflicts(lines, [{'ip': ip, 'mac': m} for m, ip, _n in hosts])
+                if dropped:
+                    LEASES_FILE.write_text(''.join(l + '\n' for l in keep), encoding='utf-8')
+        except Exception as e:
+            _dhcp_live_log('LEASE_ERR %s' % e)
+        after = []
+        for _ in range(15):
+            time.sleep(1)
+            after = _dnsmasq_pids()
+            if after:
+                break
+        manual = False
+        if not after:
+            # procd khong bat lai (vd vuot gioi han respawn) => tu start, khong de mat DHCP
+            subprocess.run(['dnsmasq', '-C', str(conf), '-x', '/var/run/dnsmasq/dnsmasq.cfg01411c.pid'],
+                           capture_output=True, timeout=20)
+            time.sleep(2)
+            after = _dnsmasq_pids(); manual = True
+        res['cleaned'] = dnsmasq_tmp_cleanup(min_age=0)
+        res.update(ok=bool(after), changed=True, dropped_leases=len(dropped), dnsmasq_pids=after, manual_start=manual,
+                   msg=('DHCP da nap %d MAC' % len(hosts)) if after else 'dnsmasq khong chay lai duoc')
+        _dhcp_live_log('APPLY hosts=%d pid %s->%s manual=%s drop=%d %s' % (
+            len(hosts), ','.join(before), ','.join(after), manual, len(dropped),
+            ' '.join(l.split()[1] + '/' + l.split()[2] for l in dropped[:20])))
+    return res
+
 VPN_MGR = '/data/vpn/vpn_mgr.sh'
 VPN_HOSTS_FILE = '/data/vpn/express_hosts.txt'
 
@@ -8665,6 +9010,10 @@ class Handler(BaseHTTPRequestHandler):
             cfg = load_admanager_config()
             router_ctx = get_router_machine_context(cfg, cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {})
             return self._send_json({'ok': True, 'config': cfg, 'machine_note': router_ctx.get('note', ''), 'machine_indexes': router_ctx.get('available', [])})
+        if path == '/api/pm/mac-map':  # [Ver 2.125]
+            return self._send_json(mac_tool_call('/api/mappings'))
+        if path == '/api/pm/mac-connected':  # [Ver 2.125]
+            return self._send_json(mac_tool_call('/api/connected-macs'))
         if path.startswith('/api/pm/ip-mac-config/'):
             session_id = path.rsplit('/', 1)[-1]
             if session_id in SESSION_FILES and SESSION_FILES[session_id].exists():
@@ -8835,11 +9184,21 @@ class Handler(BaseHTTPRequestHandler):
                         save_gencore_json(session_file, data)
                         if payload.get('apply_runtime') and sid == session_id:
                             apply_results = run_apply(sid)
+                    dhcp = None
                     if sync_router:
                         sync_static_to_router(rows, clear_first=True)
+                        if not payload.get('reboot_router'):
+                            dhcp = dhcp_live_apply(rows)  # [Ver 2.125] hieu luc ngay, khong reboot
                     if payload.get('reboot_router'):
                         call_old_gui('/api/system/reboot', method='GET')
-                    return self._send_json({'ok': True, 'session': session_id, 'shared': True, 'count': len(rows), 'text': normalized_text, 'apply_results': apply_results})
+                    return self._send_json({'ok': True, 'session': session_id, 'shared': True, 'count': len(rows), 'text': normalized_text, 'apply_results': apply_results, 'dhcp': dhcp})
+            if path == '/api/pm/mac-apply':  # [Ver 2.125] GAN MAC trong GUI + hieu luc ngay
+                r = mac_tool_call('/api/apply', {'text': str(payload.get('text', ''))})
+                if r.get('ok'):
+                    r['dhcp'] = dhcp_live_apply(None)
+                return self._send_json(r)
+            if path == '/api/pm/dhcp-live':  # [Ver 2.125] nap lai DHCP theo bang gan hien tai
+                return self._send_json(dhcp_live_apply(load_static_hosts_raw()))
             if path == '/api/pm/note':  # [Ver 2.124]
                 return self._send_json(save_row_note(payload.get('session', '1'), payload.get('tag', ''), payload.get('ip', ''), payload.get('note', '')))
             if path == '/api/pm/check-proxy':
@@ -9315,6 +9674,9 @@ if __name__ == '__main__':
     threading.Thread(target=vpn_boot_restore, daemon=True, name='vpn-restore').start()
     threading.Thread(target=vpn_map_sweep_loop, daemon=True, name='vpn-sweep').start()
     threading.Thread(target=pppoe_glider_stale_loop, daemon=True, name='glider-stale').start()
+    threading.Thread(target=dnsmasq_tmp_cleanup_loop, daemon=True, name='dnsmasq-tmp-clean').start()  # [Ver 2.125]
+    threading.Thread(target=vendor_log_cap_loop, daemon=True, name='vendor-log-cap').start()  # [Ver 2.125]
+    threading.Thread(target=vendor_server_watch_loop, daemon=True, name='vendor-9000-watch').start()  # [Ver 2.125]
     class _GUIServer(ThreadingHTTPServer):
         # [Ver 2.63] Backlog mac dinh cua socketserver la 5. Khi GUI go dong thoi
         # nhieu request (bảng + /api/pppoe/list + /api/vpn/status + badge), SYN
