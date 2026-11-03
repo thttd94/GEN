@@ -6305,7 +6305,7 @@ def dnsmasq_tmp_cleanup(min_age=60, rules=None):
         _dhcp_live_log('CLEAN tmp=%d' % n)
     return n
 
-VENDOR_RAM_LOGS = ['/tmp/log/gr_server.log', '/tmp/genrouter/gencore_log.txt']
+VENDOR_RAM_LOGS = ['/tmp/log/gr_server.log', '/tmp/genrouter/gencore_log.txt', '/tmp/gencore_run.log']
 VENDOR_LOG_MAX = 20 * 1024 * 1024
 VENDOR_LOG_KEEP = 2 * 1024 * 1024
 
@@ -6319,17 +6319,20 @@ def vendor_log_cap(paths=None, max_bytes=VENDOR_LOG_MAX, keep_bytes=VENDOR_LOG_K
             st = os.stat(p)
         except OSError:
             continue
-        if st.st_size <= max_bytes:
+        # RAM that = st_blocks*512. File bi ghi kieu '>' sau khi cat thanh file thua:
+        # st_size van 1.9GB nhung RAM ~0, do st_size se cat mai khong dung.
+        used = getattr(st, 'st_blocks', 0) * 512 or st.st_size
+        if used <= max_bytes:
             continue
         try:
             with open(p, 'rb') as f:
                 f.seek(max(0, st.st_size - keep_bytes))
-                tail = f.read(keep_bytes)
+                tail = f.read(keep_bytes).replace(b'\x00', b'')
             with open(p + '.tail', 'wb') as f:
                 f.write(tail)
             with open(p, 'r+b') as f:
                 f.truncate(0)
-            done.append((p, st.st_size))
+            done.append((p, used))
         except Exception as e:
             done.append((p, 'ERR %s' % e))
     if done:
@@ -6424,10 +6427,46 @@ def vendor_server_watch_loop():
             _vendor_log('check loi: %s' % e)
         time.sleep(30)
 
+RESOLV_AUTO = '/tmp/resolv.conf.d/resolv.conf.auto'
+
+def _wan_dns_servers():
+    try:
+        out = subprocess.run(['ifstatus', 'wan'], capture_output=True, text=True, timeout=10).stdout
+        d = json.loads(out or '{}')
+        return [s for s in (d.get('dns-server') or []) if re.match(r'^[0-9a-fA-F:.]+$', str(s))]
+    except Exception:
+        return []
+
+def resolv_auto_heal(path=RESOLV_AUTO, servers_fn=None):
+    """[Ver 2.125] File upstream cua dnsmasq rong (0 byte / khong co nameserver) => moi ten
+    mien REFUSED. Gap khi /tmp day luc netifd ghi lai file. Ghi lai tu DNS cua wan."""
+    try:
+        cur = open(path, encoding='utf-8', errors='replace').read()
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+    if 'nameserver' in cur:
+        return None
+    servers = (servers_fn or _wan_dns_servers)()
+    if not servers:
+        return None
+    body = '# Interface wan (GEN self-heal)\n' + ''.join('nameserver %s\n' % s for s in servers)
+    tmp = path + '.gen'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(body)
+    os.replace(tmp, path)
+    _vendor_log('RESOLV rong -> ghi lai %s' % ','.join(servers))
+    return servers
+
 def vendor_log_cap_loop():
     while True:
         try:
             vendor_log_cap()
+        except Exception:
+            pass
+        try:
+            resolv_auto_heal()
         except Exception:
             pass
         time.sleep(300)
@@ -7686,7 +7725,7 @@ def gencore_start_detached(reason='manual'):
     if not Path('/usr/bin/gencore').exists():
         return
     try:
-        cmd = _gencore_ulimit_prefix() + '( /usr/bin/gencore run -c /etc/genrouter/gencore.json >/tmp/gencore_run.log 2>&1 </dev/null & )'
+        cmd = _gencore_ulimit_prefix() + '( /usr/bin/gencore run -c /etc/genrouter/gencore.json >>/tmp/gencore_run.log 2>&1 </dev/null & )'
         subprocess.Popen(['sh', '-c', cmd], start_new_session=True)
         _wd_log(f'START gencore reason={reason} nofile_target={GENCORE_NOFILE}')
     except Exception as e:
