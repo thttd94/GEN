@@ -2180,6 +2180,30 @@ def sess_item(sess, tag):
 
 _NOTE_LOCK = threading.Lock()
 
+def mac_assign_log(max_lines=60):
+    """[Ver 2.129] Log gan MAC de hien trong popup: DHCP live + watchdog 9000 + OOM gan nhat."""
+    out = []
+    for name in ('dhcp_live.log', 'vendor_server_watch.log'):
+        p = BASE_DIR / 'logs' / name
+        try:
+            if not p.exists():
+                continue
+            with open(p, 'r', encoding='utf-8', errors='replace') as f:
+                lines = f.read().splitlines()[-max_lines:]
+            out.append('--- %s ---' % name)
+            out.extend(lines)
+        except Exception as e:
+            out.append('--- %s: loi doc (%s)' % (name, e))
+    try:
+        r = subprocess.run(['dmesg'], capture_output=True, text=True, timeout=10).stdout or ''
+        oom = [l.strip() for l in r.splitlines() if 'Killed process' in l and '(server)' in l]
+        if oom:
+            out.append('--- OOM gan nhat ---')
+            out.append(oom[-1][:200])
+    except Exception:
+        pass
+    return '\n'.join(out)
+
 def _set_note_all(sess, tag, note, at=None):
     """[Ver 2.126] Ghi note + note_at (ISO8601 UTC) vao moi key trung tag."""
     want = str(tag or '').strip().lower()
@@ -9162,6 +9186,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({'ok': True, 'config': cfg, 'machine_note': router_ctx.get('note', ''), 'machine_indexes': router_ctx.get('available', [])})
         if path == '/api/pm/mac-map':  # [Ver 2.125]
             return self._send_json(mac_tool_call('/api/mappings'))
+        if path == '/api/pm/mac-log':  # [Ver 2.129]
+            return self._send_json({'ok': True, 'text': mac_assign_log()})
         if path == '/api/pm/mac-connected':  # [Ver 2.125]
             return self._send_json(mac_tool_call('/api/connected-macs'))
         if path.startswith('/api/pm/ip-mac-config/'):

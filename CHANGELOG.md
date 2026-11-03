@@ -1,3 +1,9 @@
+## Ver 2.130 - 2026-11-04
+- Log gan MAC thanh khung co dinh goc trai duoi popup, luon hien + tu nap khi mo
+
+## Ver 2.129 - 2026-11-04
+- Popup GAN MAC co o Log: xem dhcp_live.log + watchdog 9000 + dong OOM gan nhat, tu cap nhat sau khi Apply
+
 ## Ver 2.128 - 2026-11-04
 - SUA GOC: Gan MAC xong client van giu IP cu. Nguyen nhan: code cu SIGTERM dnsmasq roi moi xoa lease, procd respawn truoc => lease sai song lai (lease 30 ngay). Gio stop qua procd (khong respawn), don lease, start, KIEM CHUNG lai file, lap lai toi 3 lan.
 - Config khong doi nhung con lease sai: truoc day return som nen bam Gan MAC bao 'da co du MAC' trong khi client van sai IP. Gio van don lease.

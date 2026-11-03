@@ -1,1 +1,1 @@
-Ver 2.128 (gan MAC sua goc lease cu + o tim kiem + bao update ro rang)
+Ver 2.130 (gan MAC khong reboot + log luon hien trong popup + o tim kiem)
