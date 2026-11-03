@@ -6235,6 +6235,28 @@ def _dhcp_live_log(msg):
     except Exception:
         pass
 
+def dnsmasq_service_ctl(action, timeout=25):
+    """[Ver 2.128] stop/start dnsmasq qua procd. STOP qua procd la khac ban chat voi SIGTERM:
+    procd danh dau service DOWN nen khong respawn chen vao giua luc minh don lease."""
+    script = '/etc/init.d/dnsmasq'
+    if not os.path.exists(script):
+        return False
+    try:
+        subprocess.run(['sh', script, action], capture_output=True, text=True, timeout=timeout)
+        return True
+    except Exception as e:
+        _dhcp_live_log('SERVICE_%s_ERR %s' % (str(action).upper(), e))
+        return False
+
+def dnsmasq_wait_empty(timeout=15):
+    """Cho toi khi khong con tien trinh dnsmasq nao (hoac het timeout). Tra True neu da sach."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not _dnsmasq_pids():
+            return True
+        time.sleep(0.3)
+    return not bool(_dnsmasq_pids())
+
 def dhcp_lease_conflicts(lease_lines, rows):
     """[Ver 2.125] Tach lease xung dot voi bang gan: MAC da gan nhung dang giu IP khac,
     hoac IP da gan dang bi MAC khac giu. Tra (giu_lai, bo_di)."""
@@ -6535,6 +6557,31 @@ def mac_tool_call(path, payload=None, timeout=120):
     except Exception as e:
         return {'ok': False, 'error': 'khong goi duoc tool GAN MAC (19123): %s' % e}
 
+def _read_stale_leases(want):
+    """[Ver 2.128] Cac dong lease con xung dot voi bang gan (dang co trong file)."""
+    try:
+        if not LEASES_FILE.exists():
+            return []
+        lines = LEASES_FILE.read_text(encoding='utf-8', errors='ignore').splitlines()
+        return dhcp_lease_conflicts(lines, want)[1]
+    except Exception as e:
+        _dhcp_live_log('LEASE_READ_ERR %s' % e)
+        return []
+
+def _clean_leases(want):
+    """[Ver 2.128] Xoa khoi /tmp/dhcp.leases moi lease xung dot voi bang gan. Tra so dong da bo."""
+    try:
+        if not LEASES_FILE.exists():
+            return 0
+        lines = LEASES_FILE.read_text(encoding='utf-8', errors='ignore').splitlines()
+        keep, drop = dhcp_lease_conflicts(lines, want)
+        if drop:
+            LEASES_FILE.write_text(''.join(l + '\n' for l in keep), encoding='utf-8')
+        return len(drop)
+    except Exception as e:
+        _dhcp_live_log('LEASE_ERR %s' % e)
+        return 0
+
 def dhcp_live_apply(rows):
     """[Ver 2.125] Gan MAC co hieu luc ngay (khong reboot router)."""
     res = {'ok': False}
@@ -6553,8 +6600,16 @@ def dhcp_live_apply(rows):
         text = rebuild_dhcp_host_lines(old, hosts)
         if text == old:
             res['cleaned'] = dnsmasq_tmp_cleanup(min_age=0)
-            res.update(ok=True, changed=False, msg='DHCP da co du %d MAC' % len(hosts))
-            return res
+            # [Ver 2.128] Config giong het KHONG co nghia la dung: lease cu van co the con.
+            # Truoc day return som o day nen bam Gan MAC bao "da co du MAC" trong khi client
+            # van giu IP sai. Gio kiem lease truoc, con sai thi xu ly tiep nhu binh thuong.
+            _w0 = [{'ip': ip, 'mac': m} for m, ip, _n in hosts]
+            _st0 = _read_stale_leases(_w0)
+            if not _st0:
+                res.update(ok=True, changed=False, stale_after=0, attempts=0, dropped_leases=0,
+                           msg='DHCP da co du %d MAC' % len(hosts))
+                return res
+            _dhcp_live_log('STALE_NO_CONF_CHANGE con %d lease sai -> dung lai dnsmasq de don' % len(_st0))
         tmp = conf.with_name(conf.name + '.gen')
         tmp.write_text(text, encoding='utf-8')
         t = subprocess.run(['dnsmasq', '--test', '-C', str(tmp)], capture_output=True, text=True, timeout=20)
@@ -6567,45 +6622,64 @@ def dhcp_live_apply(rows):
         except Exception:
             pass
         os.replace(str(tmp), str(conf))
+        want = [{'ip': ip, 'mac': m} for m, ip, _n in hosts]
+
+        # [Ver 2.128] stop -> don lease -> start -> KIEM CHUNG, lap lai neu con lease sai.
         before = _dnsmasq_pids()
-        for p in before:
-            try:
-                os.kill(int(p), 15)
-            except Exception:
-                pass
-        for _ in range(20):
-            time.sleep(0.2)
-            if not _dnsmasq_pids():
-                break
-        # dnsmasq dang tat: bo lease xung dot de may xin lai nhan dung IP da gan
-        dropped = []
-        try:
-            if LEASES_FILE.exists():
-                lines = LEASES_FILE.read_text(encoding='utf-8', errors='ignore').splitlines()
-                keep, dropped = dhcp_lease_conflicts(lines, [{'ip': ip, 'mac': m} for m, ip, _n in hosts])
-                if dropped:
-                    LEASES_FILE.write_text(''.join(l + '\n' for l in keep), encoding='utf-8')
-        except Exception as e:
-            _dhcp_live_log('LEASE_ERR %s' % e)
+        stale = []
+        n_drop = 0
+        attempts = 0
         after = []
-        for _ in range(15):
-            time.sleep(1)
-            after = _dnsmasq_pids()
-            if after:
-                break
         manual = False
-        if not after:
-            # procd khong bat lai (vd vuot gioi han respawn) => tu start, khong de mat DHCP
-            subprocess.run(['dnsmasq', '-C', str(conf), '-x', '/var/run/dnsmasq/dnsmasq.cfg01411c.pid'],
-                           capture_output=True, timeout=20)
-            time.sleep(2)
-            after = _dnsmasq_pids(); manual = True
+        for attempt in range(3):
+            attempts = attempt + 1
+            if dnsmasq_service_ctl('stop'):
+                stopped = dnsmasq_wait_empty(15)
+            else:
+                stopped = False
+            if not stopped:
+                # khong co init script (hoac procd khong dung): dung SIGTERM nhu cu
+                for p in _dnsmasq_pids():
+                    try:
+                        os.kill(int(p), 15)
+                    except Exception:
+                        pass
+                dnsmasq_wait_empty(10)
+            # dnsmasq da tat han (hoac da co gang): xoa lease xung dot
+            n_drop += _clean_leases(want)
+            if dnsmasq_service_ctl('start'):
+                for _ in range(20):
+                    time.sleep(0.5)
+                    after = _dnsmasq_pids()
+                    if after:
+                        break
+            if not after:
+                # procd khong bat lai (vd vuot gioi han respawn) => tu start, khong de mat DHCP
+                subprocess.run(['dnsmasq', '-C', str(conf), '-x', '/var/run/dnsmasq/dnsmasq.cfg01411c.pid'],
+                               capture_output=True, timeout=20)
+                time.sleep(2)
+                after = _dnsmasq_pids(); manual = True
+            if not after:
+                break
+            stale = _read_stale_leases(want)
+            if not stale:
+                break
+            _dhcp_live_log('LEASE_RETRY lan %d: con %d lease sai, lam lai' % (attempts, len(stale)))
         res['cleaned'] = dnsmasq_tmp_cleanup(min_age=0)
-        res.update(ok=bool(after), changed=True, dropped_leases=len(dropped), dnsmasq_pids=after, manual_start=manual,
-                   msg=('DHCP da nap %d MAC' % len(hosts)) if after else 'dnsmasq khong chay lai duoc')
-        _dhcp_live_log('APPLY hosts=%d pid %s->%s manual=%s drop=%d %s' % (
-            len(hosts), ','.join(before), ','.join(after), manual, len(dropped),
-            ' '.join(l.split()[1] + '/' + l.split()[2] for l in dropped[:20])))
+        res['dropped_leases'] = n_drop
+        res['stale_after'] = len(stale)
+        res['attempts'] = attempts
+        ok_run = bool(after) and not stale
+        msg = 'DHCP da nap %d MAC' % len(hosts)
+        if not after:
+            msg = 'dnsmasq khong chay lai duoc'
+        elif stale:
+            msg = ('Da nap %d MAC nhung con %d lease cu: %s. May do can ngat mang/reboot de xin lai IP.'
+                   % (len(hosts), len(stale), ', '.join(l.split()[1] + '=' + l.split()[2] for l in stale[:5])))
+        res.update(ok=ok_run, changed=True, dnsmasq_pids=after, manual_start=manual, msg=msg)
+        _dhcp_live_log('APPLY hosts=%d pid %s->%s manual=%s attempts=%d stale=%d drop=%d %s' % (
+            len(hosts), ','.join(before), ','.join(after), manual, attempts, len(stale), n_drop,
+            ' '.join(l.split()[1] + '/' + l.split()[2] for l in stale[:20])))
     return res
 
 VPN_MGR = '/data/vpn/vpn_mgr.sh'

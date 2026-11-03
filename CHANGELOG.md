@@ -1,3 +1,9 @@
+## Ver 2.128 - 2026-11-04
+- SUA GOC: Gan MAC xong client van giu IP cu. Nguyen nhan: code cu SIGTERM dnsmasq roi moi xoa lease, procd respawn truoc => lease sai song lai (lease 30 ngay). Gio stop qua procd (khong respawn), don lease, start, KIEM CHUNG lai file, lap lai toi 3 lan.
+- Config khong doi nhung con lease sai: truoc day return som nen bam Gan MAC bao 'da co du MAC' trong khi client van sai IP. Gio van don lease.
+- GAN MAC: them o tim kiem (loc theo IP/MAC, Enter nhay ket qua tiep theo, Escape xoa o tim).
+- Update version: bao ro UPDATE XONG / THAT BAI / dang o ban moi nhat, kem version truoc -> sau.
+
 ## Ver 2.126
 - Luu thoi gian ghi chu (note_at, ISO8601 UTC) khi bam CHECK
 - Di chuot vao o Note hien tooltip: Ghi chu luu luc DD/MM/YYYY HH:MM (gio may tinh client)

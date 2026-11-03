@@ -469,6 +469,10 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       </div>
       <div class="modal-body">
         <div class="sub">Mỗi dòng: <span class="mono">IP MAC</span> (cách bằng dấu cách, | hoặc ;)</div>
+        <div class="checkline" style="margin:6px 0;">
+          <input type="search" id="macAssignSearch" placeholder="Tìm IP / MAC / số máy..." style="flex:1;width:auto;" oninput="macAssignFilter()" onkeydown="if(event.key==='Escape'){this.value='';macAssignFilter()}else if(event.key==='Enter'){event.preventDefault();macAssignJump()}">
+          <span class="sub" id="macAssignSearchInfo" style="white-space:nowrap;"></span>
+        </div>
         <textarea id="macAssignText" class="cfg-text" spellcheck="false" placeholder="192.15.4.1 22:BE:61:3E:26:CF" oninput="macAssignCount()"></textarea>
         <div id="macConnBox" style="display:none;margin-top:10px;">
           <div class="sub" id="macConnInfo"></div>
@@ -699,14 +703,22 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       versionUpdateSubmitting = true;
       try {
         closeVersionCodeModal();
-        setStatus('Đang update phiên bản...');
+        const beforeLabel = String(versionState.current_label || versionState.current_short || '').trim();
+        setStatus('Đang update phiên bản... (bản hiện tại: ' + (beforeLabel || '?') + ')');
         const data = await fetchJSON('/api/pm/version/update', {method:'POST', body: JSON.stringify({password})});
-        setStatus(data.message || (data.updated ? `Đã update: ${data.after}` : 'Đang ở bản mới nhất'));
+        const after = String((data && (data.after || data.current_label)) || '').trim();
+        if (data && data.ok === false) {
+          setStatus('UPDATE THẤT BẠI: ' + (data.error || data.message || 'không rõ lý do') + ' | vẫn ở ' + (beforeLabel || '?'));
+        } else if (data && data.updated) {
+          setStatus('UPDATE XONG: ' + (beforeLabel || '?') + ' → ' + (after || '?') + '. App đang khởi động lại, đợi ~10s rồi tải lại trang.');
+        } else {
+          setStatus('Đang ở bản mới nhất: ' + (after || beforeLabel || '?') + ' (không cần update)');
+        }
         await refreshVersionInfo(true);
         setTimeout(() => refreshVersionInfo(true), 1500);
         setTimeout(() => refreshVersionInfo(true), 4000);
       } catch (e) {
-        setStatus((e && e.message) ? e.message : ('Lỗi update version: ' + e));
+        setStatus('UPDATE LỖI: ' + ((e && e.message) ? e.message : e));
       } finally {
         versionUpdateSubmitting = false;
       }
@@ -1617,9 +1629,51 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     function macAssignCount() {
       const n = document.getElementById('macAssignText').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean).length;
       document.getElementById('macAssignCount').textContent = n + ' dòng';
+      macAssignFilter(true);
+    }
+    // [Ver 2.127] Tim trong danh sach GAN MAC: khong xoa dong (giu nguyen du lieu Apply),
+    // chi nhay toi dong khop + boi den, hien so dong khop.
+    let macAssignHits = [], macAssignHitPos = -1;
+    function macAssignFilter(silent) {
+      const box = document.getElementById('macAssignText');
+      const info = document.getElementById('macAssignSearchInfo');
+      const inp = document.getElementById('macAssignSearch');
+      if (!box || !info) return;
+      const q = String((inp && inp.value) || '').trim().toLowerCase();
+      const lines = box.value.split('\n');
+      macAssignHits = [];
+      if (q) {
+        lines.forEach((ln, i) => { if (ln.toLowerCase().includes(q)) macAssignHits.push(i); });
+      }
+      macAssignHitPos = -1;
+      if (!q) { info.textContent = ''; return; }
+      info.textContent = macAssignHits.length ? `${macAssignHits.length} dòng khớp` : 'không tìm thấy';
+      if (macAssignHits.length && !silent) macAssignJump(0);
+    }
+    function macAssignJump(dir) {
+      const box = document.getElementById('macAssignText');
+      if (!box || !macAssignHits.length) return;
+      if (typeof dir === 'number' && dir === 0) macAssignHitPos = 0;
+      else macAssignHitPos = (macAssignHitPos + 1) % macAssignHits.length;
+      const lineNo = macAssignHits[macAssignHitPos];
+      const lines = box.value.split('\n');
+      let start = 0;
+      for (let i = 0; i < lineNo; i++) start += lines[i].length + 1;
+      const end = start + lines[lineNo].length;
+      box.focus();
+      box.setSelectionRange(start, end);
+      // cuon toi dong dang chon (uoc luong theo so dong)
+      const lh = box.scrollHeight / Math.max(lines.length, 1);
+      box.scrollTop = Math.max(0, lineNo * lh - box.clientHeight / 2);
+      const info = document.getElementById('macAssignSearchInfo');
+      if (info) info.textContent = `${macAssignHitPos + 1}/${macAssignHits.length} — dòng ${lineNo + 1}`;
     }
     async function openMacAssignPage() {
       document.getElementById('macConnBox').style.display = 'none';
+      const _q = document.getElementById('macAssignSearch');
+      if (_q) _q.value = '';
+      const _qi = document.getElementById('macAssignSearchInfo');
+      if (_qi) _qi.textContent = '';
       document.getElementById('macAssignModal').classList.add('show');
       try {
         setStatus('Đang nạp GÁN MAC...');
