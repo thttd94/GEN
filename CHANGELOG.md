@@ -1,3 +1,7 @@
+## Ver 2.126
+- Luu thoi gian ghi chu (note_at, ISO8601 UTC) khi bam CHECK
+- Di chuot vao o Note hien tooltip: Ghi chu luu luc DD/MM/YYYY HH:MM (gio may tinh client)
+
 ## Ver 2.125 - 2026-11-03
 - Gan MAC co hieu luc ngay, khong can reboot router: sinh lai dhcp-host trong config dnsmasq dang chay tu uci dhcp, kiem cu phap, tat dnsmasq de procd bat lai (~5s mat DHCP, DNS khong anh huong), bo lease xung dot, tu start neu dnsmasq khong len. Khong dung init reload (loi Argument list too long) va SIGHUP (dnsmasq 2.90 segfault). Log logs/dhcp_live.log
 - Tu don file tam dnsmasq ket lai (/var/etc/dnsmasq.conf.*.N, /tmp/hosts/dhcp.*.N): ngay sau moi lan Gan MAC + moi 1 gio

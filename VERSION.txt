@@ -1,1 +1,1 @@
-Ver 2.125 (gan MAC hieu luc ngay + GAN MAC trong GUI + chong het RAM do log vendor + watchdog 9000)
+Ver 2.126 (gan MAC hieu luc ngay + GAN MAC trong GUI + chong het RAM do log vendor + watchdog 9000)

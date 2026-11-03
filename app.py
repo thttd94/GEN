@@ -2180,22 +2180,56 @@ def sess_item(sess, tag):
 
 _NOTE_LOCK = threading.Lock()
 
-def _set_note_all(sess, tag, note):
-    """[Ver 2.124b] Ghi note vao moi key trung tag (khong phan biet hoa/thuong)."""
+def _set_note_all(sess, tag, note, at=None):
+    """[Ver 2.126] Ghi note + note_at (ISO8601 UTC) vao moi key trung tag."""
     want = str(tag or '').strip().lower()
+    ts = at or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     hit = False
     for k, v in list(sess.items()):
         if str(k).strip().lower() == want and isinstance(v, dict):
-            v['note'] = note; hit = True
+            v['note'] = note
+            if note:
+                v['note_at'] = ts
+            else:
+                v.pop('note_at', None)
+            hit = True
     if not hit:
-        sess_item(sess, tag)['note'] = note
+        item = sess_item(sess, tag)
+        item['note'] = note
+        if note:
+            item['note_at'] = ts
+        else:
+            item.pop('note_at', None)
 
 def get_ip_notes(session_id, state=None):
     state = state if isinstance(state, dict) else load_session_state()
     meta = state.get('__meta__') if isinstance(state.get('__meta__'), dict) else {}
     allm = meta.get('ip_notes') if isinstance(meta.get('ip_notes'), dict) else {}
-    d = allm.get(str(session_id))
-    return d if isinstance(d, dict) else {}
+    raw = allm.get(str(session_id))
+    if not isinstance(raw, dict):
+        return {}
+    # compat: value co the la string thuan (cu) hoac dict {'text','at'} (moi)
+    out = {}
+    for k, v in raw.items():
+        if isinstance(v, dict):
+            out[k] = v.get('text', '')
+        else:
+            out[k] = str(v) if v else ''
+    return out
+
+def get_ip_note_at(session_id, state=None):
+    """[Ver 2.126] Lay note_at cua ip_notes (neu co)."""""
+    state = state if isinstance(state, dict) else load_session_state()
+    meta = state.get('__meta__') if isinstance(state.get('__meta__'), dict) else {}
+    allm = meta.get('ip_notes') if isinstance(meta.get('ip_notes'), dict) else {}
+    raw = allm.get(str(session_id))
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for k, v in raw.items():
+        if isinstance(v, dict) and v.get('at'):
+            out[k] = v['at']
+    return out
 
 def save_row_note(session_id, tag, ip, note):
     """[Ver 2.124] Luu ghi chu 1 hang len router. Tra ve dict ket qua."""
@@ -2224,12 +2258,14 @@ def save_row_note(session_id, tag, ip, note):
             d = allm.setdefault(session_id, {})
             if not isinstance(d, dict):
                 d = {}; allm[session_id] = d
+            ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if note:
-                d[ip] = note
+                d[ip] = {'text': note, 'at': ts}
             else:
                 d.pop(ip, None)
         save_session_state(state)
-    return {'ok': True, 'session': session_id, 'tag': tag, 'ip': ip, 'note': note}
+    ts_out = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    return {'ok': True, 'session': session_id, 'tag': tag, 'ip': ip, 'note': note, 'note_at': ts_out}
 
 def update_session_rows_meta(session_id, rows):
     session_id = str(session_id)
@@ -2449,6 +2485,7 @@ def extract_rows(data, session='1'):
     vpn_map = load_vpn_map()
     session_meta = get_session_meta(session)
     ip_notes = get_ip_notes(session)  # [Ver 2.124]
+    ip_note_at = get_ip_note_at(session)  # [Ver 2.126]
     saved_text = get_saved_ip_identity_text(session)
     configured_rows = parse_ip_identity_text(saved_text) if saved_text else []
     saved_ip_to_tag = {str(item.get('ip', '')).strip(): normalize_tag(item.get('tag', '')) for item in configured_rows if str(item.get('ip', '')).strip()}

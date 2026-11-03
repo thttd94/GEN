@@ -1035,7 +1035,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
                  ${pppoeOptionsHtml(row.proxy)}
                </select><span class="pp-face">${pppoeFaceHtml(row.proxy)}</span></span><span class="pp-btns"><button class="btn small" onclick="rotatePPPoE(this)" title="Xoay IP phien PPPoE may nay dang chon (mat mang ~5 phut)">🔄 Xoay IP</button><button class="btn small" onclick="blockPPPoE(this)" title="Đưa IP hiện tại vào blacklist và xoay IP mới ngay">⛔ Block IP</button><button class="btn small" onclick="suggestPPPoE(this)" title="Tự động chọn phiên PPPoE chưa được gán">💡 Gán</button>${unassignBtnHtml(row)}<span class="pppoe-rot sub"></span></span></td>`
             : `<td style="white-space:nowrap;"><input value="${esc(row.proxy || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="proxy" oninput="updateField(this)" placeholder="server:port:user:pass" style="width:calc(100% - 34px);">${unassignBtnHtml(row)}</td>`}
-          <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này"></td>
+          <td><input value="${esc(row.note || '')}" data-tag="${esc(row.tag)}" data-ip="${esc(row.ip)}" data-field="note" oninput="updateField(this)" placeholder="Ghi chú cho IP này" data-note-at="${esc(row.note_at||'')}" title="${row.note_at ? 'Ghi chú lưu lúc: ' + fmtNoteAt(row.note_at) : (row.note ? 'Chưa có thời gian lưu' : '')}" onmouseover="this.title=this.dataset.noteAt?'Ghi chú lưu lúc: '+fmtNoteAt(this.dataset.noteAt):(this.value?'Chưa có thời gian lưu':'')"></td>
           <td><button class="btn small" onclick="checkProxy('${esc(checkKey(row))}')">CHECK</button><div id="check-${esc(checkKey(row))}" class="sub"></div></td>
         </tr>`).join('');
       renderNotesSummary();
@@ -1711,12 +1711,23 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       if (!row) return null;
       const r = await fetchJSON('/api/pm/note', { method:'POST', body: JSON.stringify({ session: currentSession, tag: row.tag || '', ip: row.ip || '', note: String(row.note || '') }) });
       if (r && r.ok) {
-        row.note = r.note; row.note_dirty = false;
+        row.note = r.note; if (r.note_at) row.note_at = r.note_at; row.note_dirty = false;
         try { persistDraft(currentSession); } catch (e) {}
         try { updateSessionCache(currentSession, currentRows); } catch (e) {}
       }
       return r;
     }
+    function fmtNoteAt(iso) {
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        if (isNaN(d)) return iso;
+        const pad = n => String(n).padStart(2,'0');
+        return pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + d.getFullYear()
+          + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      } catch { return iso; }
+    }
+
     async function checkProxy(key) {
       { const r0 = currentRows.find(r => checkKey(r) === key);
         if (r0 && (r0.note_dirty || String(r0.note || '').trim())) {
