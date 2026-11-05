@@ -1,3 +1,6 @@
+## Ver 2.133 - 2026-11-05
+- Giao dien NOC: bo nut Sang/Toi, luon toi (bo ban sang 2.132). Giao dien cu van co nut Sang/Toi.
+
 ## Ver 2.132 - 2026-11-05
 - Nut Sang/Toi hoat dong voi giao dien NOC: them bang mau sang cho NOC (truoc CSS NOC chi co mau toi, bam nut khong doi gi). Mac dinh NOC van toi.
 

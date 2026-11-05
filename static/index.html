@@ -3771,80 +3771,6 @@ body.noc .cfg-menu-pop{background:#0c1622;border-color:var(--line)}
 }
 @media (prefers-reduced-motion:reduce){body.noc #projectTabProxy::before{animation:none}.noc-bar b{transition:none}}
 
-/* ===== [Ver 2.132] NOC-LIGHT: ban SANG cua giao dien NOC (nut Sang/Toi) ===== */
-body.noc:not(.dark){
-  color-scheme: light;
-  --bg1:#eef4f8; --bg2:#f5f9fc; --bg3:#e8f0f5;
-  --text:#0f2233; --text-dim:#5b6f80; --text-soft:#36546a; --text-head:#0f766e;
-  --accent:#0d9488; --accent-hi:#0f766e; --accent-ink:#0f766e;
-  --surface:#ffffff; --surface-2:#f4f8fb; --surface-3:#e9f1f6; --surface-4:#f7fafc;
-  --surface-hi:#e6f4f1; --surface-alt:#f1f6f9; --th-bg:#e7f0f5;
-  --line:#cfdde7; --line-2:#dde8ef; --line-3:#c3d4e0; --line-4:#c3d4e0; --line-5:#dde8ef;
-  --line-dash:#cddbe5; --line-lock:#c3d4e0; --line-status:#99d5cc;
-  --grid1:#ffffff; --grid2:#f7fafc; --grid-line:#dde8ef;
-  --bulk1:#ffffff; --bulk2:#f7fafc;
-  --status1:#f0fdfa; --status2:#ecfeff;
-  --tab-bg:#0f766e; --tab-ink:#ffffff;
-  --info:#0369a1; --info-b:#0369a1;
-  --chip-bg:#f1f6f9; --chip-line:#cfdde7;
-  --disabled-bg:#e9f1f6; --disabled-ink:#7d91a4;
-  --shadow-card:rgba(15,34,51,.08); --shadow-drop:rgba(15,34,51,.18);
-  --neon:#0d9488; --neon-2:#16a34a;
-  background:
-    radial-gradient(1200px 500px at 15% -10%, rgba(13,148,136,.08), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgba(14,165,233,.06), transparent 60%),
-    linear-gradient(rgba(13,148,136,.05) 1px, transparent 1px) 0 0/100% 32px,
-    linear-gradient(90deg, rgba(13,148,136,.05) 1px, transparent 1px) 0 0/32px 100%,
-    #f3f7fa fixed;
-  color:var(--text);
-}
-body.noc:not(.dark) ::selection{background:rgba(13,148,136,.22)}
-body.noc:not(.dark) .titlebar{background:rgba(255,255,255,.88)}
-body.noc:not(.dark) #projectTabProxy{color:#0f2233}
-body.noc:not(.dark) .sysbar{background:#ffffff}
-body.noc:not(.dark) .conn-badge.connected{background:rgba(22,163,74,.10);color:#15803d;border-color:rgba(22,163,74,.4)}
-body.noc:not(.dark) .conn-badge.disconnected{background:rgba(225,29,72,.08);color:#be123c;border-color:rgba(225,29,72,.4)}
-body.noc:not(.dark) .version-btn{background:#ffffff}
-body.noc:not(.dark) .btn{background:#ffffff;color:var(--text)}
-body.noc:not(.dark) .btn:hover{background:#ecfdf9;color:#0f766e}
-body.noc:not(.dark) .btn.apply{background:linear-gradient(135deg,#0d9488,#14b8a6 55%,#22c55e);border-color:#0d9488;color:#ffffff}
-body.noc:not(.dark) .btn.apply:hover{background:linear-gradient(135deg,#0f766e,#0d9488 55%,#16a34a);color:#ffffff;filter:none}
-body.noc:not(.dark) .btn.warn{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.5);color:#b45309}
-body.noc:not(.dark) .btn.warn:hover{background:rgba(245,158,11,.18);color:#92400e}
-body.noc:not(.dark) .btn.tab{background:#ffffff}
-body.noc:not(.dark) .btn.tab.active{background:rgba(13,148,136,.10);color:#0f766e}
-body.noc:not(.dark) .icon-btn{background:#ffffff}
-body.noc:not(.dark) .panel{background:rgba(255,255,255,.94);box-shadow:0 8px 28px rgba(15,34,51,.08)}
-body.noc:not(.dark) .noc-toggle{color:#0f766e}
-body.noc:not(.dark) #sessionLabel{background:rgba(13,148,136,.10)!important;color:#0f766e!important;border-color:rgba(13,148,136,.4)!important}
-body.noc:not(.dark) .status{background:#f0fdfa;color:#0f766e}
-body.noc:not(.dark) .info-note{color:#0369a1}
-body.noc:not(.dark) .lic-line{background:rgba(22,163,74,.08)!important;color:#15803d!important;border-color:rgba(22,163,74,.3)!important}
-body.noc:not(.dark) .view-tabs{background:#f1f6f9}
-body.noc:not(.dark) .view-tab.active{background:rgba(13,148,136,.10);color:#0f766e}
-body.noc:not(.dark) .tfbox{background:#ffffff}
-body.noc:not(.dark) input, body.noc:not(.dark) select, body.noc:not(.dark) textarea{background:#ffffff;color:var(--text)}
-body.noc:not(.dark) input::placeholder, body.noc:not(.dark) textarea::placeholder{color:#94a3b8}
-body.noc:not(.dark) input:focus, body.noc:not(.dark) select:focus, body.noc:not(.dark) textarea:focus{box-shadow:0 0 0 3px rgba(13,148,136,.15)}
-body.noc:not(.dark) th{background:#e7f0f5;color:#0f766e}
-body.noc:not(.dark) #rows tr:hover td{background:rgba(13,148,136,.05)}
-body.noc:not(.dark) #rows td.mono{color:#1e3a5f}
-body.noc:not(.dark) .badge.online{background:rgba(22,163,74,.10);color:#15803d;border-color:rgba(22,163,74,.35);box-shadow:none}
-body.noc:not(.dark) .badge.offline{background:rgba(239,68,68,.08);color:#b91c1c;border-color:rgba(239,68,68,.4);box-shadow:none}
-body.noc:not(.dark) .modal{background:rgba(15,34,51,.35)}
-body.noc:not(.dark) .modal-card, body.noc:not(.dark) #connBox, body.noc:not(.dark) .cfg-menu-pop{background:#ffffff}
-body.noc:not(.dark) .noc-card{background:linear-gradient(180deg,#ffffff,#f4f8fb);box-shadow:0 4px 14px rgba(15,34,51,.06)}
-body.noc:not(.dark) .noc-big{color:#0f2233}
-body.noc:not(.dark) .noc-sub .dn{color:#0f766e}
-body.noc:not(.dark) .noc-sub .up{color:#b45309}
-body.noc:not(.dark) .noc-bar, body.noc:not(.dark) .noc-stack, body.noc:not(.dark) .noc-mini{background:#e2ebf1}
-body.noc:not(.dark) .noc-row b, body.noc:not(.dark) .noc-line-h em{color:#1e3a5f}
-body.noc:not(.dark) .noc-line-v{color:#0f2233}
-body.noc:not(.dark) .noc-card.top .noc-lbl::after{color:#ffffff}
-@media (max-width:760px){
-  body.noc:not(.dark) #rows tr{background:linear-gradient(180deg,#ffffff,#f7fafc)!important}
-}
-
 </style>
 <script id="nocJs">
 // Giao dien "NOC": hang o so lieu (may online, traffic Proxy/VPN/WAN co bieu do nho, luu luong Proxy/Luong phu, WAN + Reset).
@@ -3866,9 +3792,9 @@ body.noc:not(.dark) .noc-card.top .noc-lbl::after{color:#ffffff}
   if (!on) return;
   if (window.__nocOn) return; window.__nocOn = true;
   document.body.classList.add('noc');
-  // [Ver 2.132] NOC mac dinh TOI nhu cu; chi SANG khi nguoi dung da bam nut Sang/Toi (pm_theme=light).
-  try { if (localStorage.getItem('pm_theme') !== 'light') document.body.classList.add('dark'); } catch (e) { document.body.classList.add('dark'); }
-  try { if (typeof applyThemeIcon === 'function') applyThemeIcon(); } catch (e) {}
+  // [Ver 2.133] NOC luon TOI, an nut Sang/Toi (khong ghi pm_theme => Giao dien cu van giu lua chon rieng).
+  document.body.classList.add('dark');
+  if (tb) tb.style.display = 'none';
   var panel = document.getElementById('proxyPanel');
   if (!panel) return;
   var kpi = document.createElement('section');
