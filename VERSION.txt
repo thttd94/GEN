@@ -1,1 +1,1 @@
-Ver 2.130 (gan MAC khong reboot + log luon hien trong popup + o tim kiem)
+Ver 2.132 (NOC co che do sang/toi + Note tong moi nhat len dau + bam so may nhay toi dong)

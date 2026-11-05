@@ -885,6 +885,17 @@ def update_repo_from_remote(password: str):
         shutil.unpack_archive(str(archive_path), str(tmp_root), 'gztar')
         if not extract_dir.exists():
             raise RuntimeError('Không giải nén được gói update')
+        # [Ver 2.131] Nhan version = dong dau VERSION.txt TRONG GOI (nguon that), khong doan tu ten commit.
+        _pkg_version_label = ''
+        try:
+            _pv = (extract_dir / 'VERSION.txt').read_text(encoding='utf-8', errors='replace').splitlines()
+            _pv = _pv[0].strip() if _pv else ''
+            _m = re.match(r'(?i)\s*(Ver\s*\d+(?:\.\d+)*[a-z]?)', _pv)
+            _pkg_version_label = ('Ver ' + _m.group(1)[3:].strip()) if _m else ''
+        except Exception:
+            _pkg_version_label = ''
+        if _pkg_version_label:
+            latest_label = _pkg_version_label
         if latest_label:
             version_text = latest_label if not latest_short else f'{latest_label} ({latest_short})'
             (extract_dir / 'VERSION.txt').write_text(version_text + '\n', encoding='utf-8')
@@ -2204,26 +2215,32 @@ def mac_assign_log(max_lines=60):
         pass
     return '\n'.join(out)
 
-def _set_note_all(sess, tag, note, at=None):
-    """[Ver 2.126] Ghi note + note_at (ISO8601 UTC) vao moi key trung tag."""
+def _note_stamp(item, note, ts, stamp_if_missing=False):
+    """[Ver 2.131] note_at = luc NOI DUNG ghi chu duoc lap/sua. Luu lai cung noi dung thi giu gio cu.
+    Truoc day moi lan APPLY ca bang / bam CHECK lai deu dong dau gio hien tai cho moi note
+    => Note tong khong xep duoc theo moi nhat, tooltip bao sai gio.
+    stamp_if_missing: note cu chua co gio (truoc Ver 2.126) thi dong dau luc nguoi dung bam CHECK."""
+    old_note = str(item.get('note', '') or '').strip()
+    item['note'] = note
+    if not note:
+        item.pop('note_at', None)
+        return
+    if old_note == note and (item.get('note_at') or not stamp_if_missing):
+        return
+    item['note_at'] = ts
+
+def _set_note_all(sess, tag, note, at=None, stamp_if_missing=False):
+    """[Ver 2.124b] Ghi note vao moi key trung tag (khong phan biet hoa/thuong).
+    [Ver 2.131] note_at chi doi khi noi dung doi (xem _note_stamp)."""
     want = str(tag or '').strip().lower()
     ts = at or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     hit = False
     for k, v in list(sess.items()):
         if str(k).strip().lower() == want and isinstance(v, dict):
-            v['note'] = note
-            if note:
-                v['note_at'] = ts
-            else:
-                v.pop('note_at', None)
+            _note_stamp(v, note, ts, stamp_if_missing)
             hit = True
     if not hit:
-        item = sess_item(sess, tag)
-        item['note'] = note
-        if note:
-            item['note_at'] = ts
-        else:
-            item.pop('note_at', None)
+        _note_stamp(sess_item(sess, tag), note, ts, stamp_if_missing)
 
 def get_ip_notes(session_id, state=None):
     state = state if isinstance(state, dict) else load_session_state()
@@ -2271,7 +2288,7 @@ def save_row_note(session_id, tag, ip, note):
             sess = state.setdefault(session_id, {})
             if not isinstance(sess, dict):
                 sess = {}; state[session_id] = sess
-            _set_note_all(sess, tag, note)
+            _set_note_all(sess, tag, note, stamp_if_missing=True)  # [Ver 2.131] CHECK tung dong
         if ip:
             meta = state.setdefault('__meta__', {})
             if not isinstance(meta, dict):
@@ -2284,11 +2301,22 @@ def save_row_note(session_id, tag, ip, note):
                 d = {}; allm[session_id] = d
             ts = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
             if note:
-                d[ip] = {'text': note, 'at': ts}
+                old = d.get(ip)
+                old_text = str((old.get('text', '') if isinstance(old, dict) else old) or '').strip()
+                old_at = str(old.get('at', '') or '') if isinstance(old, dict) else ''
+                # [Ver 2.131] cung noi dung -> giu gio cu
+                d[ip] = {'text': note, 'at': old_at if (old_text == note and old_at) else ts}
             else:
                 d.pop(ip, None)
+        # [Ver 2.131] tra ve gio dang luu that (truoc day luon tra gio hien tai)
+        ts_out = ''
+        if note:
+            if tag:
+                ts_out = str(sess_item(sess, tag).get('note_at', '') or '')
+            if not ts_out and ip:
+                e = d.get(ip)
+                ts_out = str(e.get('at', '') or '') if isinstance(e, dict) else ''
         save_session_state(state)
-    ts_out = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
     return {'ok': True, 'session': session_id, 'tag': tag, 'ip': ip, 'note': note, 'note_at': ts_out}
 
 def update_session_rows_meta(session_id, rows):

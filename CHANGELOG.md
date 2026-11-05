@@ -1,3 +1,12 @@
+## Ver 2.132 - 2026-11-05
+- Nut Sang/Toi hoat dong voi giao dien NOC: them bang mau sang cho NOC (truoc CSS NOC chi co mau toi, bam nut khong doi gi). Mac dinh NOC van toi.
+
+## Ver 2.131 - 2026-11-05
+- Note tong: ghi chu moi nhat len dau (theo gio luu note_at)
+- Bam "May N" o Note tong: nhay dung trang, cuon toi dong may do, to sang
+- SUA GOC nhan version sau update: lay tu VERSION.txt trong goi (truoc doan tu ten commit => "Ver 2.129+2.130" bao thanh 2.129 nhu bi ha cap)
+- SUA GOC note_at: APPLY ca bang / CHECK lai khong con dong dau lai gio cho note khong doi noi dung
+
 ## Ver 2.130 - 2026-11-04
 - Log gan MAC thanh khung co dinh goc trai duoi popup, luon hien + tu nap khi mo
 
