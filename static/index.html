@@ -249,6 +249,11 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     .notes-summary-box a.note-jump{color:var(--info);font-weight:700;text-decoration:none;cursor:pointer}
     .notes-summary-box a.note-jump:hover{text-decoration:underline}
     tr.jump-hit > td{background:rgba(250,204,21,.38)!important;transition:background .4s}
+    /* [Ver 2.134] Note tong: tu Ban to do, Done to xanh la */
+    .notes-summary-box .note-ban{color:#b91c1c;font-weight:700}
+    .notes-summary-box .note-done{color:#15803d;font-weight:700}
+    body.dark .notes-summary-box .note-ban{color:#f87171}
+    body.dark .notes-summary-box .note-done{color:#4ade80}
 .me-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#22c55e;color:#04220f;font:700 11px/16px system-ui,sans-serif;letter-spacing:.3px;vertical-align:middle;white-space:nowrap}
 .view-tab.has-me{position:relative}
 .view-tab.has-me::after{content:'';position:absolute;top:3px;right:4px;width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 2px #0b1220}
@@ -787,6 +792,13 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         .sort((a, b) => (b.t - a.t) || (a.i - b.i))
         .map(x => x.r);
     }
+    // [Ver 2.134] Note tong: tu dung rieng "Ban" to do, "Done" to xanh la (khong phan biet hoa/thuong, o bat ky dau).
+    // Tach theo tu roi esc tung phan => khong chen duoc HTML tu note. Khong dung lookbehind (trinh duyet cu loi ca script).
+    function noteMarkHtml(text) {
+      return String(text || '').split(/\b(ban|done)\b/i)
+        .map((p, i) => i % 2 ? `<span class="note-${p.toLowerCase()}">${esc(p)}</span>` : esc(p))
+        .join('');
+    }
     function renderNotesSummary() {
       const box = document.getElementById('notesSummary');
       const rows = notesSummaryRows();
@@ -796,7 +808,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       }
       box.innerHTML = rows.map(r => {
         const machine = String(r.machine || '').trim() || '?';
-        const note = esc(String(r.note || '').trim());
+        const note = noteMarkHtml(String(r.note || '').trim());
         const tip = r.note_at ? 'Ghi chú lưu lúc: ' + fmtNoteAt(r.note_at) : '';
         return `<span${tip ? ' title="' + esc(tip) + '"' : ''} style="display:block;white-space:pre-wrap;cursor:${tip ? 'help' : 'default'}"><a href="#" class="note-jump" data-key="${esc(checkKey(r))}" onclick="jumpToNoteRow(this.dataset.key);return false;">Máy ${esc(machine)}</a> : ${note}</span>`;
       }).join('');

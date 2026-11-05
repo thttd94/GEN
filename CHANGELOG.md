@@ -1,3 +1,6 @@
+## Ver 2.134 - 2026-11-06
+- Note tong: tu "Ban" to chu do, tu "Done" to chu xanh la. Khong phan biet hoa/thuong, o bat ky vi tri nao trong note, chi khi la 1 tu rieng (banned, abandon, undone, Bàn... khong bi to). Mau theo giao dien sang/toi/NOC.
+
 ## Ver 2.133 - 2026-11-05
 - Giao dien NOC: bo nut Sang/Toi, luon toi (bo ban sang 2.132). Giao dien cu van co nut Sang/Toi.
 
