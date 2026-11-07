@@ -9032,6 +9032,65 @@ def vpn_add_wg_text(name, text):
         except Exception:
             pass
 
+# [Ver 2.135] GUI CLIENT TIMEOUT: moi IP client chi duoc dung web 60s ke tu luc MO TRANG
+# (GET '/', '/pppoe', '/vpn', '/net'). Het 60s: moi request cua IP do tra 403 rong + dong
+# ket noi ngay (khong goi ubus/subprocess) => 300 may poll lien tuc khong lam nghen 9001.
+# Bam F5 / tai lai trang = mo cua so 60s moi. Mien tru: 127.0.0.1 va IP trong file cau hinh.
+# Chi ngat khi DANG CO >= min_clients (mac dinh 10) may khac nhau goi web trong 15s gan nhat;
+# it may hon thi khong ngat ai (khong co tai).
+# Cau hinh: /opt/proxy-manager-v1/gui_client_timeout.json {"seconds":60,"min_clients":10,"exempt":["127.0.0.1"]}
+GUI_TIMEOUT_FILE = BASE_DIR / 'gui_client_timeout.json'
+GUI_PAGE_PATHS = ('/', '/pppoe', '/vpn', '/net', '/index.html')
+_GUI_WIN = {}
+_GUI_SEEN = {}
+GUI_ACTIVE_WINDOW = 15
+_GUI_WIN_LOCK = threading.Lock()
+_GUI_CFG = {'t': 0.0, 'seconds': 60, 'min_clients': 10, 'exempt': {'127.0.0.1'}}
+
+
+def gui_timeout_cfg():
+    now = time.time()
+    if now - _GUI_CFG['t'] < 10:
+        return _GUI_CFG
+    sec, mc, ex = 60, 10, {'127.0.0.1'}
+    try:
+        d = json.loads(GUI_TIMEOUT_FILE.read_text(encoding='utf-8')) or {}
+        sec = int(d.get('seconds', 60))
+        mc = int(d.get('min_clients', 10))
+        ex |= {str(x).strip() for x in (d.get('exempt') or []) if str(x).strip()}
+    except (OSError, ValueError, TypeError):
+        pass
+    _GUI_CFG.update({'t': now, 'seconds': sec, 'min_clients': mc, 'exempt': ex})
+    return _GUI_CFG
+
+
+def gui_client_allowed(ip, path):
+    """True = phuc vu binh thuong. False = het 60s, tu choi."""
+    cfg = gui_timeout_cfg()
+    sec = cfg['seconds']
+    if sec <= 0 or ip in cfg['exempt'] or ip.startswith('127.'):
+        return True
+    now = time.time()
+    with _GUI_WIN_LOCK:
+        _GUI_SEEN[ip] = now
+        if len(_GUI_SEEN) > 4096:
+            for k in [k for k, v in _GUI_SEEN.items() if now - v > GUI_ACTIVE_WINDOW]:
+                _GUI_SEEN.pop(k, None)
+        if path in GUI_PAGE_PATHS:
+            _GUI_WIN[ip] = now
+            if len(_GUI_WIN) > 4096:
+                for k in [k for k, v in _GUI_WIN.items() if now - v > sec]:
+                    _GUI_WIN.pop(k, None)
+            return True
+        active = sum(1 for v in _GUI_SEEN.values() if now - v <= GUI_ACTIVE_WINDOW)
+        if active < cfg['min_clients']:
+            return True
+        st = _GUI_WIN.get(ip)
+    return st is not None and (now - st) <= sec
+
+
+
+
 class Handler(BaseHTTPRequestHandler):
 
     def _send_no_cache_headers(self):
@@ -9047,6 +9106,25 @@ class Handler(BaseHTTPRequestHandler):
         self._send_no_cache_headers()
         self.end_headers()
         self.wfile.write(data)
+
+    def _gui_gate(self):
+        # [Ver 2.135] True = da tu choi (het 60s), caller return ngay.
+        try:
+            ip = self.client_address[0]
+            if gui_client_allowed(ip, urlparse(self.path).path):
+                return False
+        except Exception:
+            return False
+        try:
+            self.close_connection = True
+            self.send_response(403)
+            self.send_header('X-GUI-Timeout', '1')
+            self.send_header('Content-Length', '0')
+            self.send_header('Connection', 'close')
+            self.end_headers()
+        except Exception:
+            pass
+        return True
 
     def _send_file(self, path, content_type='text/html; charset=utf-8'):
         data = path.read_bytes()
@@ -9080,6 +9158,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        if self._gui_gate():
+            return
         ensure_sessions_exist()
         path = urlparse(self.path).path
         if path == '/api/license':
@@ -9231,6 +9311,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json({'error': 'Not found'}, 404)
 
     def do_POST(self):
+        if self._gui_gate():
+            return
         ensure_sessions_exist()
         path = urlparse(self.path).path
         if path != '/api/pm/reboot-router' and (not license_gate_ok()):

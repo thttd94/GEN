@@ -28,3 +28,4 @@ update/
 *.tmp_write*
 # [Ver 2.70] du lieu runtime tren router, khong dua vao goi update
 xxtouch_jobs/
+gui_client_timeout.json

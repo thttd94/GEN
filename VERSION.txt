@@ -1,1 +1,1 @@
-Ver 2.134 (Note tong to mau Ban do / Done xanh + NOC luon toi + Note tong moi nhat len dau)
+Ver 2.135 (Moi may client chi vao web 60s roi tu ngat, F5 de vao tiep - giam tai GUI 9001)

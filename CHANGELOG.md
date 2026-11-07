@@ -1,3 +1,8 @@
+## Ver 2.135 - 2026-11-07
+- GUI 9001: moi IP may client chi dung web 60s ke tu luc mo trang (/, /pppoe, /vpn, /net). Chi ap dung khi dang co >= 10 may khac nhau goi web (trong 15s gan nhat); duoi 10 may thi khong ngat ai. Het 60s moi request cua may do tra 403 + dong ket noi ngay (khong goi ubus) => 300 may de trinh duyet mo khong lam nghen router. Khong hien thong bao; muon dung tiep thi tai lai trang (F5) = them 60s.
+- Cau hinh tung router: /opt/proxy-manager-v1/gui_client_timeout.json {"seconds": 60, "exempt": ["127.0.0.1", "<IP PC quan ly>"], "min_clients": 10}. seconds=0 = tat; may mien tru khong tinh vao so may. Doc lai sau 10s, khong can restart. 127.x luon mien tru. File nay khong nam trong goi update nen update khong ghi de.
+- Do tren Gen15: / 7.1s -> 28ms, /api/pppoe/list 6.1s -> 34ms, ket noi 9001 ESTABLISHED 135 -> 0, TIME_WAIT 770 -> 89, CPU app 20% -> 0%.
+
 ## Ver 2.134 - 2026-11-06
 - Note tong: tu "Ban" to chu do, tu "Done" to chu xanh la. Khong phan biet hoa/thuong, o bat ky vi tri nao trong note, chi khi la 1 tu rieng (banned, abandon, undone, Bàn... khong bi to). Mau theo giao dien sang/toi/NOC.
 
