@@ -1559,6 +1559,105 @@ def is_dns_loop_breaker(rule):
     return not rule.get('source_ip_cidr')
 
 
+SPLIT_DNS_TAG = 'gen_split_dns'
+
+def ensure_split_dns_rules(data, split_cfg=None, conn_cfg=None):
+    """[Ver 2.136] DNS phai di CUNG DUONG voi du lieu (do thuc te Gen12 2026-11-08).
+
+    Hien tuong: may ep ra WAN (App Store) van tai cham, may ep sang VPN van cham.
+    Nguyen nhan: dns.rules chi co rule source_ip_cidr => server proxy_N cho MOI ten
+    mien. Client hoi DNS qua proxy My => CDN tra ve edge My (RTT 166-251ms) trong
+    khi du lieu lai di WAN VN / VPN. Do tren Gen12: cung host Apple,
+      edge VN 17.253.85.x RTT ~28ms  |  edge My 17.253.127.x/7.x/83.x RTT ~198ms.
+    WAN khong thieu bang thong (do 588 Mbit/s, 0% loss) => cham la do DIEM DEN.
+
+    Cach sua: rule DNS theo TEN MIEN, dat TRUOC cac rule source_ip_cidr tro proxy_:
+      1. ten mien 'bypass' (may proxy ep ra WAN) => DNS qua dnsmasq cua router
+      2. host su kien (incentive) => giu nguyen proxy_N cua chinh may (claim point)
+      3. ten mien phan luong => DNS qua outbound gen_split (WAN/VPN/PPPoE/proxy)
+    (cung thu tu voi route.rules: bypass -> incentive -> split -> proxy_N)
+    Tra ve 1 neu co doi config."""
+    try:
+        split_cfg = split_cfg if split_cfg is not None else get_split_config()
+        conn_cfg = conn_cfg if conn_cfg is not None else get_conn_config()
+        dns = data.setdefault('dns', {})
+        rules = list(dns.get('rules') or [])
+        servers = list(dns.get('servers') or [])
+        before = json.dumps([rules, servers], sort_keys=True)
+        obs = {str(o.get('tag')): str(o.get('type', '')).lower() for o in (data.get('outbounds') or []) if isinstance(o, dict)}
+
+        def mine(r):
+            if not isinstance(r, dict) or str(r.get('action')) != 'route':
+                return False
+            srv = str(r.get('server') or '')
+            if srv in (SPLIT_DNS_TAG, CONN_DIRECT_DNS_TAG):
+                return bool(r.get('domain') or r.get('domain_suffix'))
+            # rule DNS su kien do ham nay tao (proxy_N + source_ip + keyword incentive)
+            if srv.startswith('proxy_') and r.get('domain_keyword') == list(SPLIT_INCENTIVE_KEYWORDS):
+                return True
+            return False
+
+        rules = [r for r in rules if not mine(r)]
+        wanted = []
+
+        # 1. ten mien 'bypass' cua may proxy (ra WAN) => DNS qua dnsmasq router
+        # Thu tu PHAI giong route.rules: bypass (ensure_conn_rules) dung TRUOC incentive + split.
+        bfields = _conn_split_fields(conn_cfg.get('bypass')) if obs.get(CONN_BYPASS_TAG) else {}
+        if bfields:
+            _ref = next((x for x in servers if isinstance(x, dict) and str(x.get('tag') or '') == 'dnsmasq'), None)
+            if CONN_DIRECT_DNS_TAG not in {str(x.get('tag')) for x in servers if isinstance(x, dict)}:
+                if isinstance(_ref, dict) and _ref.get('address'):
+                    srv = {'tag': CONN_DIRECT_DNS_TAG, 'address': str(_ref['address'])}
+                    if _ref.get('detour'):
+                        srv['detour'] = str(_ref['detour'])
+                else:
+                    srv = {'tag': CONN_DIRECT_DNS_TAG, 'address': CONN_DIRECT_DNS_ADDRESS, 'detour': CONN_DIRECT_TAG}
+                servers.append(srv)
+            r = {'action': 'route', 'server': CONN_DIRECT_DNS_TAG}
+            r.update(bfields)
+            wanted.append(r)
+
+        # 2. host su kien => proxy cua chinh may do (giong rule route incentive)
+        for r in (data.get('route') or {}).get('rules') or []:
+            if not isinstance(r, dict) or r.get('outbound') == SPLIT_TAG:
+                continue
+            if r.get('domain_keyword') != list(SPLIT_INCENTIVE_KEYWORDS):
+                continue
+            tag = str(r.get('outbound') or '')
+            ip = r.get('source_ip_cidr')
+            if tag.startswith('proxy_') and isinstance(ip, str) and ip.strip():
+                wanted.append({'action': 'route', 'server': tag, 'source_ip_cidr': ip.strip(),
+                               'domain_keyword': list(SPLIT_INCENTIVE_KEYWORDS)})
+
+        # 3. ten mien phan luong => DNS di dung outbound gen_split
+        split_up = bool(split_cfg.get('enabled')) and SPLIT_TAG in obs and obs.get(SPLIT_TAG) not in ('block', '')
+        fields = _split_match_fields(split_cfg.get('domains')) if split_up else {}
+        if fields:
+            if SPLIT_DNS_TAG not in {str(x.get('tag')) for x in servers if isinstance(x, dict)}:
+                servers.append({'tag': SPLIT_DNS_TAG, 'address': PROXY_DNS_ADDRESS, 'detour': SPLIT_TAG})
+            r = {'action': 'route', 'server': SPLIT_DNS_TAG}
+            r.update(fields)
+            wanted.append(r)
+
+        if wanted:
+            pos = len(rules)
+            for i, r in enumerate(rules):
+                if isinstance(r, dict) and str(r.get('server') or '').startswith('proxy_'):
+                    pos = i
+                    break
+            rules[pos:pos] = wanted
+        # server tro toi outbound khong con ton tai => bo (tranh 'outbound not found')
+        servers = [x for x in servers if not (isinstance(x, dict) and str(x.get('tag')) == SPLIT_DNS_TAG and not split_up)]
+        dns['rules'] = rules
+        dns['servers'] = servers
+        return 0 if json.dumps([rules, servers], sort_keys=True) == before else 1
+    except Exception as e:
+        try:
+            _ss_log('SPLIT-DNS loi: %s' % e)
+        except Exception:
+            pass
+        return 0
+
 def ensure_dns_loop_breaker(data):
     """Chen rule pha VONG LAP DNS len dau dns.rules. Tra ve 1 neu co doi.
 
@@ -3058,7 +3157,8 @@ def ensure_split_rules(data, cfg=None, strict=False):
                 obs.append(ob)
         route['rules'] = rules
         data['outbounds'] = obs
-        return 0 if json.dumps([rules, obs], sort_keys=True) == before else 1
+        _dns_chg = ensure_split_dns_rules(data, split_cfg=cfg)  # [Ver 2.136]
+        return 1 if (_dns_chg or json.dumps([rules, obs], sort_keys=True) != before) else 0
     except ValueError:
         if strict:
             raise
@@ -3502,8 +3602,10 @@ def ensure_conn_rules(data, cfg=None):
         # [Ver 2.111] 2.108 chen dns rule proxy_N (_restored) LEN DAU => day rule pha vong lap
         # xuong duoi => proxy dung TEN MIEN bi vong lap DNS. Chot lai: breaker luon o vi tri 0.
         ensure_dns_loop_breaker(data)
+        _sd_chg = ensure_split_dns_rules(data, conn_cfg=cfg)  # [Ver 2.136]
         dns_rules = dns.get('rules') or []
         _dns_changed = 0 if json.dumps([dns_rules, dns_servers], sort_keys=True) == before_dns else 1
+        _dns_changed = _dns_changed or _sd_chg
         return 1 if (_dns_changed or json.dumps([rules, obs], sort_keys=True) != before) else 0
     except Exception as e:
         try:

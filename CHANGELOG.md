@@ -1,3 +1,8 @@
+## Ver 2.136 - 2026-11-08
+- DNS di cung duong voi du lieu. Truoc day moi may hoi DNS qua proxy My cho MOI ten mien => CDN (TikTok, Apple, Google) tra ve server My, du lieu di WAN VN / VPN van phai sang My nen cham. Do tren Gen12: edge Apple VN 28ms vs edge My 166-251ms; WAN 588 Mbit/s khong thieu bang thong.
+- Rule DNS theo ten mien, dat truoc rule DNS proxy tung may, cung thu tu voi rule route: (1) ten mien 'Khong qua Proxy' (bypass, vd App Store) => DNS qua dnsmasq router (WAN); (2) host su kien chua 'incentive' => giu DNS qua proxy cua chinh may (claim point); (3) ten mien phan luong => DNS qua chinh duong tach (WAN/VPN/PPPoE/proxy). Moi ten mien khac van DNS qua proxy nhu cu.
+- Tat phan luong hoac duong tach bi chan => tu go rule/server DNS tach. Chay lai nhieu lan khong nhan doi rule.
+
 ## Ver 2.135 - 2026-11-07
 - GUI 9001: moi IP may client chi dung web 60s ke tu luc mo trang (/, /pppoe, /vpn, /net). Chi ap dung khi dang co >= 10 may khac nhau goi web (trong 15s gan nhat); duoi 10 may thi khong ngat ai. Het 60s moi request cua may do tra 403 + dong ket noi ngay (khong goi ubus) => 300 may de trinh duyet mo khong lam nghen router. Khong hien thong bao; muon dung tiep thi tai lai trang (F5) = them 60s.
 - Cau hinh tung router: /opt/proxy-manager-v1/gui_client_timeout.json {"seconds": 60, "exempt": ["127.0.0.1", "<IP PC quan ly>"], "min_clients": 10}. seconds=0 = tat; may mien tru khong tinh vao so may. Doc lai sau 10s, khong can restart. 127.x luon mien tru. File nay khong nam trong goi update nen update khong ghi de.

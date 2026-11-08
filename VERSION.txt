@@ -1,1 +1,1 @@
-Ver 2.135 (Moi may client chi vao web 60s roi tu ngat, F5 de vao tiep - giam tai GUI 9001)
+Ver 2.136 (DNS di cung duong voi du lieu: ten mien ep WAN/VPN tra DNS qua WAN/VPN => CDN gan, video/App Store nhanh)
