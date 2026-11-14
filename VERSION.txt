@@ -1,1 +1,1 @@
-Ver 2.136 (DNS di cung duong voi du lieu: ten mien ep WAN/VPN tra DNS qua WAN/VPN => CDN gan, video/App Store nhanh)
+Ver 2.137 (Blacklist IP PPPoE: tu phat hien phien dang dung IP blacklist (ca khi tat/bat PPPoE, reboot, BRAS cap lai) va tu xoay)

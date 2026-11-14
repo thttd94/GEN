@@ -8969,6 +8969,67 @@ def _nft_split(rule):
     import shlex
     return shlex.split(rule)
 
+# [Ver 2.137] BL-GUARD: tu phat hien phien PPPoE dang dung IP nam trong blacklist va tu xoay.
+# Truoc day kiem tra blacklist CHI chay ben trong job xoay (bam Xoay IP / Block IP).
+# Phien tu len lai IP moi (tat/bat PPPoE, reboot, BRAS cap lai, ifup tu dong) KHONG qua
+# job xoay nao => trung IP blacklist van chay mai. Do that Gen15 2026-11-14: tat/bat PPPoE
+# xong 51/160 phien dang dung IP blacklist, khong phien nao tu xoay.
+BL_GUARD_INTERVAL_S = 30      # chu ky quet
+BL_GUARD_COOLDOWN_S = 180     # sau khi 1 job xoay cua phien ket thuc, cho bay lau moi xoay lai
+BL_GUARD_GIVEUP_S = 1800      # job that bai (het 10 lan van trung / BRAS khong tra PADO) => nghi lau hon
+BL_GUARD_MAX_PER_ROUND = 20   # so phien toi da khoi dong xoay moi chu ky (tranh dap BRAS)
+_BL_GUARD_STATE = {'ts': 0.0}
+
+def pppoe_bl_guard_check():
+    now = time.time()
+    if now - _BL_GUARD_STATE['ts'] < BL_GUARD_INTERVAL_S:
+        return []
+    _BL_GUARD_STATE['ts'] = now
+    bl = pppoe_bl_set()
+    if not bl:
+        return []
+    try:
+        dump = json.loads(subprocess.check_output(['ubus', 'call', 'network.interface', 'dump'],
+                                                  text=True, timeout=10))
+    except Exception:
+        return []
+    hits = []
+    for x in dump.get('interface') or []:
+        m = re.fullmatch(r'if_(\d{3})', str(x.get('interface') or ''))
+        if not m or not x.get('up'):
+            continue
+        a = x.get('ipv4-address') or []
+        ip = a[0].get('address', '') if a else ''
+        if ip and ip in bl:
+            hits.append((int(m.group(1)), ip))
+    if not hits:
+        return []
+    started = []
+    for sid, ip in sorted(hits):
+        if len(started) >= BL_GUARD_MAX_PER_ROUND:
+            break
+        with _ROTATE_LOCK:
+            j = dict(_ROTATE_JOBS.get(sid) or {})
+        st = j.get('state')
+        if st in ('starting', 'waiting'):
+            continue
+        last = float(j.get('updated') or 0)
+        wait = BL_GUARD_GIVEUP_S if st == 'failed' else BL_GUARD_COOLDOWN_S
+        if last and now - last < wait:
+            continue
+        try:
+            rotate_start(sid, {'id': sid},
+                         lambda d: call_old_gui('/api/router/pppoe/rotate', method='PUT', data=d))
+            started.append(sid)
+            _pppoe_wd_log('BL-GUARD phien %d: dang dung %s (blacklist) => tu xoay' % (sid, ip))
+        except Exception as e:
+            _pppoe_wd_log('BL-GUARD phien %d loi: %s' % (sid, str(e)[:80]))
+        time.sleep(0.3)
+    if len(hits) > len(started):
+        _pppoe_wd_log('BL-GUARD: %d phien trung blacklist, khoi dong %d, con lai cho chu ky sau / dang xoay / cooldown'
+                      % (len(hits), len(started)))
+    return started
+
 def pppoe_glider_stale_loop():
     time.sleep(40)
     _last_px = ''
@@ -8990,6 +9051,10 @@ def pppoe_glider_stale_loop():
             pppoe_outbound_creds_sync()
         except Exception as e:
             _pppoe_wd_log('PXCRED loi: %s' % str(e)[:80])
+        try:
+            pppoe_bl_guard_check()  # [Ver 2.137]
+        except Exception as e:
+            _pppoe_wd_log('BL-GUARD loi: %s' % str(e)[:80])
         time.sleep(10)
 
 def _pppoe_wd_log(msg):

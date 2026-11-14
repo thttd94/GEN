@@ -1,3 +1,9 @@
+## Ver 2.137 - 2026-11-14
+- Blacklist IP PPPoE tu canh gac (BL-GUARD). Truoc day chi khi bam "Xoay IP" / "Block IP" moi kiem tra IP moi co nam trong blacklist. Phien tu len lai IP (tat/bat PPPoE, reboot, BRAS cap lai) khong qua kiem tra nao nen trung IP blacklist van chay mai. Do that Gen15 2026-11-14: sau tat/bat PPPoE co 51/160 phien dang dung IP blacklist, khong phien nao tu xoay.
+- Nay moi 30s quet tat ca phien dang co IP; phien nao dang dung IP trong blacklist => tu khoi dong xoay (dung dung job xoay cu, van xoay tiep toi da 10 lan neu ra IP blacklist).
+- An toan: khong chay chong phien dang xoay; toi da 20 phien moi chu ky; cho 3 phut sau moi lan xoay ket thuc, 30 phut neu lan xoay truoc that bai (het 10 lan / BRAS khong tra PADO) de khong dap BRAS. Log BL-GUARD trong gencore_watchdog.log.
+- Nut Bat/Tat PPPoE (/pppoe) co xac nhan; Tat bat buoc go "TAT PPPOE" (tat PPPoE xoa toan bo phien PPPoE).
+
 ## Ver 2.136 - 2026-11-08
 - DNS di cung duong voi du lieu. Truoc day moi may hoi DNS qua proxy My cho MOI ten mien => CDN (TikTok, Apple, Google) tra ve server My, du lieu di WAN VN / VPN van phai sang My nen cham. Do tren Gen12: edge Apple VN 28ms vs edge My 166-251ms; WAN 588 Mbit/s khong thieu bang thong.
 - Rule DNS theo ten mien, dat truoc rule DNS proxy tung may, cung thu tu voi rule route: (1) ten mien 'Khong qua Proxy' (bypass, vd App Store) => DNS qua dnsmasq router (WAN); (2) host su kien chua 'incentive' => giu DNS qua proxy cua chinh may (claim point); (3) ten mien phan luong => DNS qua chinh duong tach (WAN/VPN/PPPoE/proxy). Moi ten mien khac van DNS qua proxy nhu cu.

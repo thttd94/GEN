@@ -524,6 +524,12 @@ async function createSession() {
   refresh();
 }
 async function setEnable(on) {
+  const warning = on
+    ? 'Bật PPPoE sẽ thay đổi kết nối WAN và có thể làm gián đoạn Internet. Bạn có chắc muốn tiếp tục?'
+    : 'CẢNH BÁO: Tắt PPPoE sẽ XÓA các phiên PPPoE và cấu hình proxy của chúng, làm các máy mất Internet. Chỉ tiếp tục khi đã có bản sao lưu.';
+  if (!window.confirm(warning)) return;
+  if (!on && window.prompt('Nhập TAT PPPOE để xác nhận xóa các phiên PPPoE:') !== 'TAT PPPOE') return;
+
   const u = (window._pppoe_info || {}).username || document.getElementById('f-user').value.trim();
   const p = (window._pppoe_info || {}).password || document.getElementById('f-pass').value;
   if (on && (!u || !p)) { log('bật PPPoE cần user+pass — nhập ở form tạo phiên trước'); return; }
