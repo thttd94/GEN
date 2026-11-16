@@ -1,3 +1,9 @@
+## Ver 2.140 - 2026-11-16
+- SUA QUAN TRONG: 4 bang Dinh tuyen CHI ap cho MAY CO PROXY. Anh Thai chot: "cac dinh tuyen thi chi nen ap dung cho proxy. Con gan VPN thi van nhu binh thuong, moi du lieu phai qua VPN het." Ban 2.138 da doi thanh ap cho MOI may => may gan VPN bi keo ra WAN / bi chan sai du phai di trong tunnel (nghi la nguyen nhan App Store mat mang tren may gan VPN). Nay rule Chan / WAN / Luong phu deu gan source_ip_cidr = danh sach IP may co proxy that; router khong co may proxy nao => khong sinh rule nao.
+- Theo doi luong: MAY GAN VPN da co luong. May VPN bi RETURN khoi gencore o mangle nen Clash API khong thay; nay doc them /proc/net/nf_conntrack (co accounting byte + IP may nguon + IP dich) va ghep ten mien tu log DNS cua dnsmasq. Bat "Theo doi luong" se tu bat log-queries cua dnsmasq qua /tmp/dnsmasq.d (khong sua file cau hinh chinh), tat theo doi thi tat log. Dong cua may VPN co nhan rieng "VPN" mau tim.
+- Noi ro gioi han: luong may VPN la byte LUY KE gop theo cap may -> dich (khong tach tung ket noi theo gio mo nhu ben gencore). Chua co ten mien (chua kip co log DNS) thi cot ten mien hien IP dich.
+- Sua loi: 2.138 bo mat source_ip_cidr cua rule Luong phu => rule ap cho moi may. Da tra lai.
+
 ## Ver 2.139 - 2026-11-16
 - Theo doi luong: BAM vao ten mien/IP o cot "Ten mien" de gan truc tiep vao bang dinh tuyen (nut Di qua WAN / Di qua Luong phu / Di qua Proxy / Chan ra internet). Gan NGUYEN ten day du (vi du p16-ug-incentive-img-us.tiktokcdn-us.com), co them lua chon gan ca nhom *.ten-mien. Muc gan la TAM THOI: mo tab Dinh tuyen la thay, reload cung trang hoac reset router thi mat, bam Luu moi co tac dung. Moi bang co dong chu cam "Gan tam, chua Luu" de biet muc nao chua ap dung.
 - Bang dinh tuyen: moi muc nam dung 1 dong (tat tu xuong dong, ten dai thi cuon ngang) + ke mau chan/le theo tung dong de phan biet. Van la o soan thao that nen Ctrl+A / Ctrl+C copy duoc TOAN BO danh sach day du, khong rut gon.

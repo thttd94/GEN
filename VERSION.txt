@@ -1,1 +1,1 @@
-Ver 2.139 (Gan truc tiep tu Theo doi luong + ke dong chan/le + sua loi nhap 1 ky tu)
+Ver 2.140 (Dinh tuyen chi ap cho may proxy + luong cho may VPN tu conntrack)

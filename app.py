@@ -2984,19 +2984,33 @@ def parse_split_proxy(text, default_type='socks5'):
         if typ not in ('socks5', 'http'):
             raise ValueError('Loai proxy phai la socks5 hoac http')
         parts = raw.split(':')
-        if len(parts) == 2:
+        if len(parts) == 1:
+            # [Ver 2.139a] Chi co ten mien => coi la host, port dien mac dinh o duoi.
+            host, port, user, pw = parts[0], '', '', ''
+        elif len(parts) == 2:
             host, port, user, pw = parts[0], parts[1], '', ''
         elif len(parts) >= 4:
             host, port, user, pw = parts[0], parts[1], parts[2], ':'.join(parts[3:])
         else:
-            raise ValueError('Proxy sai dang (host:port hoac host:port:user:pass)')
+            raise ValueError('Proxy sai dang: can host:port (vi du proxy.abc.com:1080) '
+                             'hoac host:port:user:pass')
     host = host.strip().strip('[]')
+    # [Ver 2.139a] Nguoi dung hay nhap moi ten mien (vd havoc.app) hoac socks5://havoc.app
+    # ma quen port => truoc day bao "Host proxy khong hop le" / "Proxy sai dang", rat kho hieu.
+    # Gio tu dien port mac dinh theo loai: socks5 -> 1080, http -> 8080.
+    # Truong hop scheme khong co port: rpartition(':') dat host='' va port=<ca chuoi>.
+    if not host and port and not re.match(r'^\d+$', str(port).strip()):
+        host, port = str(port).strip(), ''
+    if host and not str(port or '').strip():
+        port = 1080 if typ == 'socks5' else 8080
     if not host or not re.match(r'^[A-Za-z0-9_.:-]+$', host):
-        raise ValueError('Host proxy khong hop le')
+        raise ValueError('Host proxy khong hop le: %r. Can dang host:port (vi du proxy.abc.com:1080) '
+                         'hoac host:port:user:pass.' % str(text or '')[:40])
     try:
         port = int(str(port).strip())
     except Exception:
-        raise ValueError('Port proxy khong hop le')
+        raise ValueError('Port proxy khong hop le: %r. Can dang host:port (vi du proxy.abc.com:1080).'
+                         % str(text or '')[:40])
     if not (1 <= port <= 65535):
         raise ValueError('Port proxy khong hop le')
     if bool(user) != bool(pw):
@@ -3102,10 +3116,10 @@ def ensure_split_rules(data, cfg=None, strict=False):
                 if isinstance(ip, str) and ip.strip() and ob_type.get(str(r['outbound'])) in ('socks', 'http') and ip.strip() not in ips:
                     ips.append(ip.strip())
             ob = None
-            # [Ver 2.138] Bang 'Di qua Luong phu' ap cho MOI may trong LAN (anh Thai chot
-            # 2026-11-16), khong chi may dang co proxy socks/http. Truoc day dieu kien
-            # `if ips:` khien may VPN / may truc tiep khong duoc dinh tuyen.
-            if True:
+            # [Ver 2.139b] Bang 'Di qua Luong phu' CHI ap cho may co proxy socks/http.
+            # 2.138 da doi thanh `if True:` (moi may) - anh Thai chot lai 2026-11-16:
+            # may VPN phai di TOAN BO qua VPN, khong duoc tach luong.
+            if ips:
                 try:
                     ob = build_split_outbound(cfg.get('target'), old_ob, cfg)
                 except ValueError as e:
@@ -3175,8 +3189,9 @@ def ensure_split_rules(data, cfg=None, strict=False):
                 if inc_rules:
                     rules[pos:pos] = inc_rules
                     pos += len(inc_rules)
-                # [Ver 2.138] Khong dat source_ip_cidr => ap cho moi may trong LAN.
-                rule = {'action': 'route', 'outbound': SPLIT_TAG}
+                # [Ver 2.139b] Gan source_ip_cidr = danh sach IP may proxy (nhu ban 2.137).
+                # 2.138 bo dong nay => rule ap cho MOI may, ke ca may VPN (sai).
+                rule = {'action': 'route', 'outbound': SPLIT_TAG, 'source_ip_cidr': ips}
                 rule.update(fields)
                 rules.insert(pos, rule)
                 # [Ver 2.138] Giu NGUYEN vi tri cu cua gen_split trong outbounds. Truoc day
@@ -3626,7 +3641,8 @@ def ensure_conn_rules(data, cfg=None):
                 return False
             if r.get('outbound') == CONN_BYPASS_TAG:
                 return True
-            # [Ver 2.138] Bang Chan: reject theo ten mien/IP, KHONG con source_ip_cidr (ap moi may).
+            # [Ver 2.139b] Bang Chan: reject theo ten mien/IP, CO source_ip_cidr (chi may proxy).
+            # Nhan dien CA dang cu (2.138 khong co source_ip_cidr) de don sach khi nang cap.
             if r.get('action') == 'reject' and r.get('method') == 'default' \
                     and (r.get('domain') or r.get('domain_suffix') or r.get('ip_cidr')):
                 return True
@@ -3643,9 +3659,13 @@ def ensure_conn_rules(data, cfg=None):
         obs = [o for o in obs if not (isinstance(o, dict) and o.get('tag') == CONN_BYPASS_TAG)]
         ips = _conn_proxy_ips(rules, obs)
         new = []
-        # [Ver 2.138] 4 bang dinh tuyen: ap dung cho MOI may trong LAN (khong dat source_ip_cidr)
-        # => may di truc tiep / may proxy deu theo dung bang; domain khong nam trong bang nao
-        # thi may di theo duong mac dinh cua no (proxy_N / VPN / WAN).
+        # [Ver 2.139b] 4 BANG DINH TUYEN CHI AP CHO MAY CO PROXY (anh Thai chot 2026-11-16):
+        # "Cac dinh tuyen thi chi nen ap dung cho proxy. Con gan VPN thi van nhu binh thuong,
+        #  moi du lieu phai qua VPN het."
+        # => rule Chan/WAN phai gan source_ip_cidr = danh sach IP may co proxy that (ips).
+        # Truoc day (2.138) khong gan source_ip_cidr nen ap cho MOI may, ke ca may VPN =>
+        # may VPN bi keo ra WAN / bi chan sai du phai di trong tunnel.
+        # ips rong (router toan may VPN) => KHONG sinh rule nao.
         # [Ver 2.138] Uu tien bang dinh tuyen trong cfg (dang luu, state chua kip ghi).
         # Truoc day luon doc get_route_tables() => rule sinh theo bang CU, bam Luu
         # "thanh cong" ma bang Chan/Proxy moi khong co tac dung.
@@ -3654,14 +3674,14 @@ def ensure_conn_rules(data, cfg=None):
         tb = tables.get('block') or {}
         tw = tables.get('wan') or {}
         tp = tables.get('proxy') or {}
-        fb = _conn_split_fields(tb.get('items')) if tb.get('on') else {}
+        fb = _conn_split_fields(tb.get('items')) if (tb.get('on') and ips) else {}
         if fb:
-            r = {'action': 'reject', 'method': 'default'}
+            r = {'action': 'reject', 'method': 'default', 'source_ip_cidr': list(ips)}
             r.update(fb)
             new.append(r)
-        fp = _conn_split_fields(tw.get('items')) if tw.get('on') else {}
+        fp = _conn_split_fields(tw.get('items')) if (tw.get('on') and ips) else {}
         if fp:
-            r = {'action': 'route', 'outbound': CONN_BYPASS_TAG}
+            r = {'action': 'route', 'outbound': CONN_BYPASS_TAG, 'source_ip_cidr': list(ips)}
             r.update(fp)
             new.append(r)
             # [Ver 2.138] Giu nguyen VI TRI cu cua gen_bypass (xem ghi chu o ensure_split_rules).
@@ -4224,6 +4244,9 @@ def ensure_flow_api(data, cfg=None):
 
 def _flow_kind(chain):
     c = str(chain or '')
+    # [Ver 2.139b] may gan VPN (doc tu conntrack) => kind 'vpn' de GUI to mau rieng
+    if c.startswith('vpn'):
+        return 'vpn'
     if c == SPLIT_TAG:
         return 'split'
     # [Ver 2.103] gen_bypass = danh sach 'khong qua Proxy/VPN' nguoi dung cau hinh => ra WAN chinh.
@@ -4392,6 +4415,208 @@ def flow_log_clear(ip=''):
         FLOW['agg'].pop(key, None)
     return n
 
+# ===== [Ver 2.139b] Luong cho MAY GAN VPN =====
+# May gan VPN da bi RETURN khoi gencore o mangle (ip rule + bang route cua tunnel), nen
+# Clash API cua gencore KHONG thay ket noi nao cua no => tab Theo doi luong trong tron.
+# Nguon thay the: /proc/net/nf_conntrack (co accounting byte + IP may nguon + IP dich),
+# ghep voi cache DNS doc tu log dnsmasq (log-queries=extra) de biet ten mien.
+# Gioi han phai noi ro: chi biet "may -> ten mien/IP dich", KHONG tach duoc tung ket noi
+# theo gio mo nhu ben gencore; byte la luy ke cua ket noi con song.
+CONNTRACK_PATH = '/proc/net/nf_conntrack'
+DNSQ_LOG_PATHS = ('/tmp/dnsmasq.log', '/var/log/dnsmasq.log', '/var/log/messages')
+_FLOW_CT = {'last': {}, 'dns': {}, 'dns_at': 0.0, 'err': ''}
+
+
+def _read_vpn_clients():
+    """IP cac may dang gan VPN (map.txt). Doc lai moi lan goi de khong phai cache."""
+    try:
+        mp = load_vpn_map()
+    except Exception:
+        return set()
+    out = set()
+    for ip, tag in (mp or {}).items():
+        if str(ip or '').strip() and str(tag or '').strip():
+            out.add(str(ip).strip())
+    return out
+
+
+def _tag_to_dev(tag):
+    """proxy_<N> -> dev tunnel (tunN) cua vpn_mgr, de ghi cot 'Di duong' cho de doc."""
+    t = str(tag or '').strip()
+    try:
+        n = int(t.split('_', 1)[1])
+    except Exception:
+        return t
+    return t
+
+
+def _dns_cache_refresh(now):
+    """Doc them dong DNS moi tu log dnsmasq => {ip: (ten mien, ts)}. Chi doc phan moi."""
+    if now - _FLOW_CT.get('dns_at', 0) < 5:
+        return
+    _FLOW_CT['dns_at'] = now
+    cache = _FLOW_CT.setdefault('dns', {})
+    for path in DNSQ_LOG_PATHS:
+        try:
+            if not os.path.exists(path):
+                continue
+            size = os.path.getsize(path)
+            pos = _FLOW_CT.get('pos_' + path, 0)
+            if size < pos:
+                pos = 0
+            with open(path, 'r', encoding='utf-8', errors='replace') as fh:
+                fh.seek(pos)
+                chunk = fh.read(262144)
+                _FLOW_CT['pos_' + path] = fh.tell()
+        except OSError:
+            continue
+        for line in chunk.splitlines():
+            # dang: "... dnsmasq[1234]: 123 192.10.3.5/12345 query[A] app.apple.com from 192.10.3.5"
+            m = re.search(r'query\[[A-Z0-9]+\]\s+(\S+)', line)
+            if not m:
+                continue
+            host = str(m.group(1)).rstrip('.').lower()
+            ips = re.findall(r'\b(\d{1,3}(?:\.\d{1,3}){3})\b', line)
+            if not ips:
+                continue
+            for ip in ips:
+                if ip.startswith(('127.', '192.10.', '0.', '255.')) or ip == host:
+                    continue
+                cache[ip] = host
+        if len(cache) > 20000:
+            for k in list(cache)[:10000]:
+                cache.pop(k, None)
+
+
+def _conntrack_snapshot(vpn_ips):
+    """Doc /proc/net/nf_conntrack => {key: {'ip','host','tag','up','down','open','start'}}.
+    Chi lay ket noi CO IP NGUON la may gan VPN.
+    key = 'src:dport:dst' de gop cac ket noi den cung dich."""
+    out = {}
+    try:
+        with open(CONNTRACK_PATH, 'r', encoding='utf-8', errors='replace') as fh:
+            lines = fh.readlines()
+    except OSError as e:
+        _FLOW_CT['err'] = 'khong doc duoc conntrack: %s' % e
+        return out
+    now = time.time()
+    _dns_cache_refresh(now)
+    dns = _FLOW_CT.get('dns') or {}
+    for line in lines:
+        if 'src=' not in line:
+            continue
+        # CAU TRUC 1 DONG conntrack: <proto> ... src=A dst=B sport=x dport=y packets=n bytes=v
+        #                              src=B dst=A sport=y dport=x packets=n2 bytes=v2
+        # Cap THU NHAT la chieu may -> dich (up); cap THU HAI la chieu ve (down).
+        # KHONG dung dict(re.findall(...)): dict lay lan xuat hien CUOI => src thanh IP dich.
+        pairs = re.findall(r'src=(\S+) dst=(\S+) sport=(\d+) dport=(\d+) packets=(\d+) bytes=(\d+)', line)
+        if len(pairs) < 2:
+            continue
+        src, dst, sport, dport = pairs[0][0], pairs[0][1], pairs[0][2], pairs[0][3]
+        if src not in vpn_ips:
+            continue
+        # Bo ket noi noi bo: hoi DNS router / vao GUI router => khong phai luu luong ra internet
+        if dport in ('53', '9001', '19090') or dst.startswith(('127.', '192.10.0.')):
+            continue
+        up = int(pairs[0][5])
+        down = int(pairs[-1][5])
+        key = '%s:%s:%s' % (src, dport, dst)
+        e = out.get(key)
+        if e is None:
+            e = {'ip': src, 'host': dns.get(dst) or dst, 'dst': dst,
+                 'up': 0, 'down': 0, 'open': 1, 'start': now, 'dstp': dst + ':' + dport}
+            out[key] = e
+        e['up'] = max(e['up'], up)
+        e['down'] = max(e['down'], down)
+    return out
+
+
+# dnsmasq: bat log query de biet TEN MIEN cho may VPN (conntrack chi cho IP dich).
+# Ghi qua conf-dir=/tmp/dnsmasq.d (da co san), khong sua file cau hinh chinh cua router.
+DNSLOG_CONF = '/tmp/dnsmasq.d/zz_gen_dnslog.conf'
+DNSLOG_PATH = '/tmp/dnsmasq.log'
+
+
+def _dnslog_set(on):
+    """Bat/tat log query cua dnsmasq. Tra ve (ok, thong bao)."""
+    try:
+        if on:
+            body = ('# Genrouter: log query de ghep IP -> ten mien cho may gan VPN\n'
+                    'log-queries=extra\n'
+                    'log-facility=%s\n' % DNSLOG_PATH)
+            cur = ''
+            try:
+                cur = open(DNSLOG_CONF, 'r', encoding='utf-8').read()
+            except OSError:
+                pass
+            if cur != body:
+                with open(DNSLOG_CONF, 'w', encoding='utf-8') as fh:
+                    fh.write(body)
+                subprocess.run(['/etc/init.d/dnsmasq', 'restart'], capture_output=True, timeout=45)
+            return True, 'da bat log DNS'
+        if os.path.exists(DNSLOG_CONF):
+            os.remove(DNSLOG_CONF)
+            subprocess.run(['/etc/init.d/dnsmasq', 'restart'], capture_output=True, timeout=45)
+        return True, 'da tat log DNS'
+    except Exception as e:
+        return False, str(e)[:200]
+
+
+def _flow_vpn_ingest(now=None):
+    """Cap nhat FLOW['agg'] + FLOW['log'] cho may VPN tu conntrack (delta byte)."""
+    now = time.time() if now is None else now
+    vpn_ips = _read_vpn_clients()
+    if not vpn_ips:
+        return 0
+    snap = _conntrack_snapshot(vpn_ips)
+    last = _FLOW_CT.setdefault('last', {})
+    vmap = load_vpn_map() or {}
+    added = 0
+    with FLOW['lock']:
+        agg = FLOW['agg']
+        log = FLOW['log']
+        for key, e in snap.items():
+            prev = last.get(key)
+            d_up = e['up'] - (prev['up'] if prev else 0)
+            d_down = e['down'] - (prev['down'] if prev else 0)
+            if d_up < 0 or d_down < 0:
+                d_up = e['up']
+                d_down = e['down']
+            tag = vmap.get(e['ip'], '') or 'vpn'
+            kind = 'vpn'
+            e['kind'] = 'vpn'
+            akey = (e['ip'], e['host'], tag)
+            a = agg.setdefault(akey, {'up': 0, 'down': 0, 'conns': 0, 'kind': kind})
+            a['up'] += max(0, d_up)
+            a['down'] += max(0, d_down)
+            if prev is None:
+                a['conns'] += 1
+                added += 1
+                log['seq'] += 1
+                row = {'seq': log['seq'], 'ts': now, 'ip': e['ip'], 'host': e['host'], 'out': tag,
+                       'kind': kind, 'up': 0, 'down': 0, 'conns': 1, 'open': 1, 'cid': 'ct:' + key}
+                log['idx']['ct:' + key] = row
+                log['rows'].append(row)
+                if len(log['rows']) > FLOW_LOG_MAX:
+                    drop = log['rows'][:len(log['rows']) - FLOW_LOG_MAX + 1000]
+                    del log['rows'][:len(drop)]
+                    for d in drop:
+                        log['idx'].pop(str(d.get('cid') or ''), None)
+            row = log['idx'].get('ct:' + key)
+            if row is not None:
+                row['up'] = e['up']
+                row['down'] = e['down']
+        # ket noi da dong: danh dau dong trong log la da dong
+        for key, prev in list(last.items()):
+            if key not in snap:
+                row = log['idx'].get('ct:' + key)
+                if row is not None:
+                    row['open'] = 0
+                last.pop(key, None)
+    last.update(snap)
+    return added
+
+
 def _flow_loop():
     while True:
         with FLOW['lock']:
@@ -4410,6 +4635,17 @@ def _flow_loop():
         except Exception as e:
             with FLOW['lock']:
                 FLOW['err'] = str(e)[:200]
+        # [Ver 2.139b] May gan VPN khong di qua gencore => doc rieng tu conntrack.
+        try:
+            _flow_vpn_ingest()
+            with FLOW['lock']:
+                if FLOW['polls'] == 0:
+                    FLOW['polls'] = 1   # co du lieu VPN => coi nhu 'co nguon'
+                if not FLOW['err']:
+                    FLOW['err'] = ''
+        except Exception as e:
+            with FLOW['lock']:
+                _FLOW_CT['err'] = str(e)[:200]
         time.sleep(2)
 
 def _flow_touch():
@@ -4666,12 +4902,14 @@ def traffic_sample():
 
 def flow_summary(agg, ip=''):
     ip = str(ip or '').strip()
-    rows, totals = [], {'proxy': 0, 'split': 0, 'bypass': 0, 'direct': 0, 'other': 0}
+    rows, totals = [], {'proxy': 0, 'split': 0, 'bypass': 0, 'direct': 0, 'vpn': 0, 'other': 0}
     for (sip, host, chain), a in agg.items():
         if ip and sip != ip:
             continue
         b = a['up'] + a['down']
-        k = _flow_kind(chain)
+        # [Ver 2.139b] agg co the mang san 'kind' (may VPN doc tu conntrack: out=proxy_N nhung
+        # KHONG di qua proxy => neu tinh lai bang _flow_kind se ra 'proxy', sai duong).
+        k = str(a.get('kind') or '') or _flow_kind(chain)
         totals[k] += b
         rows.append({'ip': sip, 'host': host, 'out': chain, 'kind': k, 'up': a['up'], 'down': a['down'], 'bytes': b, 'conns': a['conns']})
     rows.sort(key=lambda r: -r['bytes'])
@@ -4719,6 +4957,9 @@ def flow_update(payload):
         raise ValueError('action khong hop le')
     on = action == 'enable'
     cfg = {'enabled': on, 'secret': _flow_secret(create=True)}
+    # [Ver 2.139b] May gan VPN khong di qua gencore => conntrack khong co ten mien.
+    # Bat log query cua dnsmasq de ghep IP -> ten mien (ghi qua conf-dir, khong sua file chinh).
+    _dnslog_ok, _dnslog_msg = _dnslog_set(on)
     if _apply_lock_active():
         raise ValueError('Dang Apply, thu lai sau vai giay')
     files = [RUNTIME_SOURCE_FILE]
@@ -4764,6 +5005,7 @@ def flow_update(payload):
         pass
     out = flow_public_state(payload.get('ip', ''))
     out['restarted'] = changed_runtime
+    out['dnslog'] = {'ok': bool(_dnslog_ok), 'msg': str(_dnslog_msg or '')[:200]}
     return out
 
 def rebuild_gencore_rules(data, tag_to_ip_map):

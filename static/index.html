@@ -2819,8 +2819,8 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') closeFlowAssign();
     });
-    const FLOW_KIND = { proxy: 'Proxy', split: 'Luồng phụ', bypass: 'WAN', direct: 'Trực tiếp', other: 'Khác' };
-    const FLOW_COLOR = { proxy: '#dc2626', split: '#16a34a', bypass: '#d97706', direct: '#2563eb', other: '#6b7280' };
+    const FLOW_KIND = { proxy: 'Proxy', split: 'Luồng phụ', bypass: 'WAN', direct: 'Trực tiếp', vpn: 'VPN', other: 'Khác' };
+    const FLOW_COLOR = { proxy: '#dc2626', split: '#16a34a', bypass: '#d97706', direct: '#2563eb', vpn: '#7c3aed', other: '#6b7280' };
     function toggleFlowPanel(force) {
       const p = document.getElementById('flowPanel');
       const b = document.getElementById('flowPanelBtn');
@@ -2903,6 +2903,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         `<span style="color:${FLOW_COLOR.proxy}">Proxy: ${fmtMB(t.proxy)} (${pct('proxy')})</span> · ` +
         `<span style="color:${FLOW_COLOR.split}">Luồng phụ: ${fmtMB(t.split)} (${pct('split')})</span> &nbsp;|&nbsp; ` +
         `<span style="color:${FLOW_COLOR.bypass}">WAN: ${fmtMB(t.bypass)}</span>` +
+        ((t.vpn || 0) ? ` · <span style="color:${FLOW_COLOR.vpn}">VPN: ${fmtMB(t.vpn)}</span>` : '') +
         ((t.direct || t.other) ? ` · Khác: ${fmtMB((t.direct || 0) + (t.other || 0))}` : '');
       document.getElementById('flowSince').textContent = r.since ? ('đếm từ ' + new Date(r.since * 1000).toLocaleTimeString()) : '';
       // [Ver 2.112] Nhat ky theo thoi gian thuc. Da chon 1 may => an cot May.
@@ -2950,9 +2951,12 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
         renderFlow(r);
         if (r.enabled) loadFlow(true);
-        setStatus(action === 'clear' ? ('Đã xoá ' + (r.cleared || 0) + ' dòng nhật ký' + (ip ? (' của máy ' + ip) : ' của tất cả các máy'))
+        // [Ver 2.139b] Bao ket qua bat/tat log DNS (can cho ten mien cua may gan VPN).
+        const dnsNote = (r.dnslog && action !== 'clear' && action !== 'reset')
+          ? ' · ' + (r.dnslog.ok ? r.dnslog.msg : ('log DNS lỗi: ' + r.dnslog.msg)) : '';
+        setStatus((action === 'clear' ? ('Đã xoá ' + (r.cleared || 0) + ' dòng nhật ký' + (ip ? (' của máy ' + ip) : ' của tất cả các máy'))
           : action === 'reset' ? 'Đã xoá số đếm theo dõi luồng'
-          : (action === 'enable' ? 'Đã bật theo dõi luồng' : 'Đã tắt theo dõi luồng'));
+          : (action === 'enable' ? 'Đã bật theo dõi luồng' : 'Đã tắt theo dõi luồng')) + dnsNote);
       } catch (e) {
         setStatus('Theo dõi luồng lỗi: ' + e.message);
       }
@@ -3419,9 +3423,9 @@ body:not(.dark):not(.noc) .cn-router-card textarea{--rt-odd:rgba(0,0,0,.055);
         <span id="connTgPppoe" hidden><label for="connFixedPppoe">Số phiên</label> <input id="connFixedPppoe" type="number" min="1" max="999" style="width:72px"></span>
         <span id="connTgVpn" hidden><label for="connFixedVpn">Tunnel</label> <select id="connFixedVpn"></select></span>
        </div>
-       <div id="connTgProxy" class="cn-row" hidden style="margin-bottom:6px">
+       <div id="connTgProxy" class="cn-row" hidden style="margin-bottom:6px" title="Địa chỉ MÁY CHỦ PROXY — không phải tên miền cần định tuyến. Tên miền cần đi qua Luồng phụ thì ghi ở ô danh sách bên dưới.">
         <select id="connFixedPxType"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select>
-        <input id="connFixedPx" type="text" autocomplete="off" spellcheck="false" aria-label="Proxy" placeholder="host:port:user:pass" style="flex:1;min-width:180px;font-family:Consolas,monospace">
+        <input id="connFixedPx" type="text" autocomplete="off" spellcheck="false" aria-label="Địa chỉ proxy nhập tay (không phải tên miền cần định tuyến)" title="Địa chỉ máy chủ proxy, KHÔNG phải tên miền cần định tuyến. Dạng host:port hoặc host:port:user:pass" placeholder="host:port:user:pass" style="flex:1;min-width:180px;font-family:Consolas,monospace">
         <div id="connFixedPxCur" style="width:100%;font-size:12px;color:var(--text-dim)"></div>
        </div>
        <textarea id="rtItems-split" rows="5" wrap="off" spellcheck="false" aria-label="Bảng đi qua Luồng phụ" placeholder="*.googlevideo.com&#10;*.fbcdn.net&#10;*.tiktokcdn.com"></textarea><div class="rt-temp" id="rtTemp-split" hidden></div>
@@ -3461,7 +3465,7 @@ body:not(.dark):not(.noc) .cn-router-card textarea{--rt-odd:rgba(0,0,0,.055);
      <h4>Theo dõi luồng</h4>
      <div class="cn-blk" id="flowPanel">
 <div id="flowOff" hidden style="margin-top:8px;">
-              <div class="sub">Đang tắt. Bật sẽ khởi động lại gencore (router chập vài giây). Chỉ đọc số liệu trong router, không mở cổng ra ngoài.</div>
+              <div class="sub">Đang tắt. Bật sẽ khởi động lại gencore (router chập vài giây), đồng thời bật log DNS của dnsmasq để lấy TÊN MIỀN cho máy gán VPN. Chỉ đọc số liệu trong router, không mở cổng ra ngoài.</div>
               <button type="button" class="btn small" onclick="setFlow('enable')" style="margin-top:6px;font-weight:800;">Bật theo dõi</button>
             </div>
             <div id="flowOn" hidden>
@@ -3825,7 +3829,15 @@ async function saveConn() {
   ['wan', 'split', 'proxy', 'block'].forEach(k => { route[k] = { on: !!$c('rtOn-' + k).checked, items: connLines('rtItems-' + k) }; });
   if (route.split.on && !connTarget()) { connShowTab('route', true); return connMsg('Bảng "Đi qua Luồng phụ" đang bật nhưng chưa chọn đường phụ', 'err'); }
   const split = { enabled: route.split.on, domains: route.split.items, target: connTarget() };
-  if (split.target === 'proxy' && $c('connFixedPx').value.trim()) { split.proxy = $c('connFixedPx').value.trim(); split.proxy_type = $c('connFixedPxType').value; }
+  // [Ver 2.139a] Chi gui proxy khi THAT SU dung: bang Luong phu BAT va duong di = proxy nhap tay.
+  // Truoc day gui bat ke dang o dau => chi can o proxy con chu cu (hoac trinh duyet tu dien)
+  // la bam Luu bao "Host proxy khong hop le" du nguoi dung chi gan domain vao bang WAN.
+  const _pxRaw = ($c('connFixedPx').value || '').trim();
+  if (route.split.on && split.target === 'proxy') {
+    if (!_pxRaw) { connShowTab('route', true); $c('connFixedPx').focus(); return connMsg('Bảng "Đi qua Luồng phụ" đang chọn "Proxy nhập tay" nhưng ô proxy còn trống. Nhập dạng host:port (ví dụ proxy.abc.com:1080).', 'err'); }
+    if (!/^([a-z0-9]+:\/\/)?[^\s:]+(:\d+)?(:[^\s:]*:[^\s]*)?$/i.test(_pxRaw)) { connShowTab('route', true); $c('connFixedPx').focus(); return connMsg('Ô proxy sai dạng: cần host:port (ví dụ proxy.abc.com:1080) hoặc host:port:user:pass. Không phải tên miền cần định tuyến.', 'err'); }
+    split.proxy = _pxRaw; split.proxy_type = $c('connFixedPxType').value;
+  }
   const iso = $c('connIso').checked;
   if (!iso && !confirm('Tắt cô lập LAN? Các máy trong LAN sẽ thấy nhau.')) return;
   // [Ver 2.139] Bao ro cac muc gan tu "Theo doi luong" sap duoc ap dung
