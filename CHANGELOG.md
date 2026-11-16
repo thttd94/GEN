@@ -1,3 +1,21 @@
+## Ver 2.142 - 2026-11-16
+- DINH TUYEN: 1 muc (domain/IP) CHI duoc nam trong 1 bang. Gan vao bang khac => BAO LOI ro rang:
+  "xxx.com dang nam o bang "Ten bang". Vui long xoa truoc khi gan." Khong tu chuyen, khong ghi gi.
+  Truoc day (2.138) tu dong chuyen sang bang uu tien cao hon va chi bao nhe => nguoi dung thay muc
+  bien mat khoi bang minh dat ma khong biet vi sao.
+- Gan tam / danh sach: muc TRUNG (ke ca khac hoa/thuong) tu dong bo, khong thong bao, khong hien 2 dong.
+- Muc trung CO SAN tu cau hinh cu (khong ai sua 2 bang do trong lan Luu nay) => lang le don, khong chan Luu.
+- THEO DOI LUONG: sap xep duoc MOI cot (Thoi gian / Ten mien / May / Di duong / Tai xuong / Tai len /
+  Ket noi). Bam 1 lan = giam dan, lan 2 = tang dan, lan 3 = bo sap xep (ve thu tu goc moi nhat truoc).
+  Cot dang sap xep co mui ten + to dam.
+
+## Ver 2.141 - 2026-11-16
+- BO HOAN TOAN co che 'incentive' (Ver 2.100-2.140). Anh Thai chot: "anh se tu theo doi luong va tu cho luong nao di duong nao, dung tham gia can du ep 1 luong nao phai di duong nao ngoai y cua anh."
+  Truoc day app tu chen rule proxy_N + domain_keyword:['incentive'] dung TRUOC rule Luong phu, nen host nao co chu 'incentive' bi ep di proxy du nguoi dung da bo no vao bang Luong phu (hoac nguoc lai). Gio da bo: chi con dung 4 bang do nguoi dung dat.
+- Rule 4 bang (Chan / WAN / Luong phu / Proxy) luon dung TRUOC rule proxy_N cua tung may => dat o bang nao thi di dung bang do.
+- Don sach rule route + rule DNS 'incentive' cu khoi config dang chay khi Luu.
+- Bo co split.incentive khoi cau hinh (khong con tac dung).
+
 ## Ver 2.140 - 2026-11-16
 - SUA QUAN TRONG: 4 bang Dinh tuyen CHI ap cho MAY CO PROXY. Anh Thai chot: "cac dinh tuyen thi chi nen ap dung cho proxy. Con gan VPN thi van nhu binh thuong, moi du lieu phai qua VPN het." Ban 2.138 da doi thanh ap cho MOI may => may gan VPN bi keo ra WAN / bi chan sai du phai di trong tunnel (nghi la nguyen nhan App Store mat mang tren may gan VPN). Nay rule Chan / WAN / Luong phu deu gan source_ip_cidr = danh sach IP may co proxy that; router khong co may proxy nao => khong sinh rule nao.
 - Theo doi luong: MAY GAN VPN da co luong. May VPN bi RETURN khoi gencore o mangle nen Clash API khong thay; nay doc them /proc/net/nf_conntrack (co accounting byte + IP may nguon + IP dich) va ghep ten mien tu log DNS cua dnsmasq. Bat "Theo doi luong" se tu bat log-queries cua dnsmasq qua /tmp/dnsmasq.d (khong sua file cau hinh chinh), tat theo doi thi tat log. Dong cua may VPN co nhan rieng "VPN" mau tim.

@@ -1625,17 +1625,8 @@ def ensure_split_dns_rules(data, split_cfg=None, conn_cfg=None):
             r.update(bfields)
             wanted.append(r)
 
-        # 2. host su kien => proxy cua chinh may do (giong rule route incentive)
-        for r in (data.get('route') or {}).get('rules') or []:
-            if not isinstance(r, dict) or r.get('outbound') == SPLIT_TAG:
-                continue
-            if r.get('domain_keyword') != list(SPLIT_INCENTIVE_KEYWORDS):
-                continue
-            tag = str(r.get('outbound') or '')
-            ip = r.get('source_ip_cidr')
-            if tag.startswith('proxy_') and isinstance(ip, str) and ip.strip():
-                wanted.append({'action': 'route', 'server': tag, 'source_ip_cidr': ip.strip(),
-                               'domain_keyword': list(SPLIT_INCENTIVE_KEYWORDS)})
+        # [Ver 2.141] BO khoi sinh DNS rule 'incentive' (khong con rule route incentive).
+        # DNS chi di theo dung 4 bang cua nguoi dung.
 
         # 3. ten mien phan luong => DNS di dung outbound gen_split
         split_up = bool(split_cfg.get('enabled')) and SPLIT_TAG in obs and obs.get(SPLIT_TAG) not in ('block', '')
@@ -2905,9 +2896,9 @@ def get_split_config():
     if not isinstance(doms, list):
         doms = list(SPLIT_DEFAULT_DOMAINS)
     px = c.get('proxy') if isinstance(c.get('proxy'), dict) else {}
-    inc = c.get('incentive')
+    # [Ver 2.141] Bo hoan toan co 'incentive' (xem ensure_split_rules).
     out = {'enabled': bool(c.get('enabled')), 'target': str(c.get('target') or ''), 'domains': [str(d) for d in doms],
-           'proxy': dict(px), 'incentive': True if inc is None else bool(inc)}
+           'proxy': dict(px)}
     # [Ver 2.138] Bang 'Di qua Luong phu' trong tab Dinh Tuyen la nguon that khi da luu.
     # Doc TRUC TIEP tu meta (khong goi get_route_tables) de tranh de quy.
     try:
@@ -2929,7 +2920,7 @@ def set_split_config(cfg):
         meta = {}
         state['__meta__'] = meta
     meta['split'] = {'enabled': bool(cfg.get('enabled')), 'target': str(cfg.get('target') or ''), 'domains': list(cfg.get('domains') or []),
-                     'proxy': dict(cfg.get('proxy') or {}), 'incentive': bool(cfg.get('incentive', True))}
+                     'proxy': dict(cfg.get('proxy') or {})}   # [Ver 2.141] bo co 'incentive'
     save_session_state(state)
 
 def _split_match_fields(domains):
@@ -3100,7 +3091,7 @@ def ensure_split_rules(data, cfg=None, strict=False):
         before = json.dumps([rules, obs], sort_keys=True)
         old_ob = next((o for o in obs if isinstance(o, dict) and o.get('tag') == SPLIT_TAG), None)
         rules = [r for r in rules if not (isinstance(r, dict) and r.get('outbound') == SPLIT_TAG)]
-        # [Ver 2.100] Don rule incentive cu (nhan dien bang dung danh sach keyword cua minh).
+        # [Ver 2.141] Don sach rule incentive cu (2.100-2.140) khoi config dang chay.
         rules = [r for r in rules
                  if not (isinstance(r, dict) and r.get('action') == 'route'
                          and r.get('domain_keyword') == list(SPLIT_INCENTIVE_KEYWORDS))]
@@ -3169,26 +3160,12 @@ def ensure_split_rules(data, cfg=None, strict=False):
                     if (isinstance(r, dict) and r.get('action') == 'route' and str(r.get('outbound', '')).startswith('proxy_')) or is_route_deny_rule(r):
                         pos = i
                         break
-                # [Ver 2.100] Du lieu su kien (incentive) phai di CUNG duong voi API/claim
-                # cua chinh may do, KHONG vao duong tach. Rule dat TRUOC rule tach.
-                inc_rules = []
-                if cfg.get('incentive', True):
-                    ip_tag = {}
-                    for r in rules:
-                        if not (isinstance(r, dict) and r.get('action') == 'route'):
-                            continue
-                        t = str(r.get('outbound') or '')
-                        sip = r.get('source_ip_cidr')
-                        if t.startswith('proxy_') and isinstance(sip, str) and sip.strip() and ob_type.get(t) in ('socks', 'http'):
-                            ip_tag[sip.strip()] = t
-                    for ip in ips:
-                        t = ip_tag.get(ip)
-                        if t:
-                            inc_rules.append({'action': 'route', 'outbound': t, 'source_ip_cidr': ip,
-                                              'domain_keyword': list(SPLIT_INCENTIVE_KEYWORDS)})
-                if inc_rules:
-                    rules[pos:pos] = inc_rules
-                    pos += len(inc_rules)
+                # [Ver 2.141] BO HOAN TOAN rule 'incentive'. Anh Thai chot 2026-11-16:
+                # "anh se tu theo doi luong va tu cho luong nao di duong nao, dung tham gia
+                #  can du ep 1 luong nao phai di duong nao ngoai y cua anh."
+                # Truoc day khoi nay chen rule proxy_N + domain_keyword:['incentive'] TRUOC rule
+                # Luong phu => host nao co chu 'incentive' bi ep di proxy, du nguoi dung da bo
+                # vao bang Luong phu. Gio chi con dung 4 bang do nguoi dung dat.
                 # [Ver 2.139b] Gan source_ip_cidr = danh sach IP may proxy (nhu ban 2.137).
                 # 2.138 bo dong nay => rule ap cho MOI may, ke ca may VPN (sai).
                 rule = {'action': 'route', 'outbound': SPLIT_TAG, 'source_ip_cidr': ips}
@@ -3260,8 +3237,6 @@ def split_update(payload, strict=True):
         new['target'] = t
     if str(payload.get('proxy') or '').strip():
         new['proxy'] = parse_split_proxy(payload.get('proxy'), payload.get('proxy_type') or 'socks5')
-    if 'incentive' in payload:
-        new['incentive'] = bool(payload.get('incentive'))
     if 'enabled' in payload:
         new['enabled'] = bool(payload.get('enabled'))
     if new['enabled']:
@@ -4008,28 +3983,41 @@ def conn_update(payload):
                 continue
             route_tables[k] = {'on': bool(v.get('on')),
                                'items': parse_conn_items(v.get('items'), limit=1000, label='muc bang ' + CONN_ROUTE_LABELS[k])}
-        # [Ver 2.138] Mot muc nam o 2 bang: TU XU theo thu tu uu tien trong GUI
-        # (Chan -> WAN -> Luong phu -> Proxy). Muc o bang uu tien CAO hon duoc giu,
-        # bang uu tien thap hon bi go ra va bao lai cho nguoi dung biet.
-        # Ly do khong bao loi: cau hinh dang chay tren router that da co san muc trung
-        # (vi du *.apple.com vua o nhom App Store cua WAN vua o danh sach mac dinh cua
-        # Luong phu) => neu bao loi thi khong luu duoc gi.
-        _prio = ('block', 'wan', 'split', 'proxy')
-        _owner = {}
-        _moved = []
-        for k in _prio:
-            if not route_tables[k]['on']:
-                continue
+        # [Ver 2.142] MOT muc CHI duoc nam trong MOT bang. Anh Thai chot 2026-11-16:
+        # "Cac noi dung gan da nam o bang nao thi khong duoc phep gan cho bang khac
+        #  (1 domain/ip khong duoc phep nam 2 bang) neu gap truong hop nay phai bao
+        #  xxx.com dang nam o bang .... Vui long xoa truoc khi gan."
+        # Truoc day (2.138) khoi nay TU DONG chuyen muc sang bang uu tien cao hon va
+        # chi bao nhe => nguoi dung khong biet vi sao muc bien mat khoi bang minh dat.
+        # Gio: bao LOI ro rang, KHONG tu chuyen, KHONG ghi gi.
+        # Trung LAP TRONG CUNG 1 BANG thi van lang le bo (parse_conn_items da dedupe).
+        # Muc da trung san tu cau hinh CU (khong ai sua 2 bang do trong request nay):
+        # lang le don, giu o bang dung truoc, de khong chan viec Luu. Chi bao loi khi
+        # chinh nguoi dung vua dat muc do vao 1 trong 2 bang dang duoc gui len.
+        _edited = {k for k in CONN_ROUTE_TABLES
+                   if isinstance((payload.get('route') or {}).get(k), dict)
+                   or (k == 'wan' and 'bypass' in payload) or (k == 'block' and 'block' in payload)}
+        _owner, _dups, _legacy = {}, [], 0
+        for k in CONN_ROUTE_TABLES:
             keep = []
             for it in route_tables[k]['items']:
                 if it in _owner:
-                    _moved.append('%s (bo khoi %s, giu o %s)' % (it, CONN_ROUTE_LABELS[k], CONN_ROUTE_LABELS[_owner[it]]))
+                    if _owner[it] != k:
+                        if k in _edited or _owner[it] in _edited:
+                            _dups.append((it, _owner[it], k))
+                        else:
+                            _legacy += 1
                     continue
                 _owner[it] = k
                 keep.append(it)
             route_tables[k]['items'] = keep
-        if _moved:
-            route_moved = _moved
+        if _dups:
+            _it, _k1, _k2 = _dups[0]
+            _more = (' (va %d muc khac)' % (len(_dups) - 1)) if len(_dups) > 1 else ''
+            raise ValueError('%s dang nam o bang "%s". Vui long xoa truoc khi gan.%s'
+                             % (_it, CONN_ROUTE_LABELS.get(_k1, _k1), _more))
+        if _legacy:
+            route_moved = ['%d muc trung co san (giu o bang dung, bo khoi bang sau)' % _legacy]
         # [Ver 2.138] Bang 'Luong phu' bat ma chua chon duong => bao NGAY tu dau, khong de
         # split_update nem loi giua chung (luc do mot phan cau hinh da duoc ghi).
         if route_tables['split']['on']:
@@ -4050,8 +4038,10 @@ def conn_update(payload):
     if isinstance(payload.get('split'), dict):
         results.append({'cmd': 'split', 'ok': True, 'state': split_update(payload['split'])})
     if route_moved:
+        # [Ver 2.142] Chi con la truong hop trung CO SAN tu cau hinh cu (khong ai sua 2 bang
+        # do trong lan Luu nay). Muc nguoi dung vua dat trung => da bao loi o tren.
         results.append({'cmd': 'dinh-tuyen-trung', 'ok': True,
-                        'out': 'Da tu xu ly muc nam o 2 bang: ' + ', '.join(route_moved[:10])})
+                        'out': 'Da don muc trung co san tu cau hinh cu: ' + ', '.join(route_moved[:10])})
     if route_tables is not None:
         # Bang 'Luong phu' = danh sach + cong tac cua phan luong (split) => dong bo 2 chieu.
         _sp_now = get_split_config()

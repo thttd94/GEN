@@ -1,1 +1,1 @@
-Ver 2.140 (Dinh tuyen chi ap cho may proxy + luong cho may VPN tu conntrack)
+Ver 2.142 (1 muc chi 1 bang + tu loai trung + sap xep moi cot Theo doi luong)

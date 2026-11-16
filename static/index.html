@@ -2695,9 +2695,13 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       const group = p.length >= 3 ? p.slice(-2).join('.') : h;
       return { full: h, group: group === h ? null : ('*.' + group), isIp: false };
     }
+    // [Ver 2.142] So sanh KHONG phan biet hoa/thuong (router luu chu thuong, con ten mien
+    // lay tu Theo doi luong cung chu thuong; nhung nguoi dung dan tay co the viet hoa).
     function rtFind(item) {
+      const want = String(item || '').trim().toLowerCase();
+      if (!want) return null;
       for (const k of RT_KEYS) {
-        if (connLines('rtItems-' + k).includes(item)) return k;
+        if (connLines('rtItems-' + k).some(x => x.toLowerCase() === want)) return k;
       }
       return null;
     }
@@ -2721,23 +2725,19 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         ).join(' &nbsp;·&nbsp; ');
       });
     }
-    // Go 1 muc khoi MOI bang khac (mot muc chi duoc nam 1 bang)
-    function rtRemoveEverywhere(item, keepKey) {
-      RT_KEYS.forEach(k => {
-        if (k === keepKey) return;
-        const lines = connLines('rtItems-' + k);
-        if (lines.includes(item)) connSet('rtItems-' + k, lines.filter(x => x !== item));
-        rtTemp[k] = rtTemp[k].filter(x => x !== item);
-      });
-    }
+    // [Ver 2.142] BO ham rtRemoveEverywhere: truoc day no tu GO muc khoi bang khac khi gan
+    // => nguoi dung thay muc bien mat ma khong biet vi sao. Gio bao loi va bat xoa tay.
+    // [Ver 2.142] Mot muc CHI duoc nam trong MOT bang. Gan vao bang khac => bao loi,
+    // KHONG tu chuyen (truoc day tu go khoi bang cu nen nguoi dung khong hieu vi sao mat).
     function rtTempAdd(key, item) {
-      if (!RT_KEYS.includes(key) || !item) return false;
-      rtRemoveEverywhere(item, key);
+      if (!RT_KEYS.includes(key) || !item) return { ok: false, why: 'err', owner: null };
+      const cur = rtFind(item);
+      if (cur && cur !== key) return { ok: false, why: 'dup', owner: cur };
       const lines = connLines('rtItems-' + key);
       if (!lines.includes(item)) { lines.push(item); connSet('rtItems-' + key, lines); }
       if (!rtTemp[key].includes(item)) rtTemp[key].push(item);
       rtTempRender(); connRefresh();
-      return true;
+      return { ok: true, why: cur === key ? 'had' : '', owner: null };
     }
     function rtTempDrop(key, i) {
       const item = rtTemp[key] && rtTemp[key][i];
@@ -2748,10 +2748,16 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     }
     function rtTempClear() { rtTemp = { wan: [], split: [], proxy: [], block: [] }; rtTempRender(); }
     // openConnPanel() doc lai tu router => ghi de o danh sach. Phai chen lai muc gan tam.
+    // [Ver 2.142] Neu router da co muc do o BANG KHAC thi khong chen nua (1 muc 1 bang),
+    // va bo khoi danh sach tam de khong hien nhu dang cho Luu.
     function rtTempReapply() {
       RT_KEYS.forEach(k => {
         const lines = connLines('rtItems-' + k);
-        rtTemp[k].forEach(x => { if (!lines.includes(x)) lines.push(x); });
+        rtTemp[k].slice().forEach(x => {
+          const owner = rtFind(x);
+          if (owner && owner !== k) { rtTemp[k] = rtTemp[k].filter(y => y !== x); return; }
+          if (!lines.includes(x)) lines.push(x);
+        });
         connSet('rtItems-' + k, lines);
       });
       rtTempRender();
@@ -2803,8 +2809,14 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     function flowAssignDo(key) {
       const item = flowAssignTarget;
       if (!item) { closeFlowAssign(); return; }
-      rtTempAdd(key, item);
+      const res = rtTempAdd(key, item);
       closeFlowAssign();
+      if (!res.ok) {
+        // [Ver 2.142] 1 domain/ip khong duoc nam 2 bang => bao ro dang o bang nao.
+        connMsg(item + ' đang nằm ở bảng "' + RT_LABEL[res.owner] + '". Vui lòng xoá trước khi gán.', 'err');
+        return;
+      }
+      if (res.why === 'had') return;   // da co san trong bang nay: im lang, khong thong bao
       const n = rtTemp[key].length;
       connMsg('Đã gán tạm "' + item + '" vào bảng ' + RT_LABEL[key] + (n ? ' — ' + n + ' mục gán tạm chưa lưu' : '') + '. Mở Định tuyến để xem, bấm Lưu để áp dụng.', 'ok');
     }
@@ -2880,7 +2892,44 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       const pad = (n, w) => String(n).padStart(w || 2, '0');
       return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + '.' + pad(d.getMilliseconds(), 3);
     }
+    // [Ver 2.142] Sap xep moi cot trong bang Theo doi luong. Bam 1 lan = giam dan,
+    // bam lan 2 = tang dan, bam lan 3 = bo sap xep (ve thu tu goc: moi nhat truoc).
+    let flowSort = { key: '', dir: 0 };   // dir: 0 = khong sap xep, 1 = tang, -1 = giam
+    function flowSortBy(key) {
+      if (!key) return false;
+      if (flowSort.key !== key) { flowSort = { key: key, dir: -1 }; }
+      else if (flowSort.dir === -1) { flowSort.dir = 1; }
+      else if (flowSort.dir === 1) { flowSort = { key: '', dir: 0 }; }
+      else { flowSort = { key: key, dir: -1 }; }
+      paintFlowSortMarks();
+      if (window.flowLast) renderFlow(window.flowLast);
+      return false;
+    }
+    function paintFlowSortMarks() {
+      document.querySelectorAll('#cnS-flow th.flow-th').forEach(th => {
+        const on = flowSort.dir !== 0 && th.dataset.sort === flowSort.key;
+        th.setAttribute('aria-sort', on ? (flowSort.dir === -1 ? 'descending' : 'ascending') : 'none');
+        const c = th.querySelector('.flow-care');
+        if (c) c.textContent = on ? (flowSort.dir === -1 ? ' \u25BC' : ' \u25B2') : '';
+      });
+    }
+    // Sap xep ban sao cua mang log theo cot dang chon (khong doi du lieu goc).
+    function flowSortRows(log) {
+      const k = flowSort.key, d = flowSort.dir;
+      if (!k || !d) return log;
+      const arr = log.slice();
+      const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+      arr.sort((a, b) => {
+        let r;
+        if (k === 'ts' || k === 'down' || k === 'up' || k === 'conns') r = num(a[k]) - num(b[k]);
+        else r = String(a[k] || '').toLowerCase().localeCompare(String(b[k] || '').toLowerCase());
+        if (r === 0) r = num(a.seq) - num(b.seq);
+        return r * d;
+      });
+      return arr;
+    }
     function renderFlow(r) {
+      window.flowLast = r;
       const off = document.getElementById('flowOff');
       const on = document.getElementById('flowOn');
       const err = document.getElementById('flowErr');
@@ -2911,8 +2960,9 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       document.getElementById('flowIpTh').hidden = oneIp;
       const hms = flowHmsMs;
       const fullTs = s => { const d = new Date(Number(s) * 1000); return d.toLocaleDateString() + ' ' + flowHmsMs(s); };
-      const log = r.log || [];
+      const log = flowSortRows(r.log || []);
       const q = (document.getElementById('flowQ') || {}).value || '';
+      paintFlowSortMarks();
       document.getElementById('flowCount').textContent = (r.log_total || 0) + ' dòng' + (q ? ' khớp' : '') + ((r.log_total || 0) > log.length ? ' (hiện ' + log.length + ' mới nhất)' : '');
       document.getElementById('flowRows').innerHTML = log.map(x =>
         `<tr style="border-bottom:1px solid #eef2f7;"><td style="white-space:nowrap;font-family:Consolas,monospace;">${x.open ? '<span title="đang mở" style="color:#16a34a">●</span> ' : ''}<span title="${esc(fullTs(x.ts))}">${hms(x.ts)}</span></td>` +
@@ -3263,6 +3313,11 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
 .cn-fixed{display:inline-flex;align-items:center;gap:6px;font-family:Consolas,monospace;font-size:12.5px;padding:4px 10px;border-radius:8px;background:var(--surface-hi);border:1px dashed var(--line-3)}
 .cn-foot{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line-2);background:var(--surface-2)}
 #connMsg{flex:1;font-size:12.5px;white-space:pre-wrap;max-height:60px;overflow:auto}
+/* [Ver 2.142] Tieu de cot bang Theo doi luong: bam de sap xep */
+#cnS-flow th.flow-th{cursor:pointer;user-select:none;white-space:nowrap}
+#cnS-flow th.flow-th:hover{color:var(--accent,#2563eb)}
+#cnS-flow th.flow-th[aria-sort="ascending"],#cnS-flow th.flow-th[aria-sort="descending"]{color:var(--accent,#2563eb);font-weight:800}
+#cnS-flow th.flow-th .flow-care{font-size:10px}
 #connMsg.err{color:#dc2626}
 #connMsg.ok{color:#16a34a}
 #connBox [hidden]{display:none!important}
@@ -3488,8 +3543,8 @@ body:not(.dark):not(.noc) .cn-router-card textarea{--rt-odd:rgba(0,0,0,.055);
               </div>
               <div id="flowTotals" style="margin-top:8px;font-weight:700;" aria-live="polite"></div>
               <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;">
-                <caption class="sub" style="text-align:left;caption-side:bottom;padding-top:6px;">Nhật ký kết nối, mới nhất ở trên. Thời gian chính xác đến mili giây; mỗi kết nối là một dòng. Dòng đang mở (●) tiếp tục cộng dồn byte.</caption>
-                <thead><tr style="text-align:left;border-bottom:1px solid var(--line-3);"><th scope="col">Thời gian</th><th scope="col">Tên miền</th><th scope="col" id="flowIpTh">Máy</th><th scope="col">Đi đường</th><th scope="col" style="text-align:right;">Tải xuống</th><th scope="col" style="text-align:right;">Tải lên</th><th scope="col" style="text-align:right;">Kết nối</th></tr></thead>
+                <caption class="sub" style="text-align:left;caption-side:bottom;padding-top:6px;">Nhật ký kết nối, mới nhất ở trên. Bấm vào tên cột để sắp xếp (bấm lần nữa để đảo chiều, lần thứ ba để bỏ). Thời gian chính xác đến mili giây; mỗi kết nối là một dòng. Dòng đang mở (●) tiếp tục cộng dồn byte.</caption>
+                <thead><tr style="text-align:left;border-bottom:1px solid var(--line-3);"><th scope="col" class="flow-th" data-sort="ts" onclick="flowSortBy('ts')" title="Bấm để sắp xếp theo thời gian">Thời gian<span class="flow-care"></span></th><th scope="col" class="flow-th" data-sort="host" onclick="flowSortBy('host')" title="Bấm để sắp xếp theo tên miền">Tên miền<span class="flow-care"></span></th><th scope="col" class="flow-th" id="flowIpTh" data-sort="ip" onclick="flowSortBy('ip')" title="Bấm để sắp xếp theo máy">Máy<span class="flow-care"></span></th><th scope="col" class="flow-th" data-sort="out" onclick="flowSortBy('out')" title="Bấm để sắp xếp theo đường đi">Đi đường<span class="flow-care"></span></th><th scope="col" class="flow-th" data-sort="down" onclick="flowSortBy('down')" style="text-align:right;" title="Bấm để sắp xếp theo tải xuống">Tải xuống<span class="flow-care"></span></th><th scope="col" class="flow-th" data-sort="up" onclick="flowSortBy('up')" style="text-align:right;" title="Bấm để sắp xếp theo tải lên">Tải lên<span class="flow-care"></span></th><th scope="col" class="flow-th" data-sort="conns" onclick="flowSortBy('conns')" style="text-align:right;" title="Bấm để sắp xếp theo số kết nối">Kết nối<span class="flow-care"></span></th></tr></thead>
                 <tbody id="flowRows"></tbody>
               </table>
             </div>
@@ -3537,8 +3592,24 @@ body:not(.dark):not(.noc) .cn-router-card textarea{--rt-odd:rgba(0,0,0,.055);
 // [Ver 2.94] Cau hinh ket noi (gom Chan local + Phan luong cu)
 let connFocusBack = null, connTab = 'direct';
 const $c = id => document.getElementById(id);
-const connLines = id => $c(id).value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
-const connSet = (id, a) => { $c(id).value = (a || []).join('\n'); };
+// [Ver 2.142] Tu loai bo muc TRUNG trong cung 1 danh sach (khong phan biet hoa/thuong,
+// giu lan xuat hien dau). Anh Thai: "domain nao trung thi loai bo, khong can thong bao".
+const connLines = id => {
+  const seen = new Set(), out = [];
+  $c(id).value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean).forEach(s => {
+    const k = s.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k); out.push(s);
+  });
+  return out;
+};
+// [Ver 2.142] Ghi ra danh sach da loai trung (khong phan biet hoa/thuong) => o danh sach
+// khong bao gio hien 2 dong giong nhau, du nguoi dung dan trung.
+const connSet = (id, a) => {
+  const seen = new Set(), out = [];
+  (a || []).forEach(s => { const v = String(s || '').trim(); if (!v) return; const k = v.toLowerCase(); if (seen.has(k)) return; seen.add(k); out.push(v); });
+  $c(id).value = out.join('\n');
+};
 function connMsg(t, cls) { const m = $c('connMsg'); m.textContent = t; m.className = cls || ''; }
 function connShowTab(t, focus) {
   connTab = t;
@@ -3828,6 +3899,20 @@ async function saveConn() {
   const route = {};
   ['wan', 'split', 'proxy', 'block'].forEach(k => { route[k] = { on: !!$c('rtOn-' + k).checked, items: connLines('rtItems-' + k) }; });
   if (route.split.on && !connTarget()) { connShowTab('route', true); return connMsg('Bảng "Đi qua Luồng phụ" đang bật nhưng chưa chọn đường phụ', 'err'); }
+  // [Ver 2.142] Kiem tra truoc khi gui: 1 muc khong duoc nam 2 bang.
+  // Bao ro dang o bang nao va yeu cau xoa truoc (backend cung kiem, day chi cho nhanh).
+  const _own = {}, _ownName = {};
+  for (const k of RT_KEYS) {
+    for (const it of route[k].items) {
+      const lk = String(it || '').trim().toLowerCase();
+      if (!lk) continue;
+      if (_own[lk] && _own[lk] !== k) {
+        connShowTab('route', true);
+        return connMsg(_ownName[lk] + ' đang nằm ở bảng "' + RT_LABEL[_own[lk]] + '". Vui lòng xoá trước khi gán.', 'err');
+      }
+      _own[lk] = k; _ownName[lk] = it;
+    }
+  }
   const split = { enabled: route.split.on, domains: route.split.items, target: connTarget() };
   // [Ver 2.139a] Chi gui proxy khi THAT SU dung: bang Luong phu BAT va duong di = proxy nhap tay.
   // Truoc day gui bat ke dang o dau => chi can o proxy con chu cu (hoac trinh duyet tu dien)
