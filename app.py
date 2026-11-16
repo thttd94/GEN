@@ -1602,7 +1602,15 @@ def ensure_split_dns_rules(data, split_cfg=None, conn_cfg=None):
 
         # 1. ten mien 'bypass' cua may proxy (ra WAN) => DNS qua dnsmasq router
         # Thu tu PHAI giong route.rules: bypass (ensure_conn_rules) dung TRUOC incentive + split.
-        bfields = _conn_split_fields(conn_cfg.get('bypass')) if obs.get(CONN_BYPASS_TAG) else {}
+        # [Ver 2.138] DNS di cung duong voi du lieu: lay tu BANG WAN cua tab Dinh tuyen
+        # (truoc day doc conn.bypass; bang la nguon that nen phai doc bang).
+        try:
+            _rt_cfg = conn_cfg.get('route') if isinstance(conn_cfg.get('route'), dict) else None
+            _wan = ((_rt_cfg or get_route_tables()).get('wan') or {})
+            _wan_items = _wan.get('items') if _wan.get('on') else []
+        except Exception:
+            _wan_items = conn_cfg.get('bypass')
+        bfields = _conn_split_fields(_wan_items) if obs.get(CONN_BYPASS_TAG) else {}
         if bfields:
             _ref = next((x for x in servers if isinstance(x, dict) and str(x.get('tag') or '') == 'dnsmasq'), None)
             if CONN_DIRECT_DNS_TAG not in {str(x.get('tag')) for x in servers if isinstance(x, dict)}:
@@ -2898,8 +2906,21 @@ def get_split_config():
         doms = list(SPLIT_DEFAULT_DOMAINS)
     px = c.get('proxy') if isinstance(c.get('proxy'), dict) else {}
     inc = c.get('incentive')
-    return {'enabled': bool(c.get('enabled')), 'target': str(c.get('target') or ''), 'domains': [str(d) for d in doms],
-            'proxy': dict(px), 'incentive': True if inc is None else bool(inc)}
+    out = {'enabled': bool(c.get('enabled')), 'target': str(c.get('target') or ''), 'domains': [str(d) for d in doms],
+           'proxy': dict(px), 'incentive': True if inc is None else bool(inc)}
+    # [Ver 2.138] Bang 'Di qua Luong phu' trong tab Dinh Tuyen la nguon that khi da luu.
+    # Doc TRUC TIEP tu meta (khong goi get_route_tables) de tranh de quy.
+    try:
+        _meta = load_session_state().get('__meta__', {})
+        _rt = ((_meta.get('conn') or {}).get('route') if isinstance(_meta, dict) else None)
+        _sp = _rt.get('split') if isinstance(_rt, dict) else None
+        if isinstance(_sp, dict):
+            out['enabled'] = bool(_sp.get('on'))
+            if isinstance(_sp.get('items'), list):
+                out['domains'] = [str(x) for x in _sp['items']]
+    except Exception:
+        pass
+    return out
 
 def set_split_config(cfg):
     state = load_session_state()
@@ -3081,7 +3102,10 @@ def ensure_split_rules(data, cfg=None, strict=False):
                 if isinstance(ip, str) and ip.strip() and ob_type.get(str(r['outbound'])) in ('socks', 'http') and ip.strip() not in ips:
                     ips.append(ip.strip())
             ob = None
-            if ips:
+            # [Ver 2.138] Bang 'Di qua Luong phu' ap cho MOI may trong LAN (anh Thai chot
+            # 2026-11-16), khong chi may dang co proxy socks/http. Truoc day dieu kien
+            # `if ips:` khien may VPN / may truc tiep khong duoc dinh tuyen.
+            if True:
                 try:
                     ob = build_split_outbound(cfg.get('target'), old_ob, cfg)
                 except ValueError as e:
@@ -3151,10 +3175,19 @@ def ensure_split_rules(data, cfg=None, strict=False):
                 if inc_rules:
                     rules[pos:pos] = inc_rules
                     pos += len(inc_rules)
-                rule = {'action': 'route', 'outbound': SPLIT_TAG, 'source_ip_cidr': ips}
+                # [Ver 2.138] Khong dat source_ip_cidr => ap cho moi may trong LAN.
+                rule = {'action': 'route', 'outbound': SPLIT_TAG}
                 rule.update(fields)
                 rules.insert(pos, rule)
-                obs.append(ob)
+                # [Ver 2.138] Giu NGUYEN vi tri cu cua gen_split trong outbounds. Truoc day
+                # luon append => moi lan chay lai thu tu outbound lai doi (gen_bypass/gen_split
+                # hoan doi), lam conn_update bao "co thay doi" va restart gencore vo ich.
+                try:
+                    _oi = next(i for i, o in enumerate(list(data.get('outbounds') or []))
+                               if isinstance(o, dict) and o.get('tag') == SPLIT_TAG)
+                except StopIteration:
+                    _oi = len(obs)
+                obs.insert(min(_oi, len(obs)), ob)
         route['rules'] = rules
         data['outbounds'] = obs
         _dns_chg = ensure_split_dns_rules(data, split_cfg=cfg)  # [Ver 2.136]
@@ -3304,7 +3337,11 @@ def split_watch_loop():
 #   block:  [ten mien|IP]   chan han
 #   fixed: ten mien/IP di duong co dinh = split cu (target/proxy giu trong __meta__.split)
 # }
-CONN_FIXED_MASTER = '192.10.1.10'
+# [Ver 2.138] Truoc day may master bi KHOA CUNG la 192.10.1.10 => router o dai mang khac
+# (vd 192.15.x, 192.16.x) khong co may do, va nguoi dung khong doi duoc.
+# Nay: may master CO DINH nam trong __meta__.conn.fixed_master (do nguoi dung dat theo IP
+# cua router), API tra 'fixed_master' de GUI hien dung. Rong => khong khoa cung may nao.
+CONN_FIXED_MASTER_LEGACY = '192.10.1.10'
 # [Ver 2.102] GOI Y cho nut bam trong GUI - KHONG tu ap dung.
 # Anh Thai chot 2026-10-27: danh sach 'khong qua Proxy/VPN' do nguoi dung tu bam nut hoac
 # tu nhap, de con go ra khi can. Ngay xua 2.101 tu chen 6 muc nay luc start.
@@ -3324,6 +3361,83 @@ CONN_APPSTORE_BYPASS = [
     '*.phobos.apple.com',
 ]
 CONN_BYPASS_TAG = 'gen_bypass'
+# [Ver 2.138] 4 BANG DINH TUYEN (tab "Dinh Tuyen" trong Cau hinh ket noi).
+# __meta__.conn.route = {
+#   'wan':   {'on': bool, 'items': [ten mien|IP]},   -> ra WAN chinh (outbound gen_bypass)
+#   'split': {'on': bool, 'items': [...]},            -> di duong Luong phu (__meta__.split.target/proxy)
+#   'proxy': {'on': bool, 'items': [...]},            -> di PROXY CUA CHINH MAY do (kieu B)
+#   'block': {'on': bool, 'items': [...]},            -> chan hoan toan ra internet
+# }
+# Moi bang ap dung cho MOI may trong LAN (khong gioi han source_ip_cidr) de dung y anh Thai
+# 2026-11-16: "máy 1 gán proxy nhưng domain không có trong cài đặt thì buộc phải đi theo proxy"
+# => domain KHONG nam trong bang nao thi may di theo duong mac dinh cua no.
+CONN_ROUTE_TABLES = ('wan', 'split', 'proxy', 'block')
+CONN_ROUTE_LABELS = {'wan': 'WAN', 'split': 'Luồng phụ', 'proxy': 'Proxy', 'block': 'Chặn'}
+
+def get_route_tables():
+    """Doc 4 bang dinh tuyen. Chua co => migrate tu cau hinh cu:
+    bypass (khong qua proxy) -> bang WAN, block -> bang Chan, split.domains -> bang Luong phu."""
+    try:
+        meta = load_session_state().get('__meta__', {})
+        c = meta.get('conn') if isinstance(meta, dict) else None
+        old = c.get('route') if isinstance(c, dict) else None
+    except Exception:
+        old = None
+    old = old if isinstance(old, dict) else {}
+
+    def saved(k):
+        v = old.get(k)
+        return isinstance(v, dict) and 'items' in v
+
+    def items(k):
+        v = old.get(k)
+        r = v.get('items') if isinstance(v, dict) else None
+        return [str(x) for x in r or []]
+
+    def on(k, default):
+        v = old.get(k)
+        return bool(v['on']) if isinstance(v, dict) and 'on' in v else default
+
+    try:
+        conn = get_conn_config()
+    except Exception:
+        conn = {}
+    try:
+        sp = get_split_config()
+    except Exception:
+        sp = {}
+    out = {}
+    # WAN: cu = conn.bypass (dang bat khi danh sach khac rong)
+    # [Ver 2.138] Da luu bang nao thi dung DUNG bang do, ke ca danh sach RONG.
+    # Truoc day `items(k) or list(conn...)` => xoa het danh sach thi muc cu (bypass/block)
+    # song lai va rule khong go duoc.
+    w_items = items('wan') if saved('wan') else list(conn.get('bypass') or [])
+    out['wan'] = {'on': on('wan', bool(w_items)), 'items': w_items}
+    # Split: cu = split.domains + split.enabled
+    s_items = items('split') if saved('split') else list(sp.get('domains') or [])
+    out['split'] = {'on': on('split', bool(sp.get('enabled'))), 'items': s_items}
+    # Proxy: moi (default bat khi co danh sach)
+    pi = items('proxy')
+    out['proxy'] = {'on': on('proxy', bool(pi)), 'items': pi}
+    # Block: cu = conn.block
+    b_items = items('block') if saved('block') else list(conn.get('block') or [])
+    out['block'] = {'on': on('block', bool(b_items)), 'items': b_items}
+    return out
+
+def set_route_tables(tables):
+    state = load_session_state()
+    meta = state.setdefault('__meta__', {})
+    if not isinstance(meta, dict):
+        meta = {}
+        state['__meta__'] = meta
+    c = meta.get('conn')
+    if not isinstance(c, dict):
+        c = meta['conn'] = {}
+    c['route'] = {k: {'on': bool((tables.get(k) or {}).get('on')),
+                      'items': list((tables.get(k) or {}).get('items') or [])}
+                  for k in CONN_ROUTE_TABLES}
+    save_session_state(state)
+    return c['route']
 # [Ver 2.106] May trong 'Internet truc tiep' van bi DNS rule tro proxy_<N> (type=block)
 # => phan giai ten mien that bai => mat mang (su co 2026-10-28, 192.12.3.25 Gen12).
 # Them DNS server rieng di thang WAN cho nhom may nay.
@@ -3424,7 +3538,14 @@ def get_conn_config():
     return {'direct': L('direct'), 'iso_allow': L('iso_allow'), 'iso_master': L('iso_master'),
             'udp_block': bool(c.get('udp_block', True)), 'webrtc': 'off' if c.get('webrtc') == 'off' else 'block',
             'bypass': L('bypass'), 'block': L('block'), 'migrated': bool(c.get('migrated')),
-            'bypass_defaults': bool(c.get('bypass_defaults'))}
+            'bypass_defaults': bool(c.get('bypass_defaults')),
+            # [Ver 2.138] may master khoa cung - do nguoi dung dat, '' = khong khoa cung.
+            # Key CHUA TUNG duoc luu => seed tu file isolate.master dang chay (giu dung may
+            # master cu cua router, khong lam mat master khi nang cap). Da luu '' thi ton trong.
+            'fixed_master': (str(c.get('fixed_master') or '').strip() if 'fixed_master' in c
+                             else _conn_legacy_fixed_master()),
+            # [Ver 2.138] dinh tuyen 4 bang (xem get_route_config)
+            'route': c.get('route') if isinstance(c.get('route'), dict) else {}}
 
 def set_conn_config(cfg):
     state = load_session_state()
@@ -3432,9 +3553,26 @@ def set_conn_config(cfg):
     if not isinstance(meta, dict):
         meta = {}
         state['__meta__'] = meta
-    keep = ('direct', 'iso_allow', 'iso_master', 'udp_block', 'webrtc', 'bypass', 'block', 'bypass_defaults')
+    keep = ('direct', 'iso_allow', 'iso_master', 'udp_block', 'webrtc', 'bypass', 'block', 'bypass_defaults',
+            'fixed_master', 'route')
     meta['conn'] = dict({k: cfg.get(k) for k in keep}, migrated=True)
     save_session_state(state)
+
+def _conn_legacy_fixed_master():
+    """[Ver 2.138] Doc may master KHOA CUNG dang chay tren router (file isolate.master do ban
+    2.94-2.137 ghi) de giu nguyen khi nang cap len 2.138. Khong co file => rong."""
+    try:
+        for line in Path(ISO_MASTER_FILE).read_text(encoding='utf-8', errors='replace').splitlines():
+            line = line.split('#', 1)[0].strip()
+            if not line:
+                continue
+            tok = line.split()[0]
+            if _conn_valid_ip(tok) or _CONN_MAC_RE.match(tok.replace('-', ':')):
+                return tok.replace('-', ':')
+    except Exception:
+        pass
+    return ''
+
 
 def conn_migrate_once():
     """2.93 -> 2.94: Phan luong cu thanh danh sach 'duong co dinh' (giu nguyen __meta__.split).
@@ -3479,31 +3617,77 @@ def ensure_conn_rules(data, cfg=None):
         rules = list(route.get('rules') or [])
         obs = list(data.get('outbounds') or [])
         before = json.dumps([rules, obs], sort_keys=True)
+        # [Ver 2.138] Moc so sanh DNS phai chup NGAY TU DAU. Truoc day chup giua ham (sau khi
+        # chen _restored) nen lan luu nao cung bao "co doi" => restart gencore vo ich.
+        before_dns = json.dumps([list((data.get('dns') or {}).get('rules') or []),
+                                 list((data.get('dns') or {}).get('servers') or [])], sort_keys=True)
         def mine(r):
             if not isinstance(r, dict):
                 return False
             if r.get('outbound') == CONN_BYPASS_TAG:
                 return True
-            if r.get('action') == 'reject' and r.get('method') == 'default' and r.get('source_ip_cidr') and (r.get('domain') or r.get('domain_suffix') or r.get('ip_cidr')):
+            # [Ver 2.138] Bang Chan: reject theo ten mien/IP, KHONG con source_ip_cidr (ap moi may).
+            if r.get('action') == 'reject' and r.get('method') == 'default' \
+                    and (r.get('domain') or r.get('domain_suffix') or r.get('ip_cidr')):
                 return True
             if r.get('action') == 'route' and r.get('outbound') == CONN_DIRECT_TAG and set(r.keys()) == {'action', 'outbound', 'source_ip_cidr'}:
+                return True
+            # [Ver 2.138] Bang Proxy: route proxy_N theo ten mien (co source_ip_cidr dang CHUOI
+            # + truong domain/domain_suffix/ip_cidr) - khac rule proxy_N goc chi co source_ip_cidr.
+            if r.get('action') == 'route' and str(r.get('outbound') or '').startswith('proxy_') \
+                    and isinstance(r.get('source_ip_cidr'), str) \
+                    and (r.get('domain') or r.get('domain_suffix') or r.get('ip_cidr')):
                 return True
             return False
         rules = [r for r in rules if not mine(r)]
         obs = [o for o in obs if not (isinstance(o, dict) and o.get('tag') == CONN_BYPASS_TAG)]
         ips = _conn_proxy_ips(rules, obs)
         new = []
-        fb = _conn_split_fields(cfg.get('block'))
-        if ips and fb:
-            r = {'action': 'reject', 'method': 'default', 'source_ip_cidr': list(ips)}
+        # [Ver 2.138] 4 bang dinh tuyen: ap dung cho MOI may trong LAN (khong dat source_ip_cidr)
+        # => may di truc tiep / may proxy deu theo dung bang; domain khong nam trong bang nao
+        # thi may di theo duong mac dinh cua no (proxy_N / VPN / WAN).
+        # [Ver 2.138] Uu tien bang dinh tuyen trong cfg (dang luu, state chua kip ghi).
+        # Truoc day luon doc get_route_tables() => rule sinh theo bang CU, bam Luu
+        # "thanh cong" ma bang Chan/Proxy moi khong co tac dung.
+        _cfg_rt = cfg.get('route') if isinstance(cfg.get('route'), dict) else None
+        tables = _cfg_rt if _cfg_rt else get_route_tables()
+        tb = tables.get('block') or {}
+        tw = tables.get('wan') or {}
+        tp = tables.get('proxy') or {}
+        fb = _conn_split_fields(tb.get('items')) if tb.get('on') else {}
+        if fb:
+            r = {'action': 'reject', 'method': 'default'}
             r.update(fb)
             new.append(r)
-        fp = _conn_split_fields(cfg.get('bypass'))
-        if ips and fp:
-            r = {'action': 'route', 'outbound': CONN_BYPASS_TAG, 'source_ip_cidr': list(ips)}
+        fp = _conn_split_fields(tw.get('items')) if tw.get('on') else {}
+        if fp:
+            r = {'action': 'route', 'outbound': CONN_BYPASS_TAG}
             r.update(fp)
             new.append(r)
-            obs.append({'tag': CONN_BYPASS_TAG, 'type': 'direct'})
+            # [Ver 2.138] Giu nguyen VI TRI cu cua gen_bypass (xem ghi chu o ensure_split_rules).
+            try:
+                _bi = next(i for i, o in enumerate(list(data.get('outbounds') or []))
+                           if isinstance(o, dict) and o.get('tag') == CONN_BYPASS_TAG)
+            except StopIteration:
+                _bi = len(obs)
+            obs.insert(min(_bi, len(obs)), {'tag': CONN_BYPASS_TAG, 'type': 'direct'})
+        # Bang 'Di qua Proxy' (kieu B): ten mien nay di PROXY CUA CHINH MAY do.
+        # Ghi rule tuong minh theo tung may dang co proxy that => khong bi bang khac de len.
+        fpx = _conn_split_fields(tp.get('items')) if tp.get('on') else {}
+        if fpx:
+            _ob_type = {str(o.get('tag')): str(o.get('type', '')).lower() for o in obs if isinstance(o, dict)}
+            _done = set()
+            for _r in rules:
+                if not (isinstance(_r, dict) and _r.get('action') == 'route'):
+                    continue
+                _tag = str(_r.get('outbound') or '')
+                _ip = _r.get('source_ip_cidr')
+                if _tag.startswith('proxy_') and _ob_type.get(_tag) in ('socks', 'http', 'http2') \
+                        and isinstance(_ip, str) and _ip.strip() and _ip.strip() not in _done:
+                    _done.add(_ip.strip())
+                    _rr = {'action': 'route', 'outbound': _tag, 'source_ip_cidr': _ip.strip()}
+                    _rr.update(fpx)
+                    new.append(_rr)
         dips = [x if '/' in x else x for x in cfg.get('direct') or [] if _conn_valid_ip(x)]
         has_direct = any(isinstance(o, dict) and o.get('tag') == CONN_DIRECT_TAG for o in obs)
         if dips and has_direct:
@@ -3528,7 +3712,6 @@ def ensure_conn_rules(data, cfg=None):
         dns_rules = list(dns.get('rules') or [])
         dns_servers = list(dns.get('servers') or [])
         dips_set = set(dips)
-        before_dns = json.dumps([dns_rules, dns_servers], sort_keys=True)
         # [Ver 2.108] Xoa MOI dns rule gen_direct_dns, KHONG phu thuoc dips_set.
         # Loi 2.106/2.107: may .1-250 tung o danh sach 'Internet truc tiep' => bi xoa dns rule
         # proxy_N va thay bang gen_direct_dns. Khi chuyen 250 may sang proxy Gen15, route doi
@@ -3602,10 +3785,13 @@ def ensure_conn_rules(data, cfg=None):
         # [Ver 2.111] 2.108 chen dns rule proxy_N (_restored) LEN DAU => day rule pha vong lap
         # xuong duoi => proxy dung TEN MIEN bi vong lap DNS. Chot lai: breaker luon o vi tri 0.
         ensure_dns_loop_breaker(data)
-        _sd_chg = ensure_split_dns_rules(data, conn_cfg=cfg)  # [Ver 2.136]
+        # [Ver 2.136] DNS di cung duong voi du lieu. [Ver 2.138] KHONG dung co tra ve cua
+        # ham nay: no bao "co doi" ca khi chi them lai server vua bi chinh ham nay go ra
+        # => moi lan Luu deu restart gencore vo ich. Chi dua vao so sanh cuoi cung.
+        ensure_split_dns_rules(data, conn_cfg=cfg)
         dns_rules = dns.get('rules') or []
+        dns_servers = dns.get('servers') or []
         _dns_changed = 0 if json.dumps([dns_rules, dns_servers], sort_keys=True) == before_dns else 1
-        _dns_changed = _dns_changed or _sd_chg
         return 1 if (_dns_changed or json.dumps([rules, obs], sort_keys=True) != before) else 0
     except Exception as e:
         try:
@@ -3616,8 +3802,12 @@ def ensure_conn_rules(data, cfg=None):
 
 def _conn_write_iso_files(cfg):
     os.makedirs('/data/vpn', exist_ok=True)
-    masters = [CONN_FIXED_MASTER] + [x for x in cfg.get('iso_master') or [] if x != CONN_FIXED_MASTER]
-    _ss_atomic_write(Path(ISO_MASTER_FILE), '# [Ver 2.94] may master (GUI 9001). 192.10.1.10 luon co.\n' + '\n'.join(masters) + '\n')
+    # [Ver 2.138] May master khoa cung lay tu cau hinh (nguoi dung dat dung IP cua router nay).
+    fixed = str(cfg.get('fixed_master') or '').strip()
+    masters = ([fixed] if fixed else []) + [x for x in cfg.get('iso_master') or [] if x != fixed]
+    note = ('# [Ver 2.138] may master (GUI 9001). Khoa cung: %s\n' % fixed) if fixed \
+        else '# [Ver 2.138] may master (GUI 9001). Khong khoa cung may nao.\n'
+    _ss_atomic_write(Path(ISO_MASTER_FILE), note + '\n'.join(masters) + '\n')
     _ss_atomic_write(Path(ISO_ALLOW_FILE), '# [Ver 2.94] ngoai le co lap LAN (GUI 9001)\n' + '\n'.join(cfg.get('iso_allow') or []) + '\n')
 
 def conn_apply_system(cfg=None):
@@ -3647,6 +3837,97 @@ def conn_apply_system(cfg=None):
         out.append({'cmd': 'gen_conn_vpn', 'ok': False, 'out': str(e)})
     return out
 
+# ===================== [Ver 2.138] MAU CHU NOTE TONG =====================
+# __meta__.note_colors = [{'words': ['ban','bi khoa'], 'color': '#ef4444', 'bold': True}, ...]
+# Nguoi dung tu them/sua/xoa trong Cau hinh ket noi > Note tong. GUI 9001 doc bang nay
+# va to mau dung nhu cau hinh. Mac dinh: Ban do, Done xanh.
+NOTE_COLOR_DEFAULT = [
+    {'id': 'ban', 'words': ['ban'], 'color': '#ef4444', 'bold': True},
+    {'id': 'done', 'words': ['done'], 'color': '#22c55e', 'bold': True},
+]
+NOTE_COLOR_MAX = 40
+NOTE_WORDS_MAX = 30
+
+
+def _note_color_clean(items):
+    """Chuan hoa danh sach mau: id duy nhat, tu 1..30 chu, mau hex 6 so."""
+    out = []
+    for i, it in enumerate(items or []):
+        if not isinstance(it, dict):
+            continue
+        words = []
+        raw = it.get('words')
+        if isinstance(raw, str):
+            raw = re.split(r'[\s,;]+', raw)
+        for w in raw or []:
+            w = str(w or '').strip()
+            if not w or len(w) > 40:
+                continue
+            if w.lower() not in [x.lower() for x in words]:
+                words.append(w)
+        if not words:
+            continue
+        color = str(it.get('color') or '').strip()
+        if not re.match(r'^#[0-9a-fA-F]{6}$', color):
+            color = '#ef4444'
+        out.append({'id': str(it.get('id') or ('c%d' % (i + 1)))[:24],
+                    'words': words[:NOTE_WORDS_MAX],
+                    'color': color.lower(),
+                    'bold': bool(it.get('bold', True))})
+        if len(out) >= NOTE_COLOR_MAX:
+            break
+    # id trung => them hau to
+    seen = {}
+    for it in out:
+        base = it['id']
+        n = seen.get(base, 0)
+        seen[base] = n + 1
+        if n:
+            it['id'] = '%s-%d' % (base, n + 1)
+    return out
+
+
+def get_note_colors():
+    try:
+        meta = load_session_state().get('__meta__', {})
+        c = meta.get('note_colors') if isinstance(meta, dict) else None
+    except Exception:
+        c = None
+    if not isinstance(c, list) or not c:
+        return [dict(x, words=list(x['words'])) for x in NOTE_COLOR_DEFAULT]
+    return _note_color_clean(c)
+
+
+def set_note_colors(items):
+    state = load_session_state()
+    meta = state.setdefault('__meta__', {})
+    if not isinstance(meta, dict):
+        meta = {}
+        state['__meta__'] = meta
+    meta['note_colors'] = _note_color_clean(items)
+    save_session_state(state)
+    return meta['note_colors']
+
+
+def _router_lan_ip():
+    """[Ver 2.138] IP LAN cua router: goi y dung may master khoa cung theo tung router."""
+    try:
+        out = subprocess.run(['ip', '-o', '-4', 'addr', 'show', 'dev', 'br-lan'],
+                             capture_output=True, text=True, timeout=5)
+        m = re.search(r'inet (\d+\.\d+\.\d+\.\d+)/', out.stdout or '')
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    try:
+        for line in Path('/proc/net/fib_trie').read_text().splitlines():
+            if '/32 host LOCAL' in line:
+                pass
+    except Exception:
+        pass
+    return '192.168.1.1'
+
+
 def conn_public_state():
     cfg = get_conn_config()
     sp = split_public_state()
@@ -3656,9 +3937,11 @@ def conn_public_state():
     except Exception:
         pass
     vpn_ips = sorted(load_vpn_map().keys())
-    return {'ok': True, 'conn': cfg, 'fixed_master': CONN_FIXED_MASTER, 'split': sp, 'vpn_ips': vpn_ips,
+    return {'ok': True, 'conn': cfg, 'fixed_master': str(cfg.get('fixed_master') or ''), 'split': sp, 'vpn_ips': vpn_ips,
             'isolate': str(iso.get('output') or '').strip(), 'stun_ports': '3478, 5349, 19302-19309',
-            'appstore_preset': list(CONN_APPSTORE_BYPASS)}
+            'appstore_preset': list(CONN_APPSTORE_BYPASS),
+            'note_colors': get_note_colors(), 'lan_ip': _router_lan_ip(),
+            'route': get_route_tables()}
 
 def conn_update(payload):
     """POST /api/pm/conn. payload co the chua: direct, iso_allow, iso_master, udp_block, webrtc, bypass, block,
@@ -3673,8 +3956,18 @@ def conn_update(payload):
         new['direct'] = d
     if 'iso_allow' in payload:
         new['iso_allow'] = parse_conn_items(payload.get('iso_allow'), allow_domain=False, allow_mac=True, limit=500, label='ngoai le')
+    if 'fixed_master' in payload:
+        fm = str(payload.get('fixed_master') or '').strip()
+        if fm:
+            v = parse_conn_items(fm, allow_domain=False, limit=1, label='may master khoa cung')
+            fm = v[0] if v else ''
+        new['fixed_master'] = fm
     if 'iso_master' in payload:
-        new['iso_master'] = [x for x in parse_conn_items(payload.get('iso_master'), allow_domain=False, allow_mac=True, limit=20, label='may master') if x != CONN_FIXED_MASTER]
+        _fm = str(new.get('fixed_master') or '').strip()
+        new['iso_master'] = [x for x in parse_conn_items(payload.get('iso_master'), allow_domain=False, allow_mac=True, limit=20, label='may master') if x != _fm]
+    if 'note_colors' in payload:
+        # [Ver 2.138] Luu bang mau Note tong (khong dong vao gencore, chi luu cau hinh).
+        set_note_colors(payload.get('note_colors') or [])
     if 'udp_block' in payload:
         new['udp_block'] = bool(payload.get('udp_block'))
     if 'webrtc' in payload:
@@ -3682,12 +3975,75 @@ def conn_update(payload):
     for k in ('bypass', 'block'):
         if k in payload:
             new[k] = parse_conn_items(payload.get(k), limit=1000, label='ten mien/IP')
+    # [Ver 2.138] 4 bang dinh tuyen. payload['route'] = {wan|split|proxy|block: {on, items}}.
+    # Moi muc chi duoc nam trong 1 bang (2 bang chong nhau => khong biet duong nao thang).
+    route_tables = None
+    route_moved = []
+    if isinstance(payload.get('route'), dict):
+        route_tables = {}
+        for k in CONN_ROUTE_TABLES:
+            v = payload['route'].get(k)
+            if not isinstance(v, dict):
+                route_tables[k] = {'on': False, 'items': list((get_route_tables().get(k) or {}).get('items') or [])}
+                continue
+            route_tables[k] = {'on': bool(v.get('on')),
+                               'items': parse_conn_items(v.get('items'), limit=1000, label='muc bang ' + CONN_ROUTE_LABELS[k])}
+        # [Ver 2.138] Mot muc nam o 2 bang: TU XU theo thu tu uu tien trong GUI
+        # (Chan -> WAN -> Luong phu -> Proxy). Muc o bang uu tien CAO hon duoc giu,
+        # bang uu tien thap hon bi go ra va bao lai cho nguoi dung biet.
+        # Ly do khong bao loi: cau hinh dang chay tren router that da co san muc trung
+        # (vi du *.apple.com vua o nhom App Store cua WAN vua o danh sach mac dinh cua
+        # Luong phu) => neu bao loi thi khong luu duoc gi.
+        _prio = ('block', 'wan', 'split', 'proxy')
+        _owner = {}
+        _moved = []
+        for k in _prio:
+            if not route_tables[k]['on']:
+                continue
+            keep = []
+            for it in route_tables[k]['items']:
+                if it in _owner:
+                    _moved.append('%s (bo khoi %s, giu o %s)' % (it, CONN_ROUTE_LABELS[k], CONN_ROUTE_LABELS[_owner[it]]))
+                    continue
+                _owner[it] = k
+                keep.append(it)
+            route_tables[k]['items'] = keep
+        if _moved:
+            route_moved = _moved
+        # [Ver 2.138] Bang 'Luong phu' bat ma chua chon duong => bao NGAY tu dau, khong de
+        # split_update nem loi giua chung (luc do mot phan cau hinh da duoc ghi).
+        if route_tables['split']['on']:
+            _tgt = str(payload.get('split', {}).get('target') if isinstance(payload.get('split'), dict)
+                       else get_split_config().get('target') or '').strip()
+            if not _tgt:
+                raise ValueError('Bang "Di qua Luong phu" dang bat nhung chua chon duong di '
+                                 '(VPN / Proxy / phien PPPoE / WAN).')
+        # giu nguyen hanh vi cu: conn.bypass = bang WAN, conn.block = bang Chan
+        if route_tables['wan']['on'] or 'bypass' in payload:
+            new['bypass'] = list(route_tables['wan']['items'])
+        if route_tables['block']['on'] or 'block' in payload:
+            new['block'] = list(route_tables['block']['items'])
     both = sorted(set(new['bypass']) & set(new['block']))
     if both:
         raise ValueError('Trung giua Khong qua proxy va Chan: ' + ', '.join(both[:10]))
     results = []
     if isinstance(payload.get('split'), dict):
         results.append({'cmd': 'split', 'ok': True, 'state': split_update(payload['split'])})
+    if route_moved:
+        results.append({'cmd': 'dinh-tuyen-trung', 'ok': True,
+                        'out': 'Da tu xu ly muc nam o 2 bang: ' + ', '.join(route_moved[:10])})
+    if route_tables is not None:
+        # Bang 'Luong phu' = danh sach + cong tac cua phan luong (split) => dong bo 2 chieu.
+        _sp_now = get_split_config()
+        _sp_new = dict(_sp_now)
+        _sp_new['enabled'] = bool(route_tables['split']['on'])
+        _sp_new['domains'] = list(route_tables['split']['items'])
+        if _sp_new.get('enabled') != _sp_now.get('enabled') or _sp_new.get('domains') != _sp_now.get('domains'):
+            results.append({'cmd': 'split', 'ok': True, 'state': split_update(_sp_new)})
+        # [Ver 2.138] Phai ghi vao `new` (ban se duoc set_conn_config luu o cuoi ham).
+        # Truoc day goi set_route_tables() o day roi set_conn_config(new) ghi de lai bang
+        # bang CU (new duoc chup tu dau ham) => bat/tat va danh sach bi mat.
+        new['route'] = route_tables
     if str(payload.get('isolate') or '') in ('two-way', 'off'):
         r = vpn_run(['isolate', str(payload['isolate'])])
         results.append({'cmd': 'isolate', 'ok': bool(r.get('ok')), 'out': str(r.get('output') or r.get('error') or '')[-200:]})
@@ -3884,42 +4240,47 @@ def _flow_fetch():
     with urllib.request.urlopen(req, timeout=4) as r:
         return json.loads(r.read().decode('utf-8', 'replace') or '{}')
 
-# [Ver 2.112] Nhat ky luong theo thoi gian thuc: moi dong = cac ket noi (ip, host, chain) MO cung 1 giay.
+# [Ver 2.112] Nhat ky luong theo thoi gian thuc: moi dong = 1 ket noi (ip, host, chain) MO cung 1 moc.
 # Byte cua dong tiep tuc tang den khi ket noi dong. Giu toi da FLOW_LOG_MAX dong moi nhat.
-FLOW_LOG_MAX = 3000
-_FLOW_START_RE = re.compile(r'^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?$')
+# [Ver 2.138] Moc thoi gian chinh xac den MILI GIAY (truoc chi toi giay) va moi ket noi la 1 dong
+# rieng (truoc gop cac ket noi mo cung 1 giay vao 1 dong => mat chi tiet).
+FLOW_LOG_MAX = 6000
+_FLOW_START_RE = re.compile(r'^(\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d)(?:\.(\d+))?\s*(Z|z|[+-]\d\d:?\d\d)?$')
 
 def _flow_start_ts(s, now):
-    """'2026-11-01T18:46:12.123456789+07:00' => epoch giay. Loi/lech > 1 ngay => now."""
+    """'2026-11-01T18:46:12.123456789+07:00' => epoch giay (float, giu phan le => mili giay).
+    sing-box tra 9 chu so (nanosecond), datetime chi nhan 6 => cat bot. Loi / lech > 1 ngay => now."""
     try:
         m = _FLOW_START_RE.match(str(s or '').strip())
         if not m:
-            return int(now)
-        tz = m.group(2) or 'Z'
-        tz = '+00:00' if tz == 'Z' else (tz if ':' in tz else tz[:3] + ':' + tz[3:])
-        ts = datetime.fromisoformat(m.group(1) + tz).timestamp()
-        return int(ts) if abs(now - ts) < 86400 else int(now)
+            return float(now)
+        frac = (m.group(2) or '')[:6].ljust(6, '0')
+        tz = (m.group(3) or 'Z')
+        tz = '+00:00' if tz in ('Z', 'z') else (tz if ':' in tz else tz[:3] + ':' + tz[3:])
+        ts = datetime.fromisoformat(m.group(1) + '.' + frac + tz).timestamp()
+        return float(ts) if abs(now - ts) < 86400 else float(now)
     except Exception:
-        return int(now)
+        return float(now)
 
 def flow_log_new():
     return {'rows': [], 'idx': {}, 'cid': {}, 'seq': 0}
 
 def _flow_log_open(log, cid, c, ip, host, chain, now):
     ts = _flow_start_ts(c.get('start'), now)
-    key = (ts, ip, host, chain)
-    e = log['idx'].get(key)
+    # [Ver 2.138] Moi ket noi = 1 dong rieng (key theo cid). Truoc day gop theo (giay, ip, host, chain)
+    # nen nhieu ket noi mo cung giay bi tron thanh 1 dong, khong con chi tiet tung ket noi.
+    e = log['idx'].get(cid)
     if e is None:
         log['seq'] += 1
         e = {'seq': log['seq'], 'ts': ts, 'ip': ip, 'host': host, 'out': chain, 'kind': _flow_kind(chain),
-             'up': 0, 'down': 0, 'conns': 0, 'open': 0}
-        log['idx'][key] = e
+             'up': 0, 'down': 0, 'conns': 0, 'open': 0, 'cid': cid}
+        log['idx'][cid] = e
         log['rows'].append(e)
         if len(log['rows']) > FLOW_LOG_MAX:
-            drop = log['rows'][:len(log['rows']) - FLOW_LOG_MAX + 500]
+            drop = log['rows'][:len(log['rows']) - FLOW_LOG_MAX + 1000]
             del log['rows'][:len(drop)]
             for d in drop:
-                log['idx'].pop((d['ts'], d['ip'], d['host'], d['out']), None)
+                log['idx'].pop(str(d.get('cid') or ''), None)
     e['conns'] += 1
     e['open'] += 1
     log['cid'][cid] = e
@@ -3984,14 +4345,18 @@ def flow_ingest(snapshot, agg, last, log=None, now=None):
                 e = log['cid'].pop(cid)
                 e['open'] = max(0, e['open'] - 1)
 
-def flow_log_query(log, ip='', q='', limit=500):
-    """Dong moi nhat truoc. q = tim theo ky tu (khong phan biet hoa thuong) trong ten mien / IP / duong / gio."""
+def flow_log_query(log, ip='', q='', limit=500, since=None):
+    """Dong moi nhat truoc. q = tim theo ky tu (khong phan biet hoa thuong) trong ten mien / IP / duong / gio.
+    [Ver 2.138] since = chi lay dong mo sau moc nay (epoch giay, giu phan le = mili giay)."""
     ip = str(ip or '').strip()
     q = str(q or '').strip().lower()
+    since = float(since or 0)
     out, total = [], 0
-    # Xep theo GIO mo ket noi (moi nhat truoc); cung giay thi theo thu tu ghi.
+    # Xep theo GIO mo ket noi (moi nhat truoc); cung thoi diem thi theo thu tu ghi.
     for e in sorted(log['rows'], key=lambda x: (x['ts'], x['seq']), reverse=True):
         if ip and e['ip'] != ip:
+            continue
+        if since and float(e['ts']) < since:
             continue
         if q:
             hay = ' '.join((e['host'], e['ip'], e['out'], e['kind'],
@@ -4002,6 +4367,30 @@ def flow_log_query(log, ip='', q='', limit=500):
         if len(out) < limit:
             out.append(dict(e))
     return out, total
+
+def flow_log_clear(ip=''):
+    """[Ver 2.138] Xoa nhat ky theo MAY dang chon (truoc day nut Xoa luon xoa sach moi may).
+    ip rong => xoa tat ca. Tra ve so dong da xoa."""
+    ip = str(ip or '').strip()
+    log = FLOW['log']
+    if not ip:
+        n = len(log['rows'])
+        FLOW['log'] = flow_log_new()
+        FLOW['agg'] = {}
+        FLOW['last'] = {}
+        FLOW['polls'] = 0
+        FLOW['since'] = time.time()
+        return n
+    keep = [e for e in log['rows'] if str(e.get('ip') or '') != ip]
+    n = len(log['rows']) - len(keep)
+    for key in [k for k, e in list(log['idx'].items()) if str((e or {}).get('ip') or '') == ip]:
+        log['idx'].pop(key, None)
+    for key in [k for k, e in list(log['cid'].items()) if str((e or {}).get('ip') or '') == ip]:
+        log['cid'].pop(key, None)
+    log['rows'] = keep
+    for key in [k for k in list(FLOW['agg']) if str(k[0]) == ip]:
+        FLOW['agg'].pop(key, None)
+    return n
 
 def _flow_loop():
     while True:
@@ -4288,7 +4677,7 @@ def flow_summary(agg, ip=''):
     rows.sort(key=lambda r: -r['bytes'])
     return rows[:5000], totals
 
-def flow_public_state(ip='', q='', view=''):
+def flow_public_state(ip='', q='', view='', since=None):
     cfg = get_flow_config()
     enabled = bool(cfg.get('enabled'))
     out = {'ok': True, 'enabled': enabled, 'available': False, 'since': 0, 'rows': [], 'totals': {}, 'ips': [], 'error': '',
@@ -4302,7 +4691,7 @@ def flow_public_state(ip='', q='', view=''):
         out['error'] = FLOW['err']
         out['available'] = FLOW['polls'] > 0 and not FLOW['err']
         if view == 'log':
-            out['log'], out['log_total'] = flow_log_query(FLOW['log'], ip, q)
+            out['log'], out['log_total'] = flow_log_query(FLOW['log'], ip, q, since=since)
     rows, out['totals'] = flow_summary(agg, ip)
     # [Ver 2.112] GUI log khong can bang gop => khong gui (giam payload moi 3s).
     out['rows'] = [] if view == 'log' else rows
@@ -4311,6 +4700,18 @@ def flow_public_state(ip='', q='', view=''):
 
 def flow_update(payload):
     action = str(payload.get('action') or '').strip()
+    # [Ver 2.138] 'clear' = xoa nhat ky theo MAY dang chon (ip rong => xoa tat ca).
+    # 'reset' giu nguyen: xoa so dem cua MOI may.
+    if action == 'clear':
+        with FLOW['lock']:
+            removed = flow_log_clear(payload.get('ip', ''))
+        try:
+            _ss_log('FLOW: xoa nhat ky ip=%s (%d dong)' % (str(payload.get('ip') or '').strip() or 'TAT CA', removed))
+        except Exception:
+            pass
+        out = flow_public_state(payload.get('ip', ''), view='log')
+        out['cleared'] = removed
+        return out
     if action == 'reset':
         flow_reset()
         return flow_public_state(payload.get('ip', ''))
@@ -7308,9 +7709,13 @@ def _vpn_auto_in(ip, ranges):
     return any(lo <= v <= hi for lo, hi in ranges)
 
 def _vpn_auto_excluded():
-    ex = {CONN_FIXED_MASTER}
+    # [Ver 2.138] May master khoa cung lay tu cau hinh (truoc day hard-code 192.10.1.10).
+    ex = set()
     try:
         c = get_conn_config()
+        fm = str(c.get('fixed_master') or '').strip()
+        if fm:
+            ex.add(fm)
         for k in ('direct', 'iso_master'):
             ex.update(x for x in c.get(k) or [] if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', x))
     except Exception:
@@ -9339,10 +9744,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(split_public_state())
         if path == '/api/pm/conn':
             return self._send_json(conn_public_state())
+        if path == '/api/pm/note-colors':
+            # [Ver 2.138] Bang mau chu Note tong - GUI 9001 doc luc mo trang.
+            return self._send_json({'ok': True, 'colors': get_note_colors()})
         if path == '/api/pm/flow':
             q = parse_qs(urlparse(self.path).query or '')
+            try:
+                _since = float((q.get('since') or ['0'])[0] or 0)
+            except Exception:
+                _since = 0.0
             return self._send_json(flow_public_state((q.get('ip') or [''])[0], (q.get('q') or [''])[0][:100],
-                                                     (q.get('view') or [''])[0]))
+                                                     (q.get('view') or [''])[0], since=_since))
         if path == '/api/pm/sessions':
             include_hidden = 'include_hidden=1' in (urlparse(self.path).query or '')
             # [Ver 2.72] tra kem cau hinh DANG APPLY: GUI mo len (F5/tat-mo) phai nhay dung
@@ -9528,6 +9940,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send_json(split_update(payload if isinstance(payload, dict) else {}))
                 except ValueError as se:
                     return self._send_json({'ok': False, 'error': str(se)})
+            if path == '/api/pm/note-colors':
+                try:
+                    saved = set_note_colors(payload.get('colors') if isinstance(payload, dict) else [])
+                    return self._send_json({'ok': True, 'colors': saved})
+                except Exception as ne:
+                    return self._send_json({'ok': False, 'error': str(ne)[:200]})
             if path == '/api/pm/conn':
                 try:
                     return self._send_json(conn_update(payload if isinstance(payload, dict) else {}))

@@ -6,14 +6,16 @@
 # [Ver 2.94] Ngoai le + may master:
 #   /data/vpn/isolate.master : moi dong 1 IP hoac MAC - thay/dieu khien MOI may
 #   /data/vpn/isolate.allow  : moi dong 1 IP hoac MAC - cac may nay noi chuyen duoc VOI NHAU
-#   192.10.1.10 (may quan ly) LUON la master, khong bo duoc (FIXED_MASTER).
+#   [Ver 2.138] May master KHOA CUNG do nguoi dung dat trong GUI (Cau hinh ket noi > May master);
+#   app.py ghi IP do vao dong dau isolate.master. Khong con khoa cung 192.10.1.10.
 #   IP => tra MAC tu /etc/config/dhcp (static), /tmp/dhcp.leases, ARP. Khong ra MAC => bo qua + log.
 START=99
 NFT_FILE=/etc/client-isolate.nft
 MODEF=/data/vpn/isolate.mode
 MASTERF=/data/vpn/isolate.master
 ALLOWF=/data/vpn/isolate.allow
-FIXED_MASTER="192.10.1.10 00:e0:4c:68:0d:73"
+# [Ver 2.138] Bo khoa cung 192.10.1.10: may master khoa cung do GUI ghi vao $MASTERF.
+FIXED_MASTER=""
 MAC=$(ip -o link show br-lan 2>/dev/null | sed -n 's/.*link\/ether \([0-9a-f:]*\).*/\1/p' | head -1)
 
 is_mac() { printf '%s' "$1" | grep -qiE '^([0-9a-f]{2}:){5}[0-9a-f]{2}$'; }

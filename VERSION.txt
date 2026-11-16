@@ -1,1 +1,1 @@
-Ver 2.137 (Blacklist IP PPPoE: tu phat hien phien dang dung IP blacklist (ca khi tat/bat PPPoE, reboot, BRAS cap lai) va tu xoay)
+Ver 2.139 (Gan truc tiep tu Theo doi luong + ke dong chan/le + sua loi nhap 1 ky tu)

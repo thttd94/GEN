@@ -249,11 +249,8 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     .notes-summary-box a.note-jump{color:var(--info);font-weight:700;text-decoration:none;cursor:pointer}
     .notes-summary-box a.note-jump:hover{text-decoration:underline}
     tr.jump-hit > td{background:rgba(250,204,21,.38)!important;transition:background .4s}
-    /* [Ver 2.134] Note tong: tu Ban to do, Done to xanh la */
-    .notes-summary-box .note-ban{color:#b91c1c;font-weight:700}
-    .notes-summary-box .note-done{color:#15803d;font-weight:700}
-    body.dark .notes-summary-box .note-ban{color:#f87171}
-    body.dark .notes-summary-box .note-done{color:#4ade80}
+    /* [Ver 2.138] Mau chu Note tong lay tu Cau hinh ket noi > Mau chu Note tong
+       (app.py get_note_colors), khong con class co dinh o day. */
 .me-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#22c55e;color:#04220f;font:700 11px/16px system-ui,sans-serif;letter-spacing:.3px;vertical-align:middle;white-space:nowrap}
 .view-tab.has-me{position:relative}
 .view-tab.has-me::after{content:'';position:absolute;top:3px;right:4px;width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 2px #0b1220}
@@ -478,7 +475,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       <div class="modal-body">
         <div class="sub">Mỗi dòng: <span class="mono">IP MAC</span> (cách bằng dấu cách, | hoặc ;)</div>
         <div class="checkline" style="margin:6px 0;">
-          <input type="search" id="macAssignSearch" placeholder="Tìm IP / MAC / số máy..." style="flex:1;width:auto;" oninput="macAssignFilter()" onkeydown="if(event.key==='Escape'){this.value='';macAssignFilter()}else if(event.key==='Enter'){event.preventDefault();macAssignJump()}">
+          <input type="search" id="macAssignSearch" placeholder="Tìm IP / MAC / số máy..." style="flex:1;width:auto;" oninput="macAssignFilter('typing')" onkeydown="if(event.key==='Escape'){this.value='';macAssignFilter('typing')}else if(event.key==='Enter'){event.preventDefault();macAssignJump()}">
           <span class="sub" id="macAssignSearchInfo" style="white-space:nowrap;"></span>
         </div>
         <textarea id="macAssignText" class="cfg-text" spellcheck="false" placeholder="192.15.4.1 22:BE:61:3E:26:CF" oninput="macAssignCount()"></textarea>
@@ -792,12 +789,55 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
         .sort((a, b) => (b.t - a.t) || (a.i - b.i))
         .map(x => x.r);
     }
-    // [Ver 2.134] Note tong: tu dung rieng "Ban" to do, "Done" to xanh la (khong phan biet hoa/thuong, o bat ky dau).
-    // Tach theo tu roi esc tung phan => khong chen duoc HTML tu note. Khong dung lookbehind (trinh duyet cu loi ca script).
+    // [Ver 2.134] Note tong: to mau theo tu khoa. [Ver 2.138] danh sach tu + mau lay tu
+    // Cau hinh ket noi > Mau chu Note tong (khong con co dinh Ban/Done).
+    // Tach theo tu roi esc tung phan => khong chen duoc HTML tu note. Khong dung lookbehind
+    // (Safari < 16.4 loi ca khoi script, iPhone mo GUI nay).
+    let NOTE_WORD_RULES = [];   // [{re: RegExp, color, bold}]
+    function noteBuildRules(list) {
+      const esc4 = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rules = [];
+      (Array.isArray(list) ? list : []).forEach(c => {
+        (c && c.words || []).forEach(w => {
+          const t = String(w || '').trim();
+          if (!t) return;
+          try { rules.push({ re: new RegExp('\\b' + esc4(t) + '\\b', 'i'), color: c.color, bold: c.bold !== false }); }
+          catch (e) {}
+        });
+      });
+      // tu dai truoc (khop nhieu chu hon truoc)
+      rules.sort((a, b) => (b.re.source.length - a.re.source.length));
+      return rules;
+    }
     function noteMarkHtml(text) {
-      return String(text || '').split(/\b(ban|done)\b/i)
-        .map((p, i) => i % 2 ? `<span class="note-${p.toLowerCase()}">${esc(p)}</span>` : esc(p))
-        .join('');
+      const s = String(text || '');
+      if (!NOTE_WORD_RULES.length) return esc(s);
+      const out = [];
+      let rest = s;
+      let guard = 0;
+      while (rest && guard++ < 400) {
+        let best = null;
+        for (const r of NOTE_WORD_RULES) {
+          const m = r.re.exec(rest);
+          if (m && (!best || m.index < best.index || (m.index === best.index && m[0].length > best.m[0].length))) {
+            best = { index: m.index, len: m[0].length, text: m[0], rule: r };
+          }
+        }
+        if (!best) { out.push(esc(rest)); break; }
+        out.push(esc(rest.slice(0, best.index)));
+        out.push(`<span style="color:${esc(best.rule.color)};font-weight:${best.rule.bold ? 700 : 400}">${esc(best.text)}</span>`);
+        rest = rest.slice(best.index + best.len);
+      }
+      return out.join('');
+    }
+    // Nap bang mau tu router (1 lan luc mo trang, va sau khi luu cau hinh).
+    async function loadNoteColors() {
+      try {
+        const r = await fetchJSON('/api/pm/note-colors');
+        NOTE_WORD_RULES = noteBuildRules((r && r.colors) || []);
+        noteColorPaint((r && r.colors) || []);
+        try { renderNotesSummary(); } catch (e) {}
+      } catch (e) {}
     }
     function renderNotesSummary() {
       const box = document.getElementById('notesSummary');
@@ -1732,6 +1772,8 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       macAssignHitPos = -1;
       if (!q) { info.textContent = ''; return; }
       info.textContent = macAssignHits.length ? `${macAssignHits.length} dòng khớp` : 'không tìm thấy';
+      // [Ver 2.139] Dang GO thi KHONG tu nhay: macAssignJump() goi box.focus() => cuop focus
+      // khoi o tim kiem, moi lan go duoc dung 1 ky tu. Chi nhay khi bam Enter.
       if (macAssignHits.length && !silent) macAssignJump(0);
     }
     function macAssignJump(dir) {
@@ -2638,6 +2680,145 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
       return (n / 1024).toFixed(0) + ' KB';
     }
+    // ===== [Ver 2.139] Gan ten mien/IP tu "Theo doi luong" vao bang dinh tuyen =====
+    // Muc gan o day la TAM THOI: ghi thang vao o danh sach cua bang (nen mo Dinh tuyen la THAY),
+    // nhung chua gui len router. Reload cung trang / reset router => mat. Bam Luu moi co tac dung.
+    const RT_KEYS = ['wan', 'split', 'proxy', 'block'];
+    const RT_LABEL = { wan: 'Đi qua WAN', split: 'Đi qua Luồng phụ', proxy: 'Đi qua Proxy', block: 'Chặn ra internet' };
+    let rtTemp = { wan: [], split: [], proxy: [], block: [] };   // muc gan tam (de biet dong nao chua Luu)
+    // Tach 1 host thanh "ten day du" va "ten nhom" de nguoi dung chon gan cai nao.
+    function rtHostParts(host) {
+      const h = String(host || '').trim().toLowerCase().replace(/^\*?\./, '');
+      if (!h) return null;
+      if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return { full: h, group: null, isIp: true };
+      const p = h.split('.');
+      const group = p.length >= 3 ? p.slice(-2).join('.') : h;
+      return { full: h, group: group === h ? null : ('*.' + group), isIp: false };
+    }
+    function rtFind(item) {
+      for (const k of RT_KEYS) {
+        if (connLines('rtItems-' + k).includes(item)) return k;
+      }
+      return null;
+    }
+    // Bo cac muc tam da bi xoa khoi o danh sach (nguoi dung tu xoa tay)
+    function rtTempPrune() {
+      RT_KEYS.forEach(k => {
+        const lines = connLines('rtItems-' + k);
+        rtTemp[k] = rtTemp[k].filter(x => lines.includes(x));
+      });
+    }
+    function rtTempRender() {
+      rtTempPrune();
+      RT_KEYS.forEach(k => {
+        const box = $c('rtTemp-' + k);
+        if (!box) return;
+        const list = rtTemp[k];
+        box.hidden = !list.length;
+        if (!list.length) { box.innerHTML = ''; return; }
+        box.innerHTML = '<b>Gán tạm, chưa Lưu:</b> ' + list.map((x, i) =>
+          esc(x) + ' <a href="#" onclick="rtTempDrop(\'' + k + '\',' + i + ');return false;" title="Bỏ khỏi danh sách tạm" style="color:#dc2626;text-decoration:none;">✕</a>'
+        ).join(' &nbsp;·&nbsp; ');
+      });
+    }
+    // Go 1 muc khoi MOI bang khac (mot muc chi duoc nam 1 bang)
+    function rtRemoveEverywhere(item, keepKey) {
+      RT_KEYS.forEach(k => {
+        if (k === keepKey) return;
+        const lines = connLines('rtItems-' + k);
+        if (lines.includes(item)) connSet('rtItems-' + k, lines.filter(x => x !== item));
+        rtTemp[k] = rtTemp[k].filter(x => x !== item);
+      });
+    }
+    function rtTempAdd(key, item) {
+      if (!RT_KEYS.includes(key) || !item) return false;
+      rtRemoveEverywhere(item, key);
+      const lines = connLines('rtItems-' + key);
+      if (!lines.includes(item)) { lines.push(item); connSet('rtItems-' + key, lines); }
+      if (!rtTemp[key].includes(item)) rtTemp[key].push(item);
+      rtTempRender(); connRefresh();
+      return true;
+    }
+    function rtTempDrop(key, i) {
+      const item = rtTemp[key] && rtTemp[key][i];
+      if (!item) return;
+      connSet('rtItems-' + key, connLines('rtItems-' + key).filter(x => x !== item));
+      rtTemp[key].splice(i, 1);
+      rtTempRender(); connRefresh();
+    }
+    function rtTempClear() { rtTemp = { wan: [], split: [], proxy: [], block: [] }; rtTempRender(); }
+    // openConnPanel() doc lai tu router => ghi de o danh sach. Phai chen lai muc gan tam.
+    function rtTempReapply() {
+      RT_KEYS.forEach(k => {
+        const lines = connLines('rtItems-' + k);
+        rtTemp[k].forEach(x => { if (!lines.includes(x)) lines.push(x); });
+        connSet('rtItems-' + k, lines);
+      });
+      rtTempRender();
+    }
+    // Hop gan: bam vao ten mien o bang Theo doi luong
+    let flowAssignTarget = null, flowAssignHost = '', flowAssignGroupItem = '', flowAssignAnchor = null;
+    function flowAssignGroup(asGroup) {
+      if (!flowAssignHost) return false;
+      const rect = flowAssignAnchor;
+      flowAssignOpen({ preventDefault() {}, stopPropagation() {}, currentTarget: { getBoundingClientRect: () => rect } },
+                     flowAssignHost, !!asGroup);
+      return false;
+    }
+    function flowAssignOpen(ev, host, asGroup) {
+      ev = ev || window.event;
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      closeFlowAssign();
+      const parts = rtHostParts(host);
+      if (!parts) return false;
+      const useGroup = !!asGroup && !!parts.group;
+      const item = useGroup ? parts.group : parts.full;
+      flowAssignTarget = item;
+      flowAssignHost = parts.full;
+      flowAssignGroupItem = parts.group || '';
+      const cur = rtFind(item);
+      const box = document.createElement('div');
+      box.id = 'flowAssign';
+      box.innerHTML =
+        '<button type="button" class="fa-close" onclick="closeFlowAssign()" aria-label="Đóng">&times;</button>' +
+        '<div class="fa-host">' + esc(item) + (useGroup ? ' <span class="sub">(cả nhóm)</span>' : '') + '</div>' +
+        (cur ? '<div class="fa-note">Đang ở bảng <b>' + esc(RT_LABEL[cur]) + '</b>.</div>' : '<div class="fa-note">Chưa nằm trong bảng nào.</div>') +
+        '<div class="fa-btns">' +
+          RT_KEYS.map(k => '<button type="button" class="btn small" onclick="flowAssignDo(\'' + k + '\')">' + esc(RT_LABEL[k]) + '</button>').join('') +
+        '</div>' +
+        (!useGroup && parts.group ? '<div class="fa-note"><button type="button" class="btn small" style="width:100%" onclick="flowAssignGroup(1)">Gán cả nhóm ' + esc(parts.group) + '</button></div>' : '') +
+        (useGroup ? '<div class="fa-note"><button type="button" class="btn small" style="width:100%" onclick="flowAssignGroup(0)">Chỉ gán đúng tên ' + esc(parts.full) + '</button></div>' : '') +
+        '<div class="fa-note">Gán tạm, chưa áp dụng. Mở <b>Định tuyến</b> để xem; bấm <b>Lưu &amp; Áp dụng</b> mới có tác dụng.</div>';
+      document.body.appendChild(box);
+      const r = (ev && ev.currentTarget) ? ev.currentTarget.getBoundingClientRect() : { left: 200, top: 200, bottom: 220 };
+      flowAssignAnchor = r;
+      const w = box.offsetWidth, h = box.offsetHeight;
+      let left = Math.min(r.left, window.innerWidth - w - 12);
+      let top = r.bottom + 6;
+      if (top + h > window.innerHeight - 12) top = Math.max(12, r.top - h - 6);
+      box.style.left = Math.max(12, left) + 'px';
+      box.style.top = top + 'px';
+      return false;
+    }
+    function flowAssignDo(key) {
+      const item = flowAssignTarget;
+      if (!item) { closeFlowAssign(); return; }
+      rtTempAdd(key, item);
+      closeFlowAssign();
+      const n = rtTemp[key].length;
+      connMsg('Đã gán tạm "' + item + '" vào bảng ' + RT_LABEL[key] + (n ? ' — ' + n + ' mục gán tạm chưa lưu' : '') + '. Mở Định tuyến để xem, bấm Lưu để áp dụng.', 'ok');
+    }
+    function closeFlowAssign() {
+      const b = document.getElementById('flowAssign');
+      if (b) b.remove();
+    }
+    document.addEventListener('click', e => {
+      const b = document.getElementById('flowAssign');
+      if (b && !b.contains(e.target)) closeFlowAssign();
+    }, true);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeFlowAssign();
+    });
     const FLOW_KIND = { proxy: 'Proxy', split: 'Luồng phụ', bypass: 'WAN', direct: 'Trực tiếp', other: 'Khác' };
     const FLOW_COLOR = { proxy: '#dc2626', split: '#16a34a', bypass: '#d97706', direct: '#2563eb', other: '#6b7280' };
     function toggleFlowPanel(force) {
@@ -2683,6 +2864,22 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       pollFlowSummary();
       if (!flowSumTimer) flowSumTimer = setInterval(pollFlowSummary, 5000);
     });
+    // [Ver 2.138] Moc "Tu luc" (gio may tinh) -> epoch giay de loc nhat ky.
+    function flowSinceTs() {
+      const el = document.getElementById('flowFrom');
+      const v = (el && el.value || '').trim();
+      if (!v) return 0;
+      const p = v.split(':');
+      const d = new Date();
+      d.setHours(Number(p[0] || 0), Number(p[1] || 0), Number(p[2] || 0), 0);
+      return Math.floor(d.getTime() / 1000);
+    }
+    // [Ver 2.138] Gio:phut:giay.mili giay
+    function flowHmsMs(ts) {
+      const d = new Date(Number(ts) * 1000);
+      const pad = (n, w) => String(n).padStart(w || 2, '0');
+      return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + '.' + pad(d.getMilliseconds(), 3);
+    }
     function renderFlow(r) {
       const off = document.getElementById('flowOff');
       const on = document.getElementById('flowOn');
@@ -2711,14 +2908,14 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       // [Ver 2.112] Nhat ky theo thoi gian thuc. Da chon 1 may => an cot May.
       const oneIp = !!sel.value;
       document.getElementById('flowIpTh').hidden = oneIp;
-      const pad = n => String(n).padStart(2, '0');
-      const hms = s => { const d = new Date(s * 1000); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+      const hms = flowHmsMs;
+      const fullTs = s => { const d = new Date(Number(s) * 1000); return d.toLocaleDateString() + ' ' + flowHmsMs(s); };
       const log = r.log || [];
       const q = (document.getElementById('flowQ') || {}).value || '';
       document.getElementById('flowCount').textContent = (r.log_total || 0) + ' dòng' + (q ? ' khớp' : '') + ((r.log_total || 0) > log.length ? ' (hiện ' + log.length + ' mới nhất)' : '');
       document.getElementById('flowRows').innerHTML = log.map(x =>
-        `<tr style="border-bottom:1px solid #eef2f7;"><td style="white-space:nowrap;font-family:Consolas,monospace;">${x.open ? '<span title="đang mở" style="color:#16a34a">●</span> ' : ''}${hms(x.ts)}</td>` +
-        `<td style="word-break:break-all;">${esc(x.host)}</td>` + (oneIp ? '' : `<td>${esc(x.ip)}</td>`) +
+        `<tr style="border-bottom:1px solid #eef2f7;"><td style="white-space:nowrap;font-family:Consolas,monospace;">${x.open ? '<span title="đang mở" style="color:#16a34a">●</span> ' : ''}<span title="${esc(fullTs(x.ts))}">${hms(x.ts)}</span></td>` +
+        `<td style="word-break:break-all;"><a href="#" class="flow-host" onclick="return flowAssignOpen(event,'${esc(x.host)}')" title="Bấm để gán tên miền này vào bảng định tuyến">${esc(x.host)}</a></td>` + (oneIp ? '' : `<td>${esc(x.ip)}</td>`) +
         `<td style="color:${FLOW_COLOR[x.kind] || '#111'};font-weight:700;">${esc(FLOW_KIND[x.kind] || x.kind)} <span class="sub">${esc(x.out)}</span></td>` +
         `<td style="text-align:right;">${fmtMB(x.down)}</td><td style="text-align:right;">${fmtMB(x.up)}</td><td style="text-align:right;">${x.conns}</td></tr>`
       ).join('') || `<tr><td colspan="${oneIp ? 6 : 7}" class="sub">${q ? 'Không có dòng khớp.' : 'Chưa có kết nối nào.'}</td></tr>`;
@@ -2730,8 +2927,9 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       if (pause && pause.checked && force !== true) return;
       const ip = (document.getElementById('flowIp') || {}).value || '';
       const q = ((document.getElementById('flowQ') || {}).value || '').trim();
+      const since = flowSinceTs();
       try {
-        const r = await fetchJSON('/api/pm/flow?view=log' + (ip ? ('&ip=' + encodeURIComponent(ip)) : '') + (q ? ('&q=' + encodeURIComponent(q)) : ''));
+        const r = await fetchJSON('/api/pm/flow?view=log' + (ip ? ('&ip=' + encodeURIComponent(ip)) : '') + (q ? ('&q=' + encodeURIComponent(q)) : '') + (since ? ('&since=' + since) : ''));
         if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
         renderFlow(r);
       } catch (e) {
@@ -2741,12 +2939,20 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     async function setFlow(action) {
       if ((action === 'enable' || action === 'disable') && !confirm((action === 'enable' ? 'Bật' : 'Tắt') + ' theo dõi luồng?\nRouter sẽ khởi động lại gencore, cả router chập mạng vài giây.')) return;
       const ip = (document.getElementById('flowIp') || {}).value || '';
+      // [Ver 2.138] Xoa nhat ky theo MAY dang chon (truoc day luon xoa sach moi may).
+      if (action === 'clear') {
+        const who = ip ? ('máy ' + ip) : 'TẤT CẢ các máy';
+        if (!confirm('Xoá nhật ký theo dõi của ' + who + '?')) return;
+      }
+      if (action === 'reset' && !confirm('Xoá số đếm luồng của TẤT CẢ các máy?')) return;
       try {
         const r = await fetchJSON('/api/pm/flow', { method:'POST', body: JSON.stringify({ action, ip }) });
         if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
         renderFlow(r);
         if (r.enabled) loadFlow(true);
-        setStatus(action === 'reset' ? 'Đã xoá số đếm theo dõi luồng' : (action === 'enable' ? 'Đã bật theo dõi luồng' : 'Đã tắt theo dõi luồng'));
+        setStatus(action === 'clear' ? ('Đã xoá ' + (r.cleared || 0) + ' dòng nhật ký' + (ip ? (' của máy ' + ip) : ' của tất cả các máy'))
+          : action === 'reset' ? 'Đã xoá số đếm theo dõi luồng'
+          : (action === 'enable' ? 'Đã bật theo dõi luồng' : 'Đã tắt theo dõi luồng'));
       } catch (e) {
         setStatus('Theo dõi luồng lỗi: ' + e.message);
       }
@@ -2767,6 +2973,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
       versionCheckTimer = setInterval(() => refreshVersionInfo(true), 60000);
       loadIsolate();
       loadSplit();
+      loadNoteColors();   // [Ver 2.138] bang mau Note tong
       const sessData = await fetchSessionsList(false);
       // [Ver 2.72] Mo len (F5 / tat-mo lai) phai nhay dung cau hinh DANG APPLY tren router,
       // khong ve mac dinh 1. active_session tra cung /api/pm/sessions (khong cho meta).
@@ -3015,7 +3222,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
 <style>
 #connPanel{position:fixed;inset:0;z-index:2000;background:rgba(30,10,30,.45);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:16px}
 #connPanel[hidden]{display:none}
-#connBox{background:var(--surface);color:var(--text);width:980px;max-width:100%;height:720px;max-height:100%;border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 60px var(--shadow-drop);display:flex;flex-direction:column;overflow:hidden}
+#connBox{background:var(--surface);color:var(--text);width:1240px;max-width:100%;height:720px;max-height:100%;border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 60px var(--shadow-drop);display:flex;flex-direction:column;overflow:hidden}
 .cn-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line-2);background:var(--surface-hi)}
 .cn-head h3{margin:0;font-size:17px;color:var(--text-head);flex:1}
 .cn-chips{display:flex;gap:6px;flex-wrap:wrap}
@@ -3077,6 +3284,56 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
 .cn-meta{align-items:center}
 .cn-syntax{font-size:12.5px;line-height:1.7;padding:8px 12px;border-radius:10px;background:var(--surface-hi);border:1px dashed var(--line-3);margin:0 0 16px}
 .cn-pane h4{font-size:16.5px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line-2)}
+/* [Ver 2.138] 4 bang dinh tuyen doc */
+.cn-router-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;align-items:stretch}
+.cn-router-card{display:flex;flex-direction:column;gap:7px;border:1px solid var(--line-2);border-radius:12px;padding:9px;background:var(--surface-hi);min-width:0}
+.cn-router-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:7px;border-bottom:1px solid var(--line-2)}
+.cn-router-head b{font-size:13.5px}
+.cn-router-desc{font-size:11.5px;line-height:1.5;color:var(--text-dim);min-height:52px}
+/* [Ver 2.139] Moi muc = DUNG 1 dong (khong tu xuong dong), nen ke mau chan/le theo tung dong.
+   Dung textarea (khong phai danh sach div) de Ctrl+A / Ctrl+C copy duoc TOAN BO danh sach day du.
+   background-attachment:local => van ke mau dung khi cuon doc. */
+.cn-router-card textarea{width:100%;min-height:150px;font-family:Consolas,Menlo,monospace;font-size:12px;line-height:18px;
+  white-space:pre;overflow-x:auto;overflow-y:auto;resize:vertical;
+  background-attachment:local;background-repeat:repeat;
+  background-image:repeating-linear-gradient(to bottom,var(--rt-odd) 0,var(--rt-odd) 18px,transparent 18px,transparent 36px)}
+/* body.noc dat `background:initial` cho MOI textarea o cuoi file => phai co selector manh hon */
+/* [Ver 2.139] KE DONG CHAN/LE.
+   - Moi o danh sach co padding-top 7px nen phai dich nen xuong dung 7px, neu khong soc
+     se cat ngang chu (loi cu).
+   - background-attachment:local => soc truot theo noi dung khi cuon, van thang dong.
+   - Do dam vua phai: du de mat bam dong, khong choi mat.
+   body.noc dat `background:initial` cho MOI textarea o cuoi file => phai co selector manh hon. */
+body.noc .cn-router-card textarea,body.dark .cn-router-card textarea{--rt-odd:rgba(255,255,255,.075);
+  background-image:repeating-linear-gradient(to bottom,var(--rt-odd) 0,var(--rt-odd) 18px,transparent 18px,transparent 36px);
+  background-position:0 7px;background-attachment:local;background-repeat:repeat}
+body:not(.dark):not(.noc) .cn-router-card textarea{--rt-odd:rgba(0,0,0,.055);
+  background-image:repeating-linear-gradient(to bottom,var(--rt-odd) 0,var(--rt-odd) 18px,transparent 18px,transparent 36px);
+  background-position:0 7px;background-attachment:local;background-repeat:repeat}
+.rt-temp{font-size:11px;line-height:1.5;color:#d97706;word-break:break-all}
+.rt-temp b{color:#b45309}
+.flow-host{color:var(--text);text-decoration:none;border-bottom:1px dashed var(--line-3);cursor:pointer}
+.flow-host:hover{color:var(--accent);border-bottom-color:var(--accent)}
+/* [Ver 2.139] Hop gan truc tiep tu Theo doi luong */
+#flowAssign{position:fixed;z-index:9999;min-width:250px;max-width:360px;border:1px solid var(--line-3);border-radius:12px;
+  background:var(--surface);box-shadow:0 12px 32px rgba(0,0,0,.45);padding:10px;display:flex;flex-direction:column;gap:8px}
+#flowAssign .fa-host{font-family:Consolas,Menlo,monospace;font-size:12px;word-break:break-all;color:var(--text);
+  padding:6px 8px;border-radius:8px;background:var(--surface-hi)}
+#flowAssign .fa-btns{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#flowAssign .fa-btns button{width:100%}
+#flowAssign .fa-note{font-size:11.5px;color:var(--text-dim);line-height:1.45}
+#flowAssign .fa-close{align-self:flex-end;background:none;border:0;color:var(--text-dim);cursor:pointer;font-size:16px;line-height:1;padding:0 2px}
+.cn-router-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11.5px;color:var(--text-dim);flex-wrap:wrap}
+.cn-sw-mini{flex:0 0 auto}
+@media (max-width:1180px){.cn-router-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.cn-router-grid{grid-template-columns:1fr}}
+/* [Ver 2.138] bang mau Note tong */
+.nc-list{display:flex;flex-direction:column;gap:7px}
+.nc-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--line-2);border-radius:10px;padding:7px 9px;background:var(--surface-hi)}
+.nc-words{flex:1;min-width:150px;font-family:Consolas,Menlo,monospace;font-size:12.5px}
+.nc-color{width:44px;height:30px;padding:0;border-radius:8px;cursor:pointer;background:none}
+.nc-bold{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-dim)}
+.nc-preview{min-width:64px;font-size:12.5px;text-align:center;padding:2px 8px;border-radius:8px;background:var(--surface)}
 @media (max-width:760px){.cn-body{flex-direction:column}.cn-nav{width:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line-2)}.cn-tab{white-space:nowrap}.cn-grid2{grid-template-columns:1fr}}
 </style>
 <div id="connPanel" role="dialog" aria-modal="true" aria-labelledby="connTitle" hidden>
@@ -3092,8 +3349,8 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     <button type="button" class="cn-tab" role="tab" data-t="iso">Cô lập LAN<span class="n" id="cnN-iso">tắt</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="master">Máy master<span class="n" id="cnN-master">1</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="udp">UDP &amp; WebRTC<span class="n" id="cnN-udp">-</span></button>
-    <button type="button" class="cn-tab" role="tab" data-t="dom">Tên miền / IP<span class="n" id="cnN-dom">0</span></button>
-    <button type="button" class="cn-tab" role="tab" data-t="route">Định tuyến cố định<span class="n" id="cnN-route">tắt</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="route">Định tuyến<span class="n" id="cnN-route">tắt</span></button>
+    <button type="button" class="cn-tab" role="tab" data-t="notecolor">Màu chữ Note tổng<span class="n" id="cnN-notecolor">2</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="flow">Theo dõi luồng<span class="n" id="cnN-flow">-</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="traffic">Hiển thị traffic<span class="n" id="cnN-traffic">-</span></button>
     <button type="button" class="cn-tab" role="tab" data-t="ports">Cổng mạng<span class="n" id="cnN-ports">-</span></button>
@@ -3116,8 +3373,13 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
     </section>
     <section id="cnS-master" role="tabpanel" aria-label="Máy master" hidden>
      <h4>Máy master (máy quản lý)</h4>
-     <div class="cn-blk"><h5>Máy master cố định</h5><ul class="cn-notes"><li>Máy master thấy và điều khiển được mọi máy trong LAN, kể cả khi bật cô lập (XXTE, remote, chia sẻ file).</li><li>Máy này luôn là master, không xoá được.</li></ul>
-      <span class="cn-fixed">&#128274; <span id="connFixedMaster">192.10.1.10</span></span>
+     <div class="cn-blk"><h5>Máy master khoá cứng</h5><ul class="cn-notes"><li>Máy master thấy và điều khiển được mọi máy trong LAN, kể cả khi bật cô lập (XXTE, remote, chia sẻ file).</li><li>Máy ghi ở đây <b>luôn là master</b> và không xoá được khỏi danh sách. Mỗi router dùng một IP khác nhau nên phải nhập đúng IP của máy quản lý trên router này.</li><li>Để trống = không khoá cứng máy nào.</li></ul>
+      <div class="cn-row">
+       <span class="cn-fixed" style="flex:0 0 auto;">&#128274;</span>
+       <input id="connFixedMaster" type="text" autocomplete="off" spellcheck="false" aria-label="IP máy master khoá cứng" placeholder="vd 192.168.1.10" oninput="connRefresh()" style="flex:1;min-width:180px;font-family:Consolas,monospace">
+       <button type="button" class="btn small" onclick="connFixedMasterSuggest()" title="Điền IP của máy đang mở GUI này">Máy đang mở</button>
+      </div>
+      <div class="sub" style="margin-top:4px;">IP LAN của router: <b id="connLanIp">-</b>. Máy quản lý thường là một máy trong LAN, ví dụ <code id="connLanIpEg">192.168.1.10</code>.</div>
      </div>
      <div class="cn-blk"><h5>Thêm máy master</h5><ul class="cn-notes"><li>Nhập IP hoặc MAC, tối đa 20 máy.</li><li>Lưu ý: chỉ thêm máy quản lý tin cậy, máy master vào được mọi máy khác.</li></ul>
       <textarea id="connMaster" rows="4" spellcheck="false" aria-label="connMaster" placeholder="Nhập IP hoặc MAC (mỗi dòng 1 giá trị). Ví dụ:&#10;192.10.1.20&#10;00:e0:4c:68:0d:74"></textarea><div class="cn-meta"><span></span><span data-cnt="connMaster"></span></div>
@@ -3133,43 +3395,68 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
      </div>
      <p class="cn-desc">Thay đổi áp dụng khi bấm Lưu, router chập mạng vài giây.</p>
     </section>
-    <section id="cnS-dom" role="tabpanel" aria-label="Tên miền / IP" hidden>
-     <h4>Cài đặt chặn hoặc bỏ qua Proxy/VPN cho tên miền/IP</h4>
-     <div class="cn-syntax"><b>Cách ghi:</b> <code>abc.com</code> = đúng tên đó &nbsp;·&nbsp; <code>*.abc.com</code> hoặc <code>sub:abc.com</code> = abc.com và mọi tên miền con &nbsp;·&nbsp; <code>1.2.3.4</code>, <code>1.2.3.0/24</code> = IP / dải IP</div>
-     <div class="cn-blk"><h5>Danh sách các tên miền/IP không đi qua Proxy/VPN</h5><ul class="cn-notes"><li>Các địa chỉ này sẽ kết nối trực tiếp bằng mạng gốc.</li><li>Lưu ý: tên miền nhận theo DNS của router. Máy dùng DNS riêng (DoH, 8.8.8.8 trong app) có thể không khớp.</li></ul>
-      <textarea id="connBypass" rows="5" spellcheck="false" aria-label="connBypass" placeholder="Nhập IP hoặc tên miền (mỗi dòng 1 giá trị). Ví dụ:&#10;104.244.42.1&#10;*.tiktok.com&#10;sub:facebook.com"></textarea><div class="cn-meta"><span></span><span data-cnt="connBypass"></span></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><button type="button" class="btn small" onclick="connBypassPreset('appstore')" title="Chèn tên miền tải app từ App Store (mzstatic, aaplimg…): tải app ra WAN chính, không tốn proxy/VPN">+ Nhóm App Store</button><button type="button" class="btn small" onclick="connBypassPreset('appstore', true)" title="Bỏ tên miền App Store khỏi danh sách">− Gỡ App Store</button></div>
-      <div class="sub" style="margin-top:4px;">Nút chỉ <b>chèn vào ô trên</b> — chưa áp dụng. Bấm <b>Lưu &amp; Áp dụng</b> thì mới có hiệu lực. Gỡ ra cũng vậy.</div>
+    <section id="cnS-route" role="tabpanel" aria-label="Định tuyến" hidden>
+     <h4>Định tuyến</h4>
+     <div style="font-size:12.5px;line-height:1.7;padding:8px 12px;border-radius:10px;background:var(--surface-hi);border:1px dashed var(--line-3);margin:0 0 12px;">
+      <b>Cách ghi:</b> <code>abc.com</code> = đúng tên đó &nbsp;·&nbsp; <code>*.abc.com</code> hoặc <code>sub:abc.com</code> = abc.com và mọi tên miền con &nbsp;·&nbsp; <code>1.2.3.4</code>, <code>1.2.3.0/24</code> = IP / dải IP
+      <br><b>Thứ tự ưu tiên:</b> Chặn → WAN → Luồng phụ → Proxy. Tên miền/IP không có trong bảng nào thì máy đi theo <b>đường mặc định của máy đó</b> (máy gán proxy thì đi proxy, máy gán VPN thì đi VPN).
+      <br>Một mục chỉ được nằm trong <b>một</b> bảng.
      </div>
-     <div class="cn-blk"><h5>Danh sách các tên miền/IP bị chặn truy cập</h5><ul class="cn-notes"><li>Các tên miền/IP này sẽ bị ngắt kết nối hoàn toàn.</li><li>Áp dụng cho máy đi Proxy, PPPoE, VPN và máy internet trực tiếp.</li><li>Lưu ý: một mục không được nằm ở cả 2 danh sách.</li></ul>
-      <textarea id="connBlock" rows="5" spellcheck="false" aria-label="connBlock" placeholder="Nhập IP hoặc tên miền (mỗi dòng 1 giá trị). Ví dụ:&#10;104.244.42.1&#10;*.tiktok.com&#10;sub:facebook.com"></textarea><div class="cn-meta"><span></span><span data-cnt="connBlock"></span></div>
-     </div>
-    </section>
-    <section id="cnS-route" role="tabpanel" aria-label="Định tuyến cố định" hidden>
-     <h4>Định tuyến riêng cho tên miền qua một đường cố định</h4>
-     <div class="cn-blk"><h5>Bật / tắt</h5><ul class="cn-notes"><li>Tên miền trong danh sách của máy đi Proxy luôn đi qua đường chỉ định bên dưới, bất kể máy đang gán proxy nào.</li><li>Dùng để video, ảnh, CDN không tốn lưu lượng proxy.</li><li>Nếu đường VPN bị lỗi / mất kết nối, các tên miền này tạm đi proxy chính của máy (không lộ IP thật). Phiên PPPoE lỗi thì giữ phiên cũ.</li><li>Máy VPN và máy internet trực tiếp không bị ảnh hưởng.</li></ul>
-      <label class="cn-sw"><span><b>Định tuyến cố định</b><small id="connRouteState">-</small></span><input type="checkbox" id="connFixedOn"></label>
-     </div>
-     <div class="cn-blk">
-      <fieldset class="cn-fs"><legend>Chọn đường đi</legend>
-       <div class="cn-row">
-        <select id="connFixedTarget" aria-label="Chọn đường đi" onchange="connTargetUi()" style="flex:1;min-width:220px">
-         <option value="">-- Chưa chọn (không bật được) --</option><option value="wan">Mạng chính (WAN)</option><option value="pppoe">Phiên PPPoE</option><option value="vpn">VPN</option><option value="proxy">Proxy nhập tay</option><option value="block">Chặn</option></select>
-        <span id="connTgPppoe" hidden><label for="connFixedPppoe">Số phiên</label> <input id="connFixedPppoe" type="number" min="1" max="999" style="width:80px"></span>
+     <div class="cn-router-grid">
+      <div class="cn-router-card">
+       <div class="cn-router-head"><b>1. Đi qua WAN</b><label class="cn-sw cn-sw-mini"><input type="checkbox" id="rtOn-wan" onchange="connRefresh()"><span></span></label></div>
+       <div class="cn-router-desc">Tên miền/IP đi thẳng bằng mạng chính của router. Không tốn lưu lượng proxy/VPN. Dùng cho App Store, CDN, tải app.</div>
+       <textarea id="rtItems-wan" rows="5" wrap="off" spellcheck="false" aria-label="Bảng đi qua WAN" placeholder="*.mzstatic.com&#10;*.aaplimg.com&#10;drm.82flex.com"></textarea><div class="rt-temp" id="rtTemp-wan" hidden></div>
+       <div class="cn-router-foot"><span data-cnt="rtItems-wan"></span></div>
+      </div>
+      <div class="cn-router-card">
+       <div class="cn-router-head"><b>2. Đi qua Luồng phụ</b><label class="cn-sw cn-sw-mini"><input type="checkbox" id="rtOn-split" onchange="connRefresh()"><span></span></label></div>
+       <div class="cn-router-desc">Tên miền đi qua <b>đường phụ</b> riêng (video, ảnh, CDN). Đường phụ chọn ở dưới, áp cho mọi máy trong LAN.</div>
+       <div class="cn-row" style="margin-bottom:6px;">
+        <select id="connFixedTarget" aria-label="Chọn đường phụ" onchange="connTargetUi()" style="flex:1;min-width:180px">
+         <option value="">-- Chưa chọn (không bật được) --</option><option value="wan">Mạng chính (WAN)</option><option value="pppoe">Phiên PPPoE</option><option value="vpn">VPN</option><option value="proxy">Proxy nhập tay</option><option value="block">Chặn</option>
+        </select>
+        <span id="connTgPppoe" hidden><label for="connFixedPppoe">Số phiên</label> <input id="connFixedPppoe" type="number" min="1" max="999" style="width:72px"></span>
         <span id="connTgVpn" hidden><label for="connFixedVpn">Tunnel</label> <select id="connFixedVpn"></select></span>
        </div>
-       <div id="connTgProxy" class="cn-row" hidden style="margin-top:8px">
-        <label for="connFixedPxType">Loại</label><select id="connFixedPxType"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select>
-        <input id="connFixedPx" type="text" autocomplete="off" spellcheck="false" aria-label="Proxy" placeholder="host:port:user:pass hoặc socks5://user:pass@host:port" style="flex:1;min-width:220px;font-family:Consolas,monospace">
+       <div id="connTgProxy" class="cn-row" hidden style="margin-bottom:6px">
+        <select id="connFixedPxType"><option value="socks5">SOCKS5</option><option value="http">HTTP</option></select>
+        <input id="connFixedPx" type="text" autocomplete="off" spellcheck="false" aria-label="Proxy" placeholder="host:port:user:pass" style="flex:1;min-width:180px;font-family:Consolas,monospace">
         <div id="connFixedPxCur" style="width:100%;font-size:12px;color:var(--text-dim)"></div>
        </div>
-      </fieldset>
-      <fieldset class="cn-fs"><legend>Danh sách tên miền</legend>
-       <textarea id="connFixed" rows="7" spellcheck="false" aria-label="Danh sách tên miền định tuyến cố định" placeholder="Nhập tên miền (mỗi dòng 1 giá trị). Ví dụ:&#10;*.googlevideo.com&#10;sub:fbcdn.net&#10;dl.google.com"></textarea>
-       <div class="cn-meta"><button type="button" class="btn small" onclick="connFixedDefault()">Dùng danh sách mặc định (video, ảnh, CDN)</button><span data-cnt="connFixed"></span></div>
-      </fieldset>
+       <textarea id="rtItems-split" rows="5" wrap="off" spellcheck="false" aria-label="Bảng đi qua Luồng phụ" placeholder="*.googlevideo.com&#10;*.fbcdn.net&#10;*.tiktokcdn.com"></textarea><div class="rt-temp" id="rtTemp-split" hidden></div>
+       <div class="cn-router-foot"><span data-cnt="rtItems-split"></span></div>
+      </div>
+      <div class="cn-router-card">
+       <div class="cn-router-head"><b>3. Đi qua Proxy</b><label class="cn-sw cn-sw-mini"><input type="checkbox" id="rtOn-proxy" onchange="connRefresh()"><span></span></label></div>
+       <div class="cn-router-desc">Tên miền đi qua <b>proxy của chính máy đang dùng</b>: máy gán proxy_5 thì đi proxy_5, máy gán proxy_9 thì đi proxy_9. Máy không gán proxy thì mục này không có tác dụng với máy đó.</div>
+       <textarea id="rtItems-proxy" rows="5" wrap="off" spellcheck="false" aria-label="Bảng đi qua Proxy" placeholder="api.tiktok.com&#10;*.byteoversea.com"></textarea><div class="rt-temp" id="rtTemp-proxy" hidden></div>
+       <div class="cn-router-foot"><span></span><span data-cnt="rtItems-proxy"></span></div>
+      </div>
+      <div class="cn-router-card">
+       <div class="cn-router-head"><b>4. Chặn ra internet</b><label class="cn-sw cn-sw-mini"><input type="checkbox" id="rtOn-block" onchange="connRefresh()"><span></span></label></div>
+       <div class="cn-router-desc">Chặn hoàn toàn: máy <b>không kết nối ra</b> được các tên miền/IP này, áp cho mọi máy trong LAN (kể cả máy đi WAN trực tiếp).</div>
+       <textarea id="rtItems-block" rows="5" wrap="off" spellcheck="false" aria-label="Bảng chặn" placeholder="ads.example.com&#10;1.2.3.4"></textarea><div class="rt-temp" id="rtTemp-block" hidden></div>
+       <div class="cn-router-foot"><span></span><span data-cnt="rtItems-block"></span></div>
+      </div>
      </div>
     </section>
+
+    <section id="cnS-notecolor" role="tabpanel" aria-label="Màu chữ Note tổng" hidden>
+     <h4>Màu chữ Note tổng</h4>
+     <div style="font-size:12.5px;line-height:1.7;padding:8px 12px;border-radius:10px;background:var(--surface-hi);border:1px dashed var(--line-3);margin:0 0 12px;">
+      Khai báo từ khoá và màu. Ở <b>Note tổng</b> (GUI 9001), từ khoá nào xuất hiện trong ghi chú sẽ được tô đúng màu này.
+      Không phân biệt hoa/thường, chỉ tô khi từ đứng riêng (ví dụ <code>banned</code>, <code>abandon</code> thì không tô).
+      Mỗi dòng có thể có nhiều từ khoá, cách nhau bằng dấu phẩy.
+     </div>
+     <div id="noteColorRows" class="nc-list"></div>
+     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+      <button type="button" class="btn small" onclick="noteColorAdd()">+ Thêm màu</button>
+      <button type="button" class="btn small" onclick="noteColorReset()">Về mặc định (Ban đỏ, Done xanh)</button>
+     </div>
+     <div class="sub" style="margin-top:8px;">Bấm <b>Lưu &amp; Áp dụng</b> ở chân hộp để ghi vào router. Note tổng tự đổi màu ngay sau khi lưu.</div>
+    </section>
+
     <section id="cnS-flow" role="tabpanel" aria-label="Theo dõi luồng" hidden>
      <h4>Theo dõi luồng</h4>
      <div class="cn-blk" id="flowPanel">
@@ -3181,6 +3468,7 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;">
                 <label for="flowIp" style="font-weight:700;">Máy (IP)</label>
                 <select id="flowIp" onchange="loadFlow(true)"><option value="">Tất cả</option></select>
+                <button type="button" class="btn small" onclick="setFlow('clear')" title="Xoá nhật ký của máy đang chọn (chọn 'Tất cả' thì xoá hết)">Xoá log máy đang chọn</button>
                 <button type="button" class="btn small" onclick="setFlow('reset')">Xoá số đếm</button>
                 <button type="button" class="btn small" onclick="setFlow('disable')">Tắt theo dõi</button>
                 <span id="flowSince" class="sub"></span>
@@ -3189,11 +3477,14 @@ tr.me-row > td:first-child{box-shadow:inset 4px 0 0 #22c55e}
                 <label for="flowQ" style="font-weight:700;">Tìm</label>
                 <input id="flowQ" type="search" placeholder="tên miền, IP, proxy_144, 18:46..." autocomplete="off" oninput="flowSearch()" style="flex:1;min-width:200px;">
                 <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="flowPause" onchange="if(!this.checked) loadFlow()"> Dừng cuộn</label>
+                <label for="flowFrom" style="display:flex;align-items:center;gap:4px;">Từ lúc
+                  <input id="flowFrom" type="time" step="1" onchange="loadFlow(true)" style="width:112px;" title="Chỉ hiện kết nối mở sau mốc giờ này (giờ máy tính của anh)">
+                </label>
                 <span id="flowCount" class="sub" aria-live="polite"></span>
               </div>
               <div id="flowTotals" style="margin-top:8px;font-weight:700;" aria-live="polite"></div>
               <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px;">
-                <caption class="sub" style="text-align:left;caption-side:bottom;padding-top:6px;">Nhật ký kết nối, mới nhất ở trên. Dòng đang mở (●) tiếp tục cộng dồn byte.</caption>
+                <caption class="sub" style="text-align:left;caption-side:bottom;padding-top:6px;">Nhật ký kết nối, mới nhất ở trên. Thời gian chính xác đến mili giây; mỗi kết nối là một dòng. Dòng đang mở (●) tiếp tục cộng dồn byte.</caption>
                 <thead><tr style="text-align:left;border-bottom:1px solid var(--line-3);"><th scope="col">Thời gian</th><th scope="col">Tên miền</th><th scope="col" id="flowIpTh">Máy</th><th scope="col">Đi đường</th><th scope="col" style="text-align:right;">Tải xuống</th><th scope="col" style="text-align:right;">Tải lên</th><th scope="col" style="text-align:right;">Kết nối</th></tr></thead>
                 <tbody id="flowRows"></tbody>
               </table>
@@ -3244,7 +3535,6 @@ let connFocusBack = null, connTab = 'direct';
 const $c = id => document.getElementById(id);
 const connLines = id => $c(id).value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
 const connSet = (id, a) => { $c(id).value = (a || []).join('\n'); };
-const CONN_DEF_FIXED = ['*.googlevideo.com','*.fbcdn.net','*.tiktokcdn.com','*.ibyteimg.com','*.tiktokcdn-us.com','*.bromite.org','*.ytimg.com','*.ggpht.com','*.gvt1.com','*.gvt2.com','*.googleusercontent.com','*.fonts.gstatic.com','*.gstatic.com','*.googleapis.com','*.googlezip.net','*.cdn-apple.com','*.apple.com','*.icloud.com','*.byteeffecttos-g.com','dl.google.com','downloadwa.b-cdn.net','*.azureedge.net','www.gstatic.com'];
 function connMsg(t, cls) { const m = $c('connMsg'); m.textContent = t; m.className = cls || ''; }
 function connShowTab(t, focus) {
   connTab = t;
@@ -3261,15 +3551,18 @@ function connRefresh() {
   const n = (id, v) => { $c(id).textContent = v; };
   n('cnN-direct', connLines('connDirect').length);
   n('cnN-iso', $c('connIso').checked ? 'bật' : 'tắt');
-  n('cnN-master', 1 + connLines('connMaster').length);
+  n('cnN-master', (($c('connFixedMaster').value || '').trim() ? 1 : 0) + connLines('connMaster').length);
   n('cnN-udp', [$c('connUdp').checked && 'UDP', $c('connWebrtc').checked && 'RTC'].filter(Boolean).join('+') || 'tắt');
-  n('cnN-dom', connLines('connBypass').length + connLines('connBlock').length);
-  n('cnN-route', $c('connFixedOn').checked ? 'bật' : 'tắt');
+  const _nc = $c('cnN-notecolor'); if (_nc) _nc.textContent = noteColorData.length;
+  // [Ver 2.138] 4 bang dinh tuyen
+  const rtOn = ['wan', 'split', 'proxy', 'block'].filter(k => ($c('rtOn-' + k) || {}).checked);
+  const rtItems = ['wan', 'split', 'proxy', 'block'].reduce((a, k) => a + connLines('rtItems-' + k).length, 0);
+  n('cnN-route', rtItems ? (rtItems + ' mục · ' + rtOn.length + ' bảng') : 'tắt');
   const chip = (t, on) => `<span class="cn-chip${on ? ' on' : ''}">${esc(t)}</span>`;
   $c('connChips').innerHTML = chip('Cô lập ' + ($c('connIso').checked ? 'bật' : 'tắt'), $c('connIso').checked)
     + chip('UDP ' + ($c('connUdp').checked ? 'chặn' : 'mở'), $c('connUdp').checked)
     + chip('WebRTC ' + ($c('connWebrtc').checked ? 'chặn' : 'mở'), $c('connWebrtc').checked)
-    + chip('Định tuyến ' + ($c('connFixedOn').checked ? 'bật' : 'tắt'), $c('connFixedOn').checked);
+    + chip('Định tuyến: ' + (rtItems ? rtItems + ' mục / ' + rtOn.length + ' bảng bật' : 'tắt'), rtItems > 0);
 }
 // [Ver 2.112] Hien thi traffic: luu ngay khi doi, khong cho nut Luu & ap dung.
 const TRAFFIC_MODE_LABEL = { auto: 'tự động', wan: 'WAN', vpn: 'VPN', proxy: 'Proxy', off: 'tắt' };
@@ -3392,26 +3685,87 @@ function connTargetUi() {
   const v = $c('connFixedTarget').value;
   $c('connTgPppoe').hidden = v !== 'pppoe'; $c('connTgVpn').hidden = v !== 'vpn'; $c('connTgProxy').hidden = v !== 'proxy';
 }
-function connFixedDefault() { connSet('connFixed', CONN_DEF_FIXED); connRefresh(); }
-// [Ver 2.102] Nhóm tải app App Store: CHỈ chèn/gỡ trong ô, bấm Lưu mới áp dụng.
-const CONN_DEF_APPSTORE = ['*.mzstatic.com', '*.aaplimg.com', '*.itunes.apple.com',
-                           '*.safebrowsing.apple', '*.cdn-apple.com', '*.phobos.apple.com'];
-function connBypassPreset(kind, remove) {
-  if (kind !== 'appstore') return;
-  const ta = document.getElementById('connBypass');
-  if (!ta) return;
-  const cur = ta.value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
-  if (remove) {
-    const drop = new Set(CONN_DEF_APPSTORE);
-    const next = cur.filter(x => !drop.has(x));
-    ta.value = next.join('\n');
-    connMsg('Đã gỡ ' + (cur.length - next.length) + ' mục App Store (chưa áp dụng)');
-  } else {
-    const have = new Set(cur);
-    const add = CONN_DEF_APPSTORE.filter(x => !have.has(x));
-    ta.value = cur.concat(add).join('\n');
-    connMsg(add.length ? ('Đã chèn ' + add.length + ' mục App Store (chưa áp dụng)') : 'Đã có đủ mục App Store');
-  }
+// [Ver 2.139] Bo 2 nut chen nhanh ("Dung danh sach mac dinh" va "+ Nhom App Store"):
+// nguoi dung tu dan danh sach, tranh nut thua trong 4 bang.
+// [Ver 2.138] Lay IP may dang mo GUI lam may master khoa cung.
+async function connFixedMasterSuggest() {
+  try {
+    const r = await fetchJSON('/api/pm/whoami');
+    const ip = String((r && r.ip) || '').trim();
+    if (!ip) return connMsg('Không lấy được IP máy này', 'err');
+    $c('connFixedMaster').value = ip;
+    connMsg('Đã điền IP máy đang mở: ' + ip + ' (chưa áp dụng)');
+  } catch (e) { connMsg('Lỗi: ' + e.message, 'err'); }
+}
+// ===== [Ver 2.138] Bang mau chu Note tong (luu trong Cau hinh ket noi) =====
+let noteColorData = [];   // [{id, words:[], color:'#rrggbb', bold:true}]
+const NOTE_COLOR_PALETTE = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899', '#6b7280', '#111827'];
+const NOTE_COLOR_DEFAULT_DATA = [
+  { id: 'ban', words: ['ban'], color: '#ef4444', bold: true },
+  { id: 'done', words: ['done'], color: '#22c55e', bold: true },
+];
+function noteColorPaint(list) {
+  noteColorData = (Array.isArray(list) ? list : []).map((x, i) => ({
+    id: String((x && x.id) || ('c' + (i + 1))),
+    words: Array.isArray(x && x.words) ? x.words.slice() : [],
+    color: (x && /^#[0-9a-f]{6}$/i.test(String(x.color || ''))) ? String(x.color).toLowerCase() : '#ef4444',
+    bold: x && x.bold !== false,
+  }));
+  noteColorRender();
+}
+function noteColorRender() {
+  const box = $c('noteColorRows');
+  if (!box) return;
+  box.innerHTML = noteColorData.map((row, i) =>
+    '<div class="nc-row">' +
+      '<input type="text" class="nc-words" value="' + esc(row.words.join(', ')) + '" data-i="' + i + '" oninput="noteColorWords(this)" placeholder="từ khoá, cách nhau bằng dấu phẩy" aria-label="Từ khoá màu ' + (i + 1) + '">' +
+      '<input type="color" class="nc-color" value="' + esc(row.color) + '" data-i="' + i + '" oninput="noteColorSet(this)" onchange="noteColorSet(this)" aria-label="Màu ' + (i + 1) + '">' +
+      '<label class="nc-bold"><input type="checkbox" ' + (row.bold ? 'checked' : '') + ' data-i="' + i + '" onchange="noteColorBold(this)"> đậm</label>' +
+      '<span class="nc-preview" data-i="' + i + '" style="color:' + esc(row.color) + ';font-weight:' + (row.bold ? '700' : '400') + '">' + esc(row.words[0] || 'xem trước') + '</span>' +
+      '<button type="button" class="btn small" onclick="noteColorDel(' + i + ')" aria-label="Xoá màu ' + (i + 1) + '">✕</button>' +
+    '</div>').join('') || '<div class="sub">Chưa có màu nào. Bấm "+ Thêm màu".</div>';
+  const nav = $c('cnN-notecolor'); if (nav) nav.textContent = noteColorData.length;
+}
+// [Ver 2.139] KHONG goi noteColorRender() khi nguoi dung dang go/chon mau.
+// noteColorRender() dung lai toan bo box.innerHTML => xoa luon o input dang go (mat focus
+// sau 1 ky tu) va xoa luon bang chon mau cua he dieu hanh (click la mat bang mau).
+// Chi cap nhat dung phan xem truoc cua dong do.
+function noteColorPreview(i) {
+  const row = noteColorData[i];
+  const box = $c('noteColorRows');
+  if (!row || !box) return;
+  const pv = box.querySelector('.nc-preview[data-i="' + i + '"]');
+  if (!pv) return;
+  pv.textContent = row.words[0] || 'xem trước';
+  pv.style.color = row.color;
+  pv.style.fontWeight = row.bold ? '700' : '400';
+}
+function noteColorWords(el) {
+  const i = Number(el.dataset.i);
+  if (!noteColorData[i]) return;
+  noteColorData[i].words = el.value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+  noteColorPreview(i);
+}
+function noteColorSet(el) {
+  const i = Number(el.dataset.i);
+  if (!noteColorData[i]) return;
+  noteColorData[i].color = el.value;
+  noteColorPreview(i);
+}
+function noteColorBold(el) {
+  const i = Number(el.dataset.i);
+  if (!noteColorData[i]) return;
+  noteColorData[i].bold = !!el.checked;
+  noteColorPreview(i);
+}
+function noteColorDel(i) { noteColorData.splice(i, 1); noteColorRender(); connRefresh(); }
+function noteColorAdd() {
+  noteColorData.push({ id: 'c' + (Date.now() % 100000), words: [], color: NOTE_COLOR_PALETTE[noteColorData.length % NOTE_COLOR_PALETTE.length], bold: true });
+  noteColorRender(); connRefresh();
+}
+function noteColorReset() {
+  if (!confirm('Đưa bảng màu Note tổng về mặc định (Ban đỏ, Done xanh)?')) return;
+  noteColorPaint(NOTE_COLOR_DEFAULT_DATA.map(x => ({ ...x, words: x.words.slice() })));
   connRefresh();
 }
 async function openConnPanel() {
@@ -3423,14 +3777,25 @@ async function openConnPanel() {
     if (!r || r.ok === false) throw new Error((r && r.error) || 'lỗi');
     const c = r.conn || {};
     connSet('connDirect', c.direct); connSet('connMaster', c.iso_master); connSet('connAllow', c.iso_allow);
-    connSet('connBypass', c.bypass); connSet('connBlock', c.block);
-    $c('connFixedMaster').textContent = r.fixed_master || '192.10.1.10';
+    // [Ver 2.138] 4 bang dinh tuyen
+    const rt = r.route || {};
+    ['wan', 'split', 'proxy', 'block'].forEach(k => {
+      const b = rt[k] || {};
+      connSet('rtItems-' + k, b.items);
+      const on = $c('rtOn-' + k); if (on) on.checked = !!b.on;
+    });
+    // [Ver 2.138] may master khoa cung do nguoi dung dat (khong con hard-code 192.10.1.10)
+    $c('connFixedMaster').value = r.fixed_master || '';
+    $c('connLanIp').textContent = r.lan_ip || '-';
+    $c('connLanIpEg').textContent = (r.lan_ip || '192.168.1.1').replace(/\.\d+$/, '.10');
+    // [Ver 2.138] bang mau Note tong
+    noteColorPaint(r.note_colors || []);
+    rtTempReapply();   // [Ver 2.139] mo lai hop cau hinh => muc gan tam van con
     $c('connUdp').checked = !!c.udp_block; $c('connWebrtc').checked = c.webrtc !== 'off';
     const iso = String(r.isolate || ''), mode = (iso.match(/mode=(\S+)/) || [])[1] || '', l2 = (iso.match(/l2_bridge=(\S+)/) || [])[1] || '';
     $c('connIso').checked = mode === 'two-way';
     $c('connIsoState').textContent = mode === 'two-way' ? (l2 === 'yes' ? 'Đang chặn' : 'Đang chặn (chưa nạp, tự sửa trong 1 phút)') : mode === 'off' ? 'Đang tắt, máy trong LAN thấy nhau' : 'Không rõ trạng thái';
     const sp = r.split || {}, t = String(sp.target || '');
-    connSet('connFixed', sp.domains); $c('connFixedOn').checked = !!sp.enabled;
     const vpn = t.startsWith('vpn:') ? t.slice(4) : '';
     const vs = (sp.vpns || []).slice(); if (vpn && !vs.some(v => v.name === vpn)) vs.push({ name: vpn, dev: '?', running: false });
     $c('connFixedVpn').innerHTML = vs.length ? vs.map(v => `<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.dev)}${v.running ? '' : ', đang tắt'})</option>`).join('') : '<option value="">chưa có VPN</option>';
@@ -3440,8 +3805,8 @@ async function openConnPanel() {
     if (sp.proxy_type) $c('connFixedPxType').value = sp.proxy_type;
     $c('connFixedPx').value = '';
     $c('connFixedPxCur').textContent = sp.proxy ? ('Đang lưu: ' + sp.proxy + '. Để trống nếu không đổi.') : '';
-    const tl = t === 'block' ? 'chặn' : t === 'wan' ? 'mạng chính' : t === 'proxy' ? 'proxy' : vpn ? 'VPN ' + vpn : t.startsWith('pppoe:') ? 'PPPoE #' + t.slice(6) : 'chưa chọn đường';
-    $c('connRouteState').textContent = (sp.enabled ? 'Đang bật: ' : 'Đang tắt. Đường: ') + tl + (sp.enabled ? ', ' + (sp.applied || 0) + ' máy' : '');
+    const tl = t === 'block' ? 'chặn' : t === 'wan' ? 'mạng chính' : t === 'proxy' ? 'proxy nhập tay' : vpn ? 'VPN ' + vpn : t.startsWith('pppoe:') ? 'PPPoE #' + t.slice(6) : 'chưa chọn đường';
+    const _st = $c('connRouteState'); if (_st) _st.textContent = tl + (sp.applied ? ' · ' + sp.applied + ' máy' : '');
     connTargetUi(); connRefresh();
     loadTraffic();
     connMsg((r.vpn_ips || []).length + ' máy đang gán VPN.');
@@ -3455,15 +3820,25 @@ function connTarget() {
   return v;
 }
 async function saveConn() {
-  const split = { enabled: $c('connFixedOn').checked, domains: $c('connFixed').value, target: connTarget() };
-  if (split.enabled && !split.target) { connShowTab('route', true); return connMsg('Chọn đường đi cho Định tuyến cố định', 'err'); }
+  // [Ver 2.138] Tab Dinh Tuyen: 4 bang. Bang 'Luong phu' can co duong di.
+  const route = {};
+  ['wan', 'split', 'proxy', 'block'].forEach(k => { route[k] = { on: !!$c('rtOn-' + k).checked, items: connLines('rtItems-' + k) }; });
+  if (route.split.on && !connTarget()) { connShowTab('route', true); return connMsg('Bảng "Đi qua Luồng phụ" đang bật nhưng chưa chọn đường phụ', 'err'); }
+  const split = { enabled: route.split.on, domains: route.split.items, target: connTarget() };
   if (split.target === 'proxy' && $c('connFixedPx').value.trim()) { split.proxy = $c('connFixedPx').value.trim(); split.proxy_type = $c('connFixedPxType').value; }
   const iso = $c('connIso').checked;
   if (!iso && !confirm('Tắt cô lập LAN? Các máy trong LAN sẽ thấy nhau.')) return;
-  if (!confirm('Lưu cấu hình kết nối?\nRouter có thể chập mạng vài giây.')) return;
+  // [Ver 2.139] Bao ro cac muc gan tu "Theo doi luong" sap duoc ap dung
+  const tempAll = RT_KEYS.reduce((a, k) => a + (rtTemp[k] || []).length, 0);
+  const tempMsg = tempAll
+    ? ('\n\nCó ' + tempAll + ' mục gán từ Theo dõi luồng (chưa lưu):\n' +
+       RT_KEYS.filter(k => (rtTemp[k] || []).length).map(k => '• ' + RT_LABEL[k] + ': ' + rtTemp[k].join(', ')).join('\n') + '\n\nÁp dụng luôn các mục này?')
+    : '';
+  if (!confirm('Lưu cấu hình kết nối?' + tempMsg + '\nRouter có thể chập mạng vài giây.')) return;
   const body = { direct: connLines('connDirect'), iso_master: connLines('connMaster'), iso_allow: connLines('connAllow'),
     udp_block: $c('connUdp').checked, webrtc: $c('connWebrtc').checked ? 'block' : 'off',
-    bypass: connLines('connBypass'), block: connLines('connBlock'), isolate: iso ? 'two-way' : 'off', split };
+    fixed_master: ($c('connFixedMaster').value || '').trim(),
+    route, note_colors: noteColorData, isolate: iso ? 'two-way' : 'off', split };
   const btn = $c('connSaveBtn'); btn.disabled = true; connMsg('Đang áp dụng...');
   try {
     const r = await fetchJSON('/api/pm/conn', { method: 'POST', body: JSON.stringify(body) });
@@ -3471,6 +3846,8 @@ async function saveConn() {
     const bad = (r.results || []).filter(x => !x.ok);
     connMsg(bad.length ? 'Lưu xong, có lỗi: ' + bad.map(x => x.cmd + ': ' + (x.out || '')).join(' | ') : 'Đã lưu' + (r.restarted ? ', gencore khởi động lại vài giây.' : '.'), bad.length ? 'err' : 'ok');
     setStatus('Đã lưu cấu hình kết nối');
+    rtTempClear();      // [Ver 2.139] da luu => muc gan tam thanh muc that
+    loadNoteColors();   // [Ver 2.138] áp màu mới cho Note tổng ngay
   } catch (e) { connMsg('Lỗi: ' + e.message, 'err'); }
   finally { btn.disabled = false; }
 }

@@ -1,3 +1,26 @@
+## Ver 2.139 - 2026-11-16
+- Theo doi luong: BAM vao ten mien/IP o cot "Ten mien" de gan truc tiep vao bang dinh tuyen (nut Di qua WAN / Di qua Luong phu / Di qua Proxy / Chan ra internet). Gan NGUYEN ten day du (vi du p16-ug-incentive-img-us.tiktokcdn-us.com), co them lua chon gan ca nhom *.ten-mien. Muc gan la TAM THOI: mo tab Dinh tuyen la thay, reload cung trang hoac reset router thi mat, bam Luu moi co tac dung. Moi bang co dong chu cam "Gan tam, chua Luu" de biet muc nao chua ap dung.
+- Bang dinh tuyen: moi muc nam dung 1 dong (tat tu xuong dong, ten dai thi cuon ngang) + ke mau chan/le theo tung dong de phan biet. Van la o soan thao that nen Ctrl+A / Ctrl+C copy duoc TOAN BO danh sach day du, khong rut gon.
+- Ke dong chan/le: nen phai dich xuong dung bang padding-top (7px) cua o, neu khong soc se lech va cat ngang chu (loi da gap va da sua). Do dam ha ve 7.5% trang tren nen toi: du de mat bam dong khi danh sach dai, khong gay choi.
+- Khi bam Luu ma co muc gan tam: hop thoai liet ke ro tung muc theo bang truoc khi ap dung.
+- Sua loi: o tu khoa "Mau chu Note tong" chi nhap duoc 1 ky tu roi mat focus; bang chon mau bi dong ngay khi click nen khong keo duoc cham mau; o "dam" cung bi mat focus. Nguyen nhan: moi lan go deu dung lai toan bo danh sach bang innerHTML. Gio chi cap nhat o xem truoc cua dung dong do.
+- Sua loi: o tim kiem trong "Gan MAC" chi nhap duoc 1 ky tu. Nguyen nhan: moi lan go tu nhay toi dong khop va cuop focus. Gio go thi chi dem so dong khop, bam Enter moi nhay.
+- Bo 2 nut chen nhanh "Dung danh sach mac dinh" va "+ Nhom App Store" trong tab Dinh tuyen (4 bang cao deu nhau, khong con nut thua).
+
+## Ver 2.138 - 2026-11-16
+- Cau hinh ket noi > Dinh tuyen: GOP "Ten mien / IP" + "Dinh tuyen co dinh" thanh MOT tab "Dinh tuyen" gom 4 bang doc, moi bang co cong tac bat/tat rieng:
+  1. Di qua WAN (ra mang chinh, khong ton luong proxy/VPN)
+  2. Di qua Luong phu (chon proxy cu the / VPN cu the / WAN / phien PPPoE / chan)
+  3. Di qua Proxy (ten mien di qua proxy CUA CHINH MAY do: may gan proxy_5 thi di proxy_5)
+  4. Chan ra internet (chan hoan toan, ap moi may ke ca may di truc tiep)
+- Ca 4 bang ap dung cho MOI may trong LAN (truoc day rule chi gan cho may dang co proxy). Ten mien khong nam trong bang nao thi may di theo duong mac dinh cua no.
+- Mot muc chi duoc nam trong 1 bang; neu trung thi TU XU theo uu tien Chan > WAN > Luong phu > Proxy va bao lai cho nguoi dung (khong chan khong cho luu, vi cau hinh dang chay tren router that da co muc trung). Tu dong chuyen cau hinh cu: "khong qua Proxy/VPN" -> bang WAN, "chan" -> bang Chan, Phan luong -> bang Luong phu.
+- DNS di cung duong voi du lieu theo bang WAN (truoc day doc danh sach bypass cu).
+- May master: BO khoa cung 192.10.1.10. Nhap IP may master dung theo tung router (o moi + nut "May dang mo"), de trong = khong khoa cung. Hien IP LAN cua router de doi chieu.
+- Note tong: them tab "Mau chu Note tong" trong Cau hinh ket noi - tu them/xoa tu khoa va gan mau (bang mau + do dam), GUI 9001 to dung mau da gan. Mac dinh Ban do, Done xanh. Khong phan biet hoa/thuong, chi to khi tu dung rieng.
+- Theo doi luong: thoi gian chinh xac den MILI GIAY, moi ket noi la 1 dong rieng (truoc gop theo giay), giu 6000 dong, them o loc "Tu luc".
+- Theo doi luong: "Xoa log may dang chon" chi xoa nhat ky cua may dang chon (truoc day luon xoa sach moi may); "Xoa so dem" van xoa tat ca va co xac nhan.
+
 ## Ver 2.137 - 2026-11-14
 - Blacklist IP PPPoE tu canh gac (BL-GUARD). Truoc day chi khi bam "Xoay IP" / "Block IP" moi kiem tra IP moi co nam trong blacklist. Phien tu len lai IP (tat/bat PPPoE, reboot, BRAS cap lai) khong qua kiem tra nao nen trung IP blacklist van chay mai. Do that Gen15 2026-11-14: sau tat/bat PPPoE co 51/160 phien dang dung IP blacklist, khong phien nao tu xoay.
 - Nay moi 30s quet tat ca phien dang co IP; phien nao dang dung IP trong blacklist => tu khoi dong xoay (dung dung job xoay cu, van xoay tiep toi da 10 lan neu ra IP blacklist).
