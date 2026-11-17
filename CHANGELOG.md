@@ -1,3 +1,7 @@
+## Ver 2.143 - 2026-11-17
+- Gan MAC: danh sach IP - MAC truoc day xep theo CHUOI nen 192.12.3.10, 192.12.3.100 dung truoc 192.12.3.2 (do that Gen12: 192.12.3.1, 3.10, 3.100, 3.101...). Nay xep theo IP dang so: 192.12.3.1, 3.2, 3.3, ... 3.10 ... 3.100. Dong khong phai IP (ghi chu) giu o dau.
+- Chi doi thu tu hien thi trong o GAN MAC; khong doi du lieu gan, khong doi so dong. Kiem tren du lieu that Gen12: 253 dong truoc = 253 dong sau, cung tap noi dung.
+
 ## Ver 2.142 - 2026-11-16
 - DINH TUYEN: 1 muc (domain/IP) CHI duoc nam trong 1 bang. Gan vao bang khac => BAO LOI ro rang:
   "xxx.com dang nam o bang "Ten bang". Vui long xoa truoc khi gan." Khong tu chuyen, khong ghi gi.

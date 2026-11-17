@@ -7328,6 +7328,41 @@ def dnsmasq_tmp_cleanup_loop():
 
 MAC_TOOL_BASE = 'http://127.0.0.1:19123'
 
+def _ip_sort_key(ip):
+    """[Ver 2.143] Khoa sap xep IPv4 theo SO (192.12.3.2 truoc 192.12.3.10). IP loi xep cuoi."""
+    parts = str(ip or '').strip().split('.')
+    try:
+        if len(parts) == 4:
+            return (0, tuple(int(x) for x in parts))
+    except ValueError:
+        pass
+    return (1, (str(ip or ''),))
+
+
+def mac_map_sorted(res):
+    """[Ver 2.143] Tool GAN MAC (19123) tra text xep theo CHUOI => 192.12.3.10 dung truoc
+    192.12.3.2. Xep lai theo IP dang so truoc khi tra GUI. Dong rong/ghi chu giu o dau."""
+    try:
+        if not isinstance(res, dict) or not isinstance(res.get('text'), str):
+            return res
+        head, rows = [], []
+        for line in res['text'].replace('\r\n', '\n').split('\n'):
+            s = line.strip()
+            if not s:
+                continue
+            first = re.split(r'[\s|;,]+', s, 1)[0]
+            if re.match(r'^\d+\.\d+\.\d+\.\d+$', first):
+                rows.append((_ip_sort_key(first), line.rstrip()))
+            else:
+                head.append(line.rstrip())
+        rows.sort(key=lambda x: x[0])
+        out = dict(res)
+        out['text'] = '\n'.join(head + [r[1] for r in rows])
+        return out
+    except Exception:
+        return res
+
+
 def mac_tool_call(path, payload=None, timeout=120):
     """[Ver 2.125] Goi tool GAN MAC (port 19123) tu backend 9001."""
     data = json.dumps(payload).encode('utf-8') if payload is not None else None
@@ -10104,7 +10139,7 @@ class Handler(BaseHTTPRequestHandler):
             router_ctx = get_router_machine_context(cfg, cfg.get('uiState') if isinstance(cfg.get('uiState'), dict) else {})
             return self._send_json({'ok': True, 'config': cfg, 'machine_note': router_ctx.get('note', ''), 'machine_indexes': router_ctx.get('available', [])})
         if path == '/api/pm/mac-map':  # [Ver 2.125]
-            return self._send_json(mac_tool_call('/api/mappings'))
+            return self._send_json(mac_map_sorted(mac_tool_call('/api/mappings')))  # [Ver 2.143]
         if path == '/api/pm/mac-log':  # [Ver 2.129]
             return self._send_json({'ok': True, 'text': mac_assign_log()})
         if path == '/api/pm/mac-connected':  # [Ver 2.125]

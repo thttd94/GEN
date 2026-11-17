@@ -1,1 +1,1 @@
-Ver 2.142 (1 muc chi 1 bang + tu loai trung + sap xep moi cot Theo doi luong)
+Ver 2.143 (Gan MAC: sap xep danh sach theo IP dang so 3.1, 3.2, 3.3... thay vi theo chuoi 3.1, 3.10, 3.100)
