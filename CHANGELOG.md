@@ -1,3 +1,9 @@
+## Ver 2.144 - 2026-11-17
+- Sua loi khi Luu tab Dinh tuyen / Ket noi: bao "Loi: Host proxy khong hop le: \"{'type': 'socks5', 'server': '14.242.70." du proxy dang luu la dung.
+- Nguyen nhan: [Ver 2.139] them dong bo 2 chieu bang "Di qua Luong phu" => goi `split_update(get_split_config())`. Trong do `proxy` la dict da phan tich, nhung `split_update` lam `str(payload.get('proxy') or '')` nen `str(dict)` la chuoi JSON khong rong => tuong la nguoi dung nhap => dem di `parse_split_proxy()` => bao host khong hop le. Loi chi xay ra khi router DA LUU proxy nhap tay (dict rong thi `{} or ''` = '' nen khong loi), vi vay may chua gan proxy hoac ban cu khong bi.
+- Nay: `split_update` nhan ca dict (giu nguyen server/port/user/pass, ke ca pass co dau ':') lan chuoi; dict rong = giu proxy dang luu. Test 10 ca: dict du/khong user/dict rong/chuoi host:port/host:port:user:pass/socks5:///khong gui proxy/http/pass co ':' deu PASS, chuoi rac van bao loi dung.
+- Chi sua app.py, khong doi du lieu gan hay cau hinh phan luong dang chay.
+
 ## Ver 2.143 - 2026-11-17
 - Gan MAC: danh sach IP - MAC truoc day xep theo CHUOI nen 192.12.3.10, 192.12.3.100 dung truoc 192.12.3.2 (do that Gen12: 192.12.3.1, 3.10, 3.100, 3.101...). Nay xep theo IP dang so: 192.12.3.1, 3.2, 3.3, ... 3.10 ... 3.100. Dong khong phai IP (ghi chu) giu o dau.
 - Chi doi thu tu hien thi trong o GAN MAC; khong doi du lieu gan, khong doi so dong. Kiem tren du lieu that Gen12: 253 dong truoc = 253 dong sau, cung tap noi dung.

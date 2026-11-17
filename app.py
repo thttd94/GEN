@@ -3235,8 +3235,20 @@ def split_update(payload, strict=True):
         if not t.lower().startswith('vpn:'):
             t = t.lower()
         new['target'] = t
-    if str(payload.get('proxy') or '').strip():
-        new['proxy'] = parse_split_proxy(payload.get('proxy'), payload.get('proxy_type') or 'socks5')
+    # [Ver 2.144] Payload co the mang proxy da phan tich (dict) chu khong chi chuoi.
+    # Truoc day str(dict) != '' => parse_split_proxy(str(dict)) => "Host proxy khong hop le:
+    # \"{'type': 'socks5', 'server': '14.242.70." moi lan Luu o tab Dinh tuyen, du proxy dung.
+    _px_in = payload.get('proxy')
+    if isinstance(_px_in, dict):
+        _srv = str(_px_in.get('server') or '').strip()
+        if _srv:  # dict rong = giu nguyen proxy dang luu
+            new['proxy'] = parse_split_proxy(
+                '%s:%s:%s:%s' % (_srv, _px_in.get('port') or 0, _px_in.get('username') or '', _px_in.get('password') or '')
+                if (_px_in.get('username') or _px_in.get('password'))
+                else '%s:%s' % (_srv, _px_in.get('port') or 0),
+                _px_in.get('type') or payload.get('proxy_type') or 'socks5')
+    elif str(_px_in or '').strip():
+        new['proxy'] = parse_split_proxy(_px_in, payload.get('proxy_type') or 'socks5')
     if 'enabled' in payload:
         new['enabled'] = bool(payload.get('enabled'))
     if new['enabled']:
